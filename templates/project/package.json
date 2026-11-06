@@ -1,0 +1,10 @@
+{
+	"name": "project",
+	"private": true,
+	"workspaces": ["app", "harness/*"],
+	"scripts": {
+		"dev": "npm run dev -w app",
+		"build": "npm run build -w app"
+	},
+	"devDependencies": {}
+}

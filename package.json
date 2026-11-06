@@ -1,0 +1,27 @@
+{
+	"name": "agentx",
+	"version": "0.1.0",
+	"description": "Creates projects with a Next.js app and pi coding agents, and runs the agents",
+	"type": "module",
+	"bin": {
+		"agentx": "dist/cli/agentx.js"
+	},
+	"files": [
+		"dist",
+		"templates"
+	],
+	"scripts": {
+		"build": "tsc",
+		"check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@earendil-works/pi-coding-agent": "1.5.0"
+	},
+	"devDependencies": {
+		"@types/node": "24.19.2",
+		"typescript": "7.0.2"
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

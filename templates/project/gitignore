@@ -1,0 +1,4 @@
+node_modules/
+app/.next/
+app/next-env.d.ts
+harness/*/storage/
