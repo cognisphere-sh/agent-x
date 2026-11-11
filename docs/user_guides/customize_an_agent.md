@@ -1,10 +1,10 @@
 # Customize an agent
 
-Everything below lives in `harness/<name>/` and is checked in. Changes apply on the next session; system prompt changes apply on the next prompt.
+Everything below lives in `agent-x/agents/<name>/` and is checked in. agentx's own extension, harness prompt and skills come from the agentx package and are not edited here. Changes apply on the next session; system prompt changes apply on the next prompt.
 
 ## System prompt
 
-Add or edit `.md` files in `system_prompt/`. They are joined in filename order and replace Pi's default system prompt; Pi still appends the tool list, skills and working directory. Number files to control order: `00-identity.md`, `10-workspace.md`, `20-style.md`.
+Add or edit `.md` files in `system_prompt/`. They are joined in filename order after the harness prompt, which explains agentx and the agent's files and always comes first. Rewrite `00-identity.md` to say who this agent is, and add sections after it, such as `10-style.md`. Pi appends the skills list and working directory.
 
 ## Skills
 
@@ -60,4 +60,4 @@ Pi packages bundle extensions, skills, prompt templates and themes from npm, git
 "packages": ["npm:@example/pi-tools@1.0.0"]
 ```
 
-Pi installs missing packages on the next start.
+Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (gitignored). `npm run pi -- install -l <package>` adds the entry for you; without `-l` it goes to `agent-x/.pi`, which is not checked in and applies to every agent of the project.

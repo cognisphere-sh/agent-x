@@ -1,6 +1,6 @@
 # Run an agent
 
-Run these from `harness/<name>`.
+Run these from `agent-x/agents/<name>`.
 
 | Command | Effect |
 |---|---|
@@ -26,6 +26,6 @@ Close stdin (`< /dev/null`) when calling `-p` from a script; otherwise Pi waits 
 
 ## What is and is not loaded
 
-Loaded: the agent's `.pi/settings.json`, `.pi/mcp.json`, `skills/`, `extensions/`, `system_prompt/`, and skills in `~/.agents/skills`.
+Loaded: agentx's Pi package (its extension and the harness prompt), the agent's `.pi/settings.json`, `.pi/mcp.json`, `skills/`, `extensions/`, `system_prompt/`.
 
-Not loaded: `~/.pi/agent` (your global Pi settings, extensions and login), `AGENTS.md` and `CLAUDE.md` files.
+Not loaded: `~/.pi/agent` (your global Pi settings, extensions and login), `AGENTS.md` and `CLAUDE.md` files. Skills in `~/.agents/skills` are not shown to the agent; Pi still lists them at startup and you can run one yourself with `/skill:<name>`.

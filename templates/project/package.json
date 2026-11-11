@@ -1,10 +1,10 @@
 {
 	"name": "project",
 	"private": true,
-	"workspaces": ["app", "harness/*"],
 	"scripts": {
-		"dev": "npm run dev -w app",
-		"build": "npm run build -w app"
-	},
-	"devDependencies": {}
+		"install": "node -e \"for (const dir of ['agent-x', 'web']) require('child_process').execSync((process.env.npm_config_user_agent || 'npm').split('/')[0] + ' install', { cwd: dir, stdio: 'inherit' })\"",
+		"dev": "npm run dev --prefix web",
+		"build": "npm run build --prefix web",
+		"agentx": "node agent-x/node_modules/agent-x/dist/cli/agentx.js"
+	}
 }

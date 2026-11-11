@@ -13,14 +13,15 @@ New here: [quick start](user_guides/quick_start.md).
 | Component | Covers | Status |
 |---|---|---|
 | [cli](architecture/cli/README.md) | The `agentx` command and its commands | Built |
-| [project](architecture/project/README.md) | The project `init-project` creates: app, harness, workspaces | Built |
+| [project](architecture/project/README.md) | The project `init-project` creates: the app package and the agent-x package | Built |
 | [agent](architecture/agent/README.md) | An agent directory and how `agentx run` starts Pi in it | Built |
+| [pi-package](architecture/pi-package/README.md) | The Pi package agentx adds to every agent: the system prompt extension, harness prompt, shared skills | Built |
 | [runtime](architecture/runtime/README.md) | Coordinator, `AgentManager`, `AgentRunner` | Planned |
 | [pi](architecture/pi/README.md) | Pi behavior agentx relies on, with source references | Reference |
 
 ## Decisions
 
-Each decision lives in the "Decisions" section of the component it affects. Numbers are global; the next free number is **D11**.
+Each decision lives in the "Decisions" section of the component it affects. Numbers are global; the next free number is **D19**.
 
 | # | Decision | Component |
 |---|---|---|
@@ -34,6 +35,14 @@ Each decision lives in the "Decisions" section of the component it affects. Numb
 | [D8](architecture/runtime/README.md#d8) | No SDK integration and no `models.json` yet | runtime |
 | [D9](architecture/project/README.md#d9) | npm workspaces plus `pnpm-workspace.yaml`; template ships `gitignore` | project |
 | [D10](architecture/runtime/README.md#d10) | Runtime layout: `coordinator/` and `agents/` | runtime |
+| [D11](architecture/pi-package/README.md#d11) | agentx's Pi package ships in the agentx package and loads as a local Pi package | pi-package |
+| [D12](architecture/cli/README.md#d12) | npm package `agent-x`; the command stays `agentx` | cli |
+| [D13](architecture/project/README.md#d13) | Agents live in `agent-x/agents/` | project |
+| [D14](architecture/project/README.md#d14) | `web/` and `agent-x/` are independent packages | project |
+| [D15](architecture/cli/README.md#d15) | Any `agentx` hands over to the copy the project pins | cli |
+| [D16](architecture/pi-package/README.md#d16) | `agentx run` passes agentx's part of the config; the agent's settings are the author's alone | pi-package |
+| [D17](architecture/agent/README.md#d17) | One Pi agent directory per project, `agent-x/.pi` | agent |
+| [D18](architecture/pi-package/README.md#d18) | The system prompt extension hides `~/.agents/skills` from the model | pi-package |
 
 ## User guides
 

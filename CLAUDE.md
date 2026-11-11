@@ -7,7 +7,7 @@ agentx is a meta harness around the [pi coding agent](https://github.com/earendi
 ### Design goals
 
 1. **Minimal, readable code.** A reader understands any file without jumping around. Prefer less code over more features. Every line traces to a requirement.
-2. **The agent directory is the source of truth.** Everything that defines an agent (system prompt, skills, extensions, MCP servers, settings) lives in its directory and is checked in. Nothing is generated or changed there when the agent starts.
+2. **The agent directory is the source of truth.** Everything that defines an agent (system prompt, skills, extensions, MCP servers, settings) lives in its directory and is checked in, except agentx's Pi package, which comes from the agentx version the project pins. Nothing is generated or changed there when the agent starts.
 3. **Use Pi as it is.** Configure Pi through its own mechanisms (`.pi/settings.json`, extensions, env vars, CLI flags). No forks, no patches, no copies of Pi config.
 4. **The same agent under the CLI and the SDK.** What the agent directory defines applies to `agentx run` (Pi CLI) and to the future runtime (Pi SDK). Small differences, such as global skills, are accepted rather than engineered away.
 5. **One pinned Pi.** Agents run the Pi version that agentx depends on, never a global `pi`.
@@ -15,22 +15,25 @@ agentx is a meta harness around the [pi coding agent](https://github.com/earendi
 ### Mental model
 
 ```
-agentx (this repo, an npm package)
+agentx (this repo, npm package `agent-x`, command `agentx`)
   CLI        init-project, init-agent, run (later: upgrade, serve)
   templates  copied by the CLI into a user's project
+  pi-package `src/agent-runtime/pi-package`, loaded by Pi into every agent: system prompt extension, harness prompt, shared skills
   runtime    always-running side, started by `agentx serve` (not built)
 
 my-project/ (created by init-project)
-  app/                  Next.js app
-  harness/<agent>/      one Pi agent = one directory
-    .pi/                Pi project config (settings.json, mcp.json)
-    system_prompt/*.md  replaces Pi's default system prompt
-    skills/ extensions/
-    storage/            gitignored runtime state: pi/ (Pi agent dir), sessions/, workspace/
+  web/                  Next.js app; its own package
+  agent-x/              its own package, installed and deployed apart from web/; pins agentx
+  agent-x/agents/<agent>/  one Pi agent = one directory
+    .pi/                Pi project config (settings.json, mcp.json), the author's alone; `agentx run` adds agentx's Pi package
+    system_prompt/*.md  the agent's prompt; follows the harness prompt and replaces Pi's default
+    skills/ extensions/ the agent's own, apart from the Pi package's
+    storage/            gitignored runtime state: sessions/, workspace/
+  agent-x/.pi/          Pi's agent directory for all agents: login, Pi's state; gitignored
 ```
 
-- An agent is a directory. Running it means starting Pi with that directory as `cwd` and `storage/pi` as Pi's agent directory (`PI_CODING_AGENT_DIR`).
-- Pi reads config from only two places: its agent directory and `<cwd>/.pi/`. agentx uses `<cwd>/.pi/` for config and `storage/pi` for state.
+- An agent is a directory. Running it means starting Pi with that directory as `cwd` and the project's `agent-x/.pi` as Pi's agent directory (`PI_CODING_AGENT_DIR`).
+- Pi reads config from only two places: its agent directory and `<cwd>/.pi/`. agentx uses `<cwd>/.pi/` for config and `agent-x/.pi` for Pi's state.
 - The runtime will be: one coordinator process that owns a message queue; `AgentManager` manages agent sandboxes; `AgentRunner` takes queued messages and invokes the Pi SDK.
 
 What is built and what is planned: [docs/high_level_design.md](docs/high_level_design.md#status).
@@ -63,7 +66,7 @@ Decisions: one entry per choice between alternatives, in the "Decisions" section
 - Read [docs/high_level_design.md](docs/high_level_design.md) first, then the doc of the component you change.
 - Check Pi's behavior in its source or docs (`node_modules/@earendil-works/pi-coding-agent`) before relying on it, and record what we rely on in [docs/architecture/pi/](docs/architecture/pi/README.md).
 - Code: TypeScript, ESM, Node >= 22, tabs. One concept per file, a first-line comment saying what the file is for, a one-line doc comment on every export. Comments explain why, not what. No `any`, no inline imports. Exact dependency versions.
-- After code changes: `npm run check`. `npm run build` writes `dist/`, which the CLI runs from.
+- After code changes: `pnpm run check`. `pnpm run build` writes `dist/`, which the CLI runs from.
 - Never commit unless asked.
 
 ---

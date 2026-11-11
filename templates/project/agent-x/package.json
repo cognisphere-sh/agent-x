@@ -1,0 +1,6 @@
+{
+	"name": "agent-x-project",
+	"private": true,
+	"workspaces": ["agents/*"],
+	"dependencies": {}
+}

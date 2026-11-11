@@ -1,1 +1,0 @@
-Create and edit files in `storage/workspace` (create it if missing) unless the user names another location. Do not change `.pi/`, `skills/`, `extensions/` or `system_prompt/` unless the user asks you to change the agent itself.

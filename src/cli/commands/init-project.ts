@@ -1,16 +1,19 @@
-// `agentx init-project <name>`: creates a project with a Next.js app in app/ and agents in harness/.
+// `agentx init-project <name>`: creates a project with a Next.js app in web/ and agents in agent-x/agents/.
 
 import { spawnSync } from "node:child_process";
 import { renameSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { copyTemplate, harnessPackage } from "../copy-template.js";
+import { copyTemplate, harnessPackage, setPackageFields } from "../copy-template.js";
 
-/** Creates `<cwd>/<name>` from templates/project, pins this harness as a dev dependency and makes it a git repo. */
+/** Creates `<cwd>/<name>` (`.` for `cwd` itself) from templates/project, pins this harness as a dependency of its agent-x/ and makes it a git repo. */
 export function initProject(name: string, cwd: string): void {
 	const root = resolve(cwd, name);
-	copyTemplate("project", root, {
-		name: basename(root),
-		devDependencies: { [harnessPackage.name]: harnessPackage.version },
+	const projectName = basename(root);
+	copyTemplate("project", root, { name: projectName });
+	// A dependency, not a dev dependency: a production install of agent-x/ must keep it.
+	setPackageFields(join(root, "agent-x"), {
+		name: `${projectName}-agent-x`,
+		dependencies: { [harnessPackage.name]: harnessPackage.version },
 	});
 	// npm drops .gitignore files from published packages, so the template ships it as `gitignore`.
 	renameSync(join(root, "gitignore"), join(root, ".gitignore"));
@@ -19,10 +22,10 @@ export function initProject(name: string, cwd: string): void {
 	spawnSync("git", ["init", "-q"], { cwd: root, stdio: "inherit" });
 	console.log(`Created ${root}
 
-Next:
-  cd ${name}
+Next:${name === "." ? "" : `
+  cd ${name}`}
+  npm install                              # installs agent-x/ and web/
   npx ${harnessPackage.name} init-agent main
-  npm install
-  npm run dev                    # the app
-  cd harness/main && npm run pi  # the agent`);
+  npm run dev                              # the app
+  cd agent-x/agents/main && npm run pi     # the agent`);
 }

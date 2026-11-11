@@ -1,7 +1,6 @@
 {
-	"sessionDir": "storage/sessions",
-	"packages": [],
 	"extensions": ["../extensions"],
 	"skills": ["../skills"],
-	"prompts": []
+	"prompts": [],
+	"packages": []
 }

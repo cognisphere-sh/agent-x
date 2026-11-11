@@ -1,4 +1,7 @@
 node_modules/
-app/.next/
-app/next-env.d.ts
-harness/*/storage/
+web/.next/
+web/next-env.d.ts
+agent-x/.pi/
+agent-x/agents/*/storage/
+agent-x/agents/*/.pi/npm/
+agent-x/agents/*/.pi/git/

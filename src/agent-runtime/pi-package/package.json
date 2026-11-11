@@ -1,0 +1,8 @@
+{
+	"name": "agentx-pi",
+	"private": true,
+	"type": "module",
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	}
+}

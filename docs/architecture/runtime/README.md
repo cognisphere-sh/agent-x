@@ -22,7 +22,7 @@ src/runtime/
 
 ## Constraints from the rest of the design
 
-- An SDK session must behave like `agentx run` for the same agent directory: `cwd` = agent directory, Pi agent directory = `storage/pi`, no context files, `.pi/` trusted, `sessionDir` from `.pi/settings.json`.
+- An SDK session must behave like `agentx run` for the same agent directory: `cwd` = agent directory, Pi agent directory = `agent-x/.pi`, no context files, `.pi/` trusted, sessions in `storage/sessions`, and agentx's Pi package loaded ([D16](../pi-package/README.md#d16)).
 - Pi's MCP extension reads the agent directory from the `PI_CODING_AGENT_DIR` env var, not from SDK options, so per-agent isolation in one process needs care (see [Pi integration](../pi/README.md#sdk)).
 - Nothing in the agent directory changes when an agent starts ([D4](../agent/README.md#d4)).
 
