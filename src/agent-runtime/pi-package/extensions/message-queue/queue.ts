@@ -40,10 +40,11 @@ const maxAttempts = 3;
 
 // Pi's rule for session ids, which thread ids are, capped at 200 characters because Pi puts the id in a file name.
 const threadIdRule = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,198}[A-Za-z0-9])?$/;
-// How long a thread stays with a process that stopped renewing its lease.
-const leaseMs = 30_000;
+// How long a thread stays with a process that stopped renewing its lease. Long, so that only a holder paused or blocked for minutes loses it:
+// the runner takes a thread from its own dead Pi process without waiting (abandon), so the wait falls only on threads whose holder died unseen.
+const leaseMs = 120_000;
 // How old a lease gets before its holder writes it again. The holder checks it every second; writing it only now and then keeps the writes of
-// a session that holds its thread to one every 10 s. A holder that stops thus keeps its thread for 20 to 30 s.
+// a session that holds its thread to one every 10 s. A holder that stops thus keeps its thread for 110 to 120 s.
 const renewMs = 10_000;
 // How long a step waits for another process that is writing the file.
 const waitMs = 5000;

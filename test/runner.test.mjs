@@ -205,7 +205,7 @@ test("when a thread's Pi process dies, the runner ends the attempt of its messag
 	const waiting = queue.enqueue({ threadId: "main", content: "waiting", doNotSteer: true });
 	process.kill(holder(project.agent, "main"), "SIGKILL");
 
-	// Well before the dead process's lease has run out, which takes 20 to 30 s.
+	// Well before the dead process's lease has run out, which takes 110 to 120 s.
 	await until(() => message(id).attempts === 2, 10_000);
 	await reach("done", id, waiting);
 	assert.equal(message(waiting).attempts, 1, "a message the dead process had not taken loses no attempt");
@@ -366,12 +366,14 @@ test("a send that an extension of the agent gets refused during a run leaves the
 
 test("a session that loses its thread to another process lets go of it, and the runner takes the thread back when that process is gone", async (t) => {
 	const { project, queue, message, start, reach } = setup(t);
-	const id = queue.enqueue({ threadId: "main", content: "[sleep 3] taken away" });
+	const id = queue.enqueue({ threadId: "main", content: "[sleep 5] taken away" });
 	const server = start();
 	await until(() => message(id).entryId);
 	// What a paused Pi process finds when it wakes: another process holds the thread.
+	const takenAt = Date.now();
 	onQueueFile(project.agent, `UPDATE threads SET owner = 'another process', heartbeat_at = ${Date.now() + 3_600_000}`);
 	await until(() => /main: session closed/.test(server.output()));
+	assert.ok(Date.now() - takenAt < 3_000, "the run in progress is aborted, not run to its end, so it writes no more to the session");
 	assert.equal(message(id).status, "in_flight", "nothing is settled on a thread that is no longer held");
 
 	// That process ends without finishing the message.

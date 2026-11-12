@@ -50,7 +50,7 @@ stateDiagram-v2
 
 Two processes writing one Pi session split the conversation in two, and Pi has no lock against it ([Pi](../../pi/README.md#sessions)). So a thread belongs to one process at a time ([D22](#d22)):
 
-- The `threads` table holds a lease per thread: the owner (process id plus process start time) and when the lease was last written. A lease not written for 30 seconds is free. Its holder checks every second that the lease is still its own and writes it again once it is 10 seconds old, so a session that holds its thread writes to the file every 10 seconds, not every second.
+- The `threads` table holds a lease per thread: the owner (process id plus process start time) and when the lease was last written. A lease not written for two minutes is free. Its holder checks every second that the lease is still its own and writes it again once it is 10 seconds old, so a session that holds its thread writes to the file every 10 seconds, not every second.
 - A Pi session takes its thread's lease when it starts and gives it up when it closes. Only the holder can claim or settle the thread's messages, and a claim renews the lease in the same step.
 - The runner holds no thread. It starts a Pi process for a thread that nobody holds, and that process takes the thread.
 - Taking a thread from a holder that stopped ends the attempt of the messages it left in flight. That waits until the holder's lease has run out, with one exception: the runner takes a thread from the Pi process it started as soon as it has seen that process end ([D33](#d33)).
@@ -63,9 +63,9 @@ Two processes writing one Pi session split the conversation in two, and Pi has n
 | When | It does |
 |---|---|
 | `session_start` | Opens the queue and takes the thread's lease. Starts a one-second timer. Reads the agent's time zone from its settings. |
-| each second | Checks that the lease is still its own, and writes it again once it is 10 seconds old. A session whose lease is no longer its own lets go of the thread. If Pi is idle, claims the thread's queued messages and sends them as one user message, which starts a run. A worker whose thread has no work ends the session instead. |
-| `turn_end` of a completed turn | Claims the messages that may be steered and sends them as a steer. Pi puts a steer in before the next model call; after the last turn of a run, that makes the run go on. Not when the run is being aborted: Pi would save the message without the model seeing it. |
-| `context`, before every model call | Looks at the session entries added since it last looked, and for each user message with `agentX-MessageId` lines writes the entry's id to those messages in the queue. Pi saves a user message after the message's own events, so the entry exists by the next model call and not before. |
+| each second | Checks that the lease is still its own, and writes it again once it is 10 seconds old. A session whose lease is no longer its own lets go of the thread and aborts its run in progress. If Pi is idle, claims the thread's queued messages and sends them as one user message, which starts a run. A worker whose thread has no work ends the session instead. |
+| `turn_end` | Checks the lease, as each second does. After a completed turn, claims the messages that may be steered and sends them as a steer. Pi puts a steer in before the next model call; after the last turn of a run, that makes the run go on. Not when the run is being aborted: Pi would save the message without the model seeing it. |
+| `context`, before every model call | Checks the lease, as each second does, so a session that lost its thread makes no model call. Looks at the session entries added since it last looked, and for each user message with `agentX-MessageId` lines writes the entry's id to those messages in the queue. Pi saves a user message after the message's own events, so the entry exists by the next model call and not before. |
 | `agent_before_settle` | Notes whether Pi judged the run failed, and why. Pi does not send this for an aborted run. |
 | `agent_settled` | Settles the run's messages: done for those Pi saved, another attempt if the run failed, and cancelled for everything in flight if it was aborted. In a worker, an aborted run gets another attempt. |
 | `input` | Lets input through. In a session without the lease, refuses it. |
@@ -78,7 +78,7 @@ Details that follow from how Pi works ([Pi](../../pi/README.md#delivering-messag
 - **Pi does not tell an extension whether it accepted a message.** A refusal goes to the host's error listener, and another extension can swallow input without a trace. So the extension does two things:
   - Before it starts a run, it asks Pi whether there is a model and a login for it. If not, the messages fail at once with that reason, three times, instead of being sent.
   - For everything else it judges by the outcome. Before a run starts, Pi looks idle while it prepares the prompt, which can take as long as another extension or a login refresh needs. If a minute after the last send Pi is idle and a message is still in flight, the message was not taken and gets another attempt.
-- **A session without its thread's lease takes no input.** That happens when Pi itself picked the session (`-c`, `-r`, `/resume`) and another process is running that thread, or when the process was paused so long that another took the thread. The extension says so, a one-shot run ends with exit status 1, and nothing is written to the session.
+- **A session without its thread's lease takes no input.** That happens when Pi itself picked the session (`-c`, `-r`, `/resume`) and another process is running that thread, or when the process was paused or blocked so long that another took the thread. The extension says so, a one-shot run ends with exit status 1, and nothing is written to the session. A run in progress when the lease is found gone is aborted at once; its messages are the new holder's to try again.
 
 Sending with `deliverAs: "steer"` covers both cases of a send: Pi queues it during a run and starts a run when idle.
 
@@ -147,7 +147,7 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 ## Known limits
 
 - No delay between attempts: a message whose run fails is retried at once, so an outage of the model provider fails messages within seconds. Pi's own retries inside a run come first.
-- A thread held by a process that was killed stays unavailable for 20 to 30 seconds, unless the runner that started the process is there to take it ([D33](#d33)).
+- A thread held by a process that was killed stays unavailable for 110 to 120 seconds, unless the runner that started the process is there to take it ([D33](#d33)).
 - Messages stay in the file after they are settled; nothing prunes it.
 - Nothing carries the agent's answer back to the sender. The answer is in the session, linked from the message by `entry_id`.
 - The file must be on a local disk. SQLite's locking is not reliable on network file systems.
@@ -186,10 +186,10 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 ### D22. One live process per thread, by a lease in the queue file
 
 - **Problem.** Pi does not lock session files. Two processes on one thread would both append to its file, and the conversation would fork.
-- **Decision.** A lease per thread in the `threads` table, with a heartbeat and a 30 second expiry. Its holder checks it every second and writes it again once it is 10 seconds old. The extension takes it when a session starts; a session that does not get it takes no input and nothing from the queue. `agentx run` checks before it starts Pi.
-- **Why.** The lease lives in the file all parties already share and is taken in one transaction. A heartbeat covers a holder that was killed, and works across containers, where process ids mean nothing. Writing it every 10 seconds instead of at every check makes a session that holds its thread write to the file a tenth as often.
+- **Decision.** A lease per thread in the `threads` table, with a heartbeat and a two-minute expiry. Its holder checks it every second, before every model call and after every turn, and writes it again once it is 10 seconds old. The extension takes it when a session starts; a session that does not get it takes no input and nothing from the queue. A holder that finds its lease gone aborts its run in progress. `agentx run` checks before it starts Pi.
+- **Why.** The lease lives in the file all parties already share and is taken in one transaction. A heartbeat covers a holder that was killed, and works across containers, where process ids mean nothing. Writing it every 10 seconds instead of at every check makes a session that holds its thread write to the file a tenth as often. Nothing can keep Pi's main thread from being blocked, by an extension's synchronous work for example, so the expiry is long enough that only minutes of it lose a thread; it costs little, because the runner frees the thread of its own dead Pi process without waiting ([D33](#d33)). Aborting at once keeps a holder that resumes from writing the conversation next to the new one.
 - **Rejected.** Asking the system whether the holder's process id is alive: ids are reused, and a wrong match would block a thread until restart.
-- **Consequence.** A process paused for longer than 20 seconds, for example by a sleeping laptop, can lose its thread to another. Its session notices within a second of waking, takes nothing more from the queue and accepts no more input.
+- **Consequence.** A process paused or blocked for longer than 110 seconds, for example by a debugger, can lose its thread to another. Its session notices within a second of resuming, or before its next model call, aborts its run, takes nothing more from the queue and accepts no more input. The aborted run's messages are tried again by the new holder, as retries.
 
 <a id="d24"></a>
 ### D24. A retry sends the message again, marked as a retry; three attempts
@@ -236,7 +236,7 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 <a id="d33"></a>
 ### D33. The runner takes a thread from its dead Pi process by process id
 
-- **Problem.** When a thread's Pi process dies, its lease stays live for up to 30 seconds, and only the holder can change the thread's messages ([D22](#d22)). The runner has seen the process end and should not have to wait.
+- **Problem.** When a thread's Pi process dies, its lease stays live for up to two minutes, and only the holder can change the thread's messages ([D22](#d22)). The runner has seen the process end and should not have to wait.
 - **Decision.** `abandon(threadId, pid, failure)` deletes the lease of the process `pid`, then takes the thread as `acquire` does, which ends the attempts left in flight, and gives it up. The runner calls it with the id of the Pi process it started, when that process has ended with a failure.
 - **Why.** The runner is the parent: it knows that the process has ended, which no other process can know, so this is not the check that [D22](#d22) rejects. The lease stays as it is, and a Pi process needs to know nothing about the runner.
 - **Rejected.** One lease identity for the runner and its Pi processes, handed over in an environment variable: every command the agent runs would inherit it, and an `agentx run` started there would take the runner's threads for its own.

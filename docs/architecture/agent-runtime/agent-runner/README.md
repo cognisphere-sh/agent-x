@@ -63,11 +63,11 @@ A message's status is changed by whoever is still there to change it.
 | The Pi process dies: killed, out of memory, crashed | The runner takes the thread from the dead process, which ends the attempt of the messages it left in flight. | at once |
 | The Pi process cannot run the thread: an extension does not load, or Pi cannot be started | The runner counts an attempt for the thread's waiting messages, with Pi's own error as the reason. | at once |
 | The Pi process is told to stop (`SIGTERM`, `SIGHUP`), or the runner stops or dies and Pi's input closes | Pi closes the session, which aborts a run in progress, and the message queue extension ends the attempt. | at once |
-| Everything dies together, as when the machine does | The next process to take the thread, once the dead holder's lease has run out. | 20 to 30 s later |
+| Everything dies together, as when the machine does | The next process to take the thread, once the dead holder's lease has run out. | 110 to 120 s later |
 
 Ending an attempt puts a message back on the queue, or makes it `failed` when that was its third attempt ([D24](../pi-package/message-queue/README.md#d24)).
 
-- **Taking the thread from a dead process.** The lease of a process that died is still live for up to 30 seconds. The runner saw its own Pi process end, so it takes the thread by that process's id without waiting ([D33](../pi-package/message-queue/README.md#d33)), and gives it up again at once.
+- **Taking the thread from a dead process.** The lease of a process that died is still live for up to two minutes. The runner saw its own Pi process end, so it takes the thread by that process's id without waiting ([D33](../pi-package/message-queue/README.md#d33)), and gives it up again at once.
 - **Counting an attempt.** A process that failed by itself and left no message in flight cannot run the thread. Without a counted attempt it would be started again every second, forever; with it, a broken agent fails its messages after three starts. A process that was told to stop is not counted this way: Pi exits with 143 or 129 after closing its session on `SIGTERM` or `SIGHUP`, and a signal that reaches it before it listens, or a terminal's Ctrl-C, ends it directly.
 - **The reason** is the last line of Pi's error output that starts with `Error:`, or else the signal or the exit code. It goes to the runner's error output, and into the `error` of the messages whose attempt the runner counted. Messages that a dead process left in flight get "The process running this thread stopped."
 

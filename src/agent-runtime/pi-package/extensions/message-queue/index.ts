@@ -80,6 +80,18 @@ export default function (pi: ExtensionAPI) {
 		if (isWorker()) ctx.shutdown();
 	};
 
+	// Whether the session still holds its thread, renewing the lease when it is due. A holder loses it only when it was paused or blocked for longer
+	// than a lease lasts and another process took the thread. Then its run in progress stops at once, so two processes never write one conversation;
+	// its messages in flight are the new holder's to try again.
+	const holds = (ctx: ExtensionContext): boolean => {
+		if (!queue) return false;
+		if (queue.renew(threadId)) return true;
+		letGo();
+		if (!ctx.isIdle()) ctx.abort();
+		refuse(ctx);
+		return false;
+	};
+
 	const tick = (ctx: ExtensionContext) => {
 		let idle: boolean;
 		try {
@@ -90,14 +102,7 @@ export default function (pi: ExtensionAPI) {
 			return;
 		}
 		try {
-			if (!queue) return;
-			// The lease is no longer this session's: the process was paused for longer than a lease lasts, and another one took the thread.
-			if (!queue.renew(threadId)) {
-				letGo();
-				refuse(ctx);
-				return;
-			}
-			if (!idle || !takesMessages(ctx)) return;
+			if (!holds(ctx) || !queue || !idle || !takesMessages(ctx)) return;
 			// Sent, not settled, and Pi is idle: the message is on its way in, or Pi did not take it, for example because another extension swallowed it.
 			// After the grace it gets another attempt.
 			if (queue.inFlight(threadId)) {
@@ -149,6 +154,8 @@ export default function (pi: ExtensionAPI) {
 	// Records which session entry each delivered message became. Pi saves a user message after its own events;
 	// by the next model call, which this event precedes, it has its entry. The message's queue id is in its text.
 	pi.on("context", (_event, ctx) => {
+		// Before each model call: a session that resumed after losing its thread stops here, not at the next tick.
+		if (!holds(ctx)) return;
 		const entries = ctx.sessionManager.getEntries();
 		for (const entry of entries.slice(seen)) {
 			if (entry.type !== "message" || entry.message.role !== "user") continue;
@@ -162,6 +169,7 @@ export default function (pi: ExtensionAPI) {
 	// A steer sent here enters the run before the next model call, also after the last turn, which then is not the last.
 	// Not when the run is being aborted: Pi would save the message and never show it to the model.
 	pi.on("turn_end", async (event, ctx) => {
+		if (!holds(ctx)) return;
 		if (event.outcome === "completed" && !ctx.signal?.aborted && takesMessages(ctx)) await deliver(ctx, true);
 	});
 
