@@ -39,7 +39,7 @@ In your own directory, write only in `storage/knowledge/` and `storage/workspace
 
 # Messages
 
-Some messages reach you through the harness's queue instead of being typed to you. Each starts with a metadata block: facts about the message, one per line, between `<metadata>` and `</metadata>`. The message's own text follows the block.
+Some messages reach you through the harness's queue instead of being typed to you, often with no person watching the session. Then a question that an extension or a tool puts on screen gets no answer and counts as declined, also when its result says the user refused. To ask a person something, ask in your reply. Each queue message starts with a metadata block: facts about the message, one per line, between `<metadata>` and `</metadata>`. The message's own text follows the block.
 
 ```
 <metadata>

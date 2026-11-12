@@ -122,6 +122,10 @@ export class AgentRunner {
 			if (record.type === "extension_error") console.error(`${threadId}: ${record.event} in ${record.extensionPath}: ${record.error}`);
 			if (record.type !== "extension_ui_request") return;
 			if (record.method === "notify") console.error(`${threadId}: ${record.message}`);
+			// A dialog that waited for a person: shown, so that an extension that keeps asking can be found.
+			if (["select", "confirm", "input", "editor"].includes(record.method) && "title" in record) {
+				console.error(`${threadId}: an extension asked "${record.title}" (${record.method}); nobody is there to answer, so it was cancelled`);
+			}
 			const answer: RpcExtensionUIResponse = { type: "extension_ui_response", id: record.id, cancelled: true };
 			child.stdin.write(`${JSON.stringify(answer)}\n`);
 		} catch {

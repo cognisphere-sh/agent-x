@@ -278,9 +278,10 @@ test("an extension's dialog is answered as cancelled, because nobody is there, a
 	);
 	// Unanswered, the dialog would hold the run forever; answered yes, the command would outlast the test.
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 60] behind a gate" });
-	start();
+	const server = start();
 	await reach("done", id);
 	assert.deepEqual(sessions(project)[0].roles, ["system", "user", "assistant", "toolResult", "assistant"]);
+	assert.match(server.output(), /main: an extension asked "Run it\?" \(confirm\); nobody is there to answer, so it was cancelled/);
 });
 
 test("a worker session that does not get its thread ends itself", async (t) => {
