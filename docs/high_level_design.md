@@ -2,17 +2,17 @@
 
 ## Purpose
 
-agentx is a meta harness around the [pi coding agent](https://github.com/earendil-works/pi). It creates projects that combine a Next.js full-stack app with Pi agents, runs each agent with only its own configuration, and runs an agent continuously behind a message queue.
+agentx is a meta harness around the [pi coding agent](https://github.com/earendil-works/pi). It creates projects that hold a Next.js app and Pi agents, runs each agent with only its own config, and gives each agent a message queue.
 
 ## Goals
 
-1. **Minimal, readable code.** Any file is understandable on its own. Fewer features over more code.
-2. **The agent directory is the source of truth.** An agent is defined by checked-in files in its directory, plus the agentx version the project pins, which supplies the Pi package every agent shares ([D11](architecture/agent-runtime/pi-package/README.md#d11)). Starting an agent changes nothing there ([D4](architecture/agent-runtime/agent/README.md#d4)). What an agent learns while it runs is kept apart, as state in its `storage/knowledge/` ([D35](architecture/agent-runtime/agent/README.md#d35)).
-3. **Use Pi as it is.** Configure Pi through settings, extensions, env vars and flags; never patch or fork it.
-4. **Same agent under `agentx run` and the runner.** The agent directory means the same thing to both, because both start the same Pi CLI with the same settings ([D31](architecture/agent-runtime/agent-runner/README.md#d31)).
-5. **One pinned Pi.** Each agentx version runs exactly one Pi version ([D1](architecture/agent-runtime/agent/README.md#d1)).
+1. **Minimal, readable code.** Less code beats more features.
+2. **The agent directory is the source of truth.** Its checked-in files define the agent, plus the Pi package from the pinned agentx ([D11](architecture/agent-runtime/pi-package/README.md#d11)). Starting an agent changes none of them ([D4](architecture/agent-runtime/agent/README.md#d4)). What it learns goes to `storage/knowledge/` ([D35](architecture/agent-runtime/agent/README.md#d35)).
+3. **Use Pi as it is.** Settings, extensions, env vars and flags; no patches, no fork.
+4. **The same agent under `agentx run` and the runner.** Both start the same Pi CLI the same way ([D31](architecture/agent-runtime/agent-runner/README.md#d31)).
+5. **One pinned Pi** per agentx version ([D1](architecture/agent-runtime/agent/README.md#d1)).
 
-Non-goals for now: multi-tenant hosting, a UI for agents, custom model providers.
+Non-goals: hosting many tenants, a UI for agents, custom model providers.
 
 ## Components
 
@@ -51,54 +51,60 @@ flowchart LR
 
 | Component | Role | Doc |
 |---|---|---|
-| CLI | Creates projects and agents; runs an agent with the Pi CLI; puts messages on an agent's queue | [cli](architecture/cli/README.md) |
-| Project | The generated repo: the app package and the agent-x package | [cli/project](architecture/cli/project/README.md) |
-| Agent | A directory that defines one Pi agent, and how Pi is started in it | [agent-runtime/agent](architecture/agent-runtime/agent/README.md) |
-| Agent runner | Starts a Pi process for each thread with messages, and updates the messages of one that dies; no command starts it yet | [agent-runtime/agent-runner](architecture/agent-runtime/agent-runner/README.md) |
-| Pi package | What agentx adds to every agent: the system prompt and message queue extensions, the harness prompt, shared skills | [agent-runtime/pi-package](architecture/agent-runtime/pi-package/README.md) |
-| Message queue | Each agent's message queue: a SQLite file, its message states, one process per thread, and the extension that delivers the messages | [agent-runtime/pi-package/message-queue](architecture/agent-runtime/pi-package/message-queue/README.md) |
-| Pi | The agent engine; the behavior we rely on | [agent-runtime/pi](architecture/agent-runtime/pi/README.md) |
-| Coordinator | The process that will run all agents of a project; planned, like the agent sandboxes | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
+| CLI | Creates projects and agents, runs an agent, queues messages | [cli](architecture/cli/README.md) |
+| Project | The generated repo: `web/` and `agent-x/` | [cli/project](architecture/cli/project/README.md) |
+| Agent | One Pi agent's directory, and how Pi starts in it | [agent-runtime/agent](architecture/agent-runtime/agent/README.md) |
+| Agent runner | Starts a Pi process per thread with messages and ends stuck ones; no command starts it yet | [agent-runtime/agent-runner](architecture/agent-runtime/agent-runner/README.md) |
+| Pi package | What agentx adds to every agent: two extensions and the harness prompt. Shared skills are planned | [agent-runtime/pi-package](architecture/agent-runtime/pi-package/README.md) |
+| Message queue | A versioned SQLite file per agent, and the extension that delivers its messages | [agent-runtime/pi-package/message-queue](architecture/agent-runtime/pi-package/message-queue/README.md) |
+| Pi | The agent engine, and what we rely on in it | [agent-runtime/pi](architecture/agent-runtime/pi/README.md) |
+| Coordinator | Will run all agents of a project; planned | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
 
 ## Mental model
 
-**An agent is a directory.** Running an agent means starting Pi with:
+**An agent is a directory.** agentx starts Pi with `cwd` = the agent directory, `PI_CODING_AGENT_DIR` = the project's `agent-x/.pi`, `-nc` (no context files), `--approve` (trust `.pi/`), and one thread as the session.
 
-- `cwd` = the agent directory, so Pi reads `.pi/` as project config;
-- `PI_CODING_AGENT_DIR` = the project's `agent-x/.pi`, shared by its agents, so nothing from `~/.pi/agent` leaks in;
-- no context files (`-nc`) and `.pi/` trusted for the run (`--approve`);
-- a session that is a thread of the agent: `main`, or the one named with `--thread-id`.
+**A thread is a Pi session.** A queue message names its thread. An open session holds its thread, so one process at a time runs a conversation.
 
-**A thread is a Pi session.** A message on an agent's queue names its thread, and the Pi session with that id receives it. While a session is open it holds its thread, so one process at a time runs a conversation.
+**Config is checked in; state is not.**
 
-**Config is checked in; state is in `storage/` and `agent-x/.pi/`.**
-
-| Checked in (defines the agent) | `storage/`, gitignored (produced by running it) |
+| Checked in | `storage/`, gitignored |
 |---|---|
-| `.pi/settings.json`, `.pi/mcp.json` | `sessions/`: every session, one per thread |
-| `.pi/system_prompt/*.md` | `workspace/`: files the agent creates |
-| `.pi/skills/`, `.pi/extensions/` | `message_queue.db`: the agent's message queue |
-| | `knowledge/`: what the agent learns and keeps: its own skills, extensions, prompt text and files |
+| `.pi/settings.json`, `.pi/mcp.json` | `sessions/`: one per thread |
+| `.pi/system_prompt/*.md` | `workspace/`: the agent's files |
+| `.pi/skills/`, `.pi/extensions/` | `message_queue.db` |
+| | `knowledge/`: what the agent learns |
 
-`agent-x/.pi/`, also gitignored, is Pi's agent directory for all agents of the project: login, saved trust, Pi's runtime files.
+`agent-x/.pi/`, also gitignored, holds the login and Pi's state for all agents of the project.
 
-**The CLI and the runtime are two front ends to the same agent.** `agentx run` starts the Pi CLI for a person at a terminal. The `AgentRunner` starts the same Pi CLI, without a terminal, for threads that have queued messages. Both read the same directory, load the same Pi package, and open the same session for a thread.
+**Two front ends, one agent.** `agentx run` starts Pi for a person at a terminal. The `AgentRunner` starts the same Pi without a terminal, for threads with messages.
 
 ## Flows
 
-**Create a project.** `agentx init-project my-project` copies `templates/project`, pins the `agent-x` package in `agent-x/package.json`, runs `git init`. `web/` and `agent-x/` are independent packages; `pnpm install` in the root installs both.
+**Create a project.** `agentx init-project my-project` copies the template, pins `agent-x` in `agent-x/package.json`, and runs `git init`. `pnpm install` in the root installs `web/` and `agent-x/`.
 
-**Create an agent.** `agentx init-agent main` in the project root or in `agent-x/` copies `templates/agent` to `agent-x/agents/main`.
+**Create an agent.** `agentx init-agent main`, in the root or `agent-x/`, creates `agent-x/agents/main`.
 
-**Run an agent.** `agentx run` in `agent-x/agents/main` → spawns the pinned Pi CLI with the settings above, on the thread `main` → Pi loads agentx's Pi package, passed by `run` (its extensions set the system prompt and connect the session to the queue) and the agent's `.pi/`: settings, extensions, skills and MCP servers → the session is written to `storage/sessions`.
+**Which agentx runs.** Inside a project, every command but `init-project` hands over to the agentx the project installed. If none is installed, it stops and says to run `pnpm install`.
 
-**Handle a message.** A sender puts a message for a thread on the agent's queue (`agentx send`) → the thread's Pi session is open, started with `agentx run --thread-id <thread>` → the message queue extension in the session claims the message and sends it to Pi, which starts a run → a message that arrives during the run is steered in at the end of a turn → when the run ends, the extension marks the messages done, or queues them for another attempt if the run failed. The `AgentRunner` does the opening without a person: it sees that a thread has work and starts a Pi process for it, and the session ends itself when the thread has no work left. If the process dies instead, the runner puts its messages back on the queue. Details: [Agent runner](architecture/agent-runtime/agent-runner/README.md#how-it-works), [Message queue](architecture/agent-runtime/pi-package/message-queue/README.md).
+**Run an agent.** `agentx run` in `agent-x/agents/main` starts the pinned Pi on the thread `main`. Pi loads agentx's Pi package and the agent's `.pi/`, and saves the session in `storage/sessions`.
+
+**Handle a message.**
+
+1. `agentx send` queues a message for a thread, with `--meta name=value` facts. It is the only sender; how the web app sends messages and gets answers is not decided.
+2. A session for the thread is open: from `agentx run --thread-id <thread>`, or started by the `AgentRunner`.
+3. The message queue extension takes the message and starts a run. The model sees it after a metadata block.
+4. A message that arrives during the run joins it at the end of a turn.
+5. When the run ends, the extension settles the messages: done, or back on the queue for another try. A runner's session ends when its thread is empty.
+6. If a runner's Pi process dies or gets stuck, the runner ends it and puts its messages back.
+
+Details: [Agent runner](architecture/agent-runtime/agent-runner/README.md#how-it-works), [Message queue](architecture/agent-runtime/pi-package/message-queue/README.md).
 
 ## Status
 
 | Built | Planned |
 |---|---|
 | CLI: `init-project`, `init-agent`, `run`, `send` | `agentx serve`, `agentx upgrade` |
-| Project and agent templates; Pi package (system prompt and message queue extensions, harness prompt) | Coordinator runtime; `AgentManager` and sandboxes |
-| Queue: one SQLite file per agent, threads, retries | App-to-agent messaging and answers back to the sender |
-| Agent runtime: `AgentRunner`, one Pi process per thread (no command starts it yet) | |
+| Templates; Pi package | Coordinator; `AgentManager` and sandboxes |
+| Queue: versioned SQLite file per agent, threads, retries | App-to-agent messages and answers |
+| `AgentRunner` (no command starts it yet) | |

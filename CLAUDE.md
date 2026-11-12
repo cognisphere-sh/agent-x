@@ -18,7 +18,7 @@ agentx is a meta harness around the [pi coding agent](https://github.com/earendi
 agentx (this repo, npm package `agent-x`, command `agentx`)
   CLI        init-project, init-agent, run, send (later: serve, upgrade)
   templates  copied by the CLI into a user's project
-  pi-package `src/agent-runtime/pi-package`, loaded by Pi into every agent: system prompt extension and harness prompt, message queue extension, shared skills
+  pi-package `src/agent-runtime/pi-package`, loaded by Pi into every agent: system prompt extension and harness prompt, message queue extension; shared skills are planned
   queue      an agent's message queue (SQLite); its code is in the message queue extension's folder and is used by the CLI and the runner too
   runtime    always-running side. `src/agent-runtime`: everything that runs one agent, with the AgentRunner (built, but no command starts it yet), how Pi is started, and the pi-package. `src/coordinator-runtime` (coordinator) and the AgentManager are not built
 

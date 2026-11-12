@@ -1,10 +1,10 @@
 # Customize an agent
 
-Everything below lives in `agent-x/agents/<name>/.pi/` and is checked in. It is what you give the agent, and the agent treats it as read-only. agentx's own extensions, harness prompt and skills come from the agentx package and are not edited here. Changes apply on the next session; system prompt changes apply on the next prompt.
+Everything below is in `agent-x/agents/<name>/.pi/` and is checked in. It is what you give the agent, and the agent treats it as read-only. agentx's own extensions and harness prompt come from the agentx package, not from here. Changes apply from the next session; system prompt changes from the next prompt.
 
 ## System prompt
 
-Add or edit `.md` files in `.pi/system_prompt/`. They are joined in filename order after the harness prompt, which explains agentx and the agent's files and always comes first. Rewrite `00-identity.md` to say who this agent is, and add sections after it, such as `10-style.md`. Pi appends the skills list and working directory.
+Add or edit `.md` files in `.pi/system_prompt/`. They follow the harness prompt in filename order. Rewrite `00-identity.md` to say who this agent is, and add sections such as `10-style.md`. Pi adds the skills list and the working directory at the end.
 
 ## Skills
 
@@ -38,7 +38,9 @@ Common uses:
 
 - **Commands:** `pi.registerCommand`.
 - **Tools:** `pi.registerTool`.
-- **Answer some messages with a script instead of the model:** handle the `input` event, run the script with `pi.exec`, show its output with `pi.sendMessage`, and return `{ action: "handled" }`.
+- **Answer some messages with a script, not the model:** handle the `input` event, run the script with `pi.exec`, show its output with `pi.sendMessage`, and return `{ action: "handled" }`.
+
+Under the runner nobody watches the session. A dialog such as `ctx.ui.confirm` gets no answer and counts as cancelled.
 
 ## MCP servers
 
@@ -54,17 +56,17 @@ Add servers to `.pi/mcp.json`:
 
 ## Packages
 
-Pi packages bundle extensions, skills, prompt templates and themes from npm, git or a local path. Add them to `.pi/settings.json`:
+Pi packages bundle extensions, skills, prompt templates and themes, from npm, git or a local path. List them in `.pi/settings.json`:
 
 ```json
 "packages": ["npm:@example/pi-tools@1.0.0"]
 ```
 
-Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (gitignored). `agentx run install -l <package> --approve` adds the entry for you; Pi changes a project's packages only when it trusts the project, which `--approve` says for this one command. Without `-l` the package goes to `agent-x/.pi`, which is not checked in and applies to every agent of the project.
+Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (gitignored). `agentx run install -l <package> --approve` adds the entry for you; `--approve` is needed because Pi changes a project's packages only when it trusts the project. Without `-l`, the package goes to `agent-x/.pi`, which is not checked in and loads in every agent of the project.
 
 ## Time zone
 
-Queue messages tell the agent the current time. A new agent's `.pi/settings.json` has `"timezone": null`, which means the time of the machine the agent runs on. Name a zone to fix it, for example so that an agent on a server in UTC keeps your time:
+Queue messages tell the agent when they were sent and what time it is. A new agent's `.pi/settings.json` has `"timezone": null`, the machine's time zone. Name a zone to fix it, for example so that an agent on a UTC server keeps your time:
 
 ```json
 "agentx": {
@@ -74,7 +76,7 @@ Queue messages tell the agent the current time. A new agent's `.pi/settings.json
 
 ## What the agent learns
 
-An agent keeps what it learns in `storage/knowledge/`: text for its own system prompt, skills and extensions it writes for itself, and any notes, files and scripts. That folder is the agent's, not yours, and is not checked in. A new agent's settings load it:
+The agent keeps what it learns in `storage/knowledge/`: text for its own system prompt, its own skills and extensions, and notes, files and scripts. The folder is the agent's, not yours, and is not checked in. A new agent's settings load it:
 
 ```json
 "extensions": ["../storage/knowledge/extensions"],
@@ -84,9 +86,7 @@ An agent keeps what it learns in `storage/knowledge/`: text for its own system p
 }
 ```
 
-An agent whose settings lack these lines loads none of it: add them. Remove a line to keep the agent from teaching itself that way.
+Without these lines the agent loads none of its knowledge. Remove a line to stop the agent from teaching itself that way. Know that:
 
-Two things to know before you rely on it:
-
-- An extension the agent writes that fails to load stops the agent from starting until you remove the file from `storage/knowledge/extensions/`.
-- The agent writes there when it decides to, also on what a queue message tells it, and what it writes applies to every later session. Read the folder from time to time.
+- If an extension the agent wrote fails to load, the agent does not start until you remove the file from `storage/knowledge/extensions/`.
+- The agent writes there when it decides to, also when a queue message tells it to, and what it writes applies to every later session. Read the folder from time to time.

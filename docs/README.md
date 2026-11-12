@@ -32,36 +32,29 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | # | Decision | Module |
 |---|---|---|
 | [D1](architecture/agent-runtime/agent/README.md#d1) | Run the Pi CLI from agentx's own dependency | agent-runtime/agent |
-| [D2](architecture/agent-runtime/agent/README.md#d2) | The agent directory is Pi's working directory; config lives in `.pi/` | agent-runtime/agent |
+| [D2](architecture/agent-runtime/agent/README.md#d2) | The agent directory is Pi's working directory, and the agent's definition is in its `.pi/` | agent-runtime/agent |
 | [D4](architecture/agent-runtime/agent/README.md#d4) | Starting an agent changes nothing that is checked in | agent-runtime/agent |
 | [D5](architecture/agent-runtime/agent/README.md#d5) | The system prompt comes from an extension | agent-runtime/agent |
 | [D6](architecture/agent-runtime/agent/README.md#d6) | `run` passes `-nc` and `--approve`, except before Pi subcommands | agent-runtime/agent |
 | [D7](architecture/cli/project/README.md#d7) | `init-project` runs `git init`, which bounds Pi's search for skills | cli/project |
-| [D9](architecture/cli/project/README.md#d9) | The template ships `gitignore`; `init-project` renames it | cli/project |
 | [D11](architecture/agent-runtime/pi-package/README.md#d11) | agentx's Pi package ships in the agentx package | agent-runtime/pi-package |
 | [D12](architecture/cli/README.md#d12) | npm package `agent-x`; the command is `agentx` | cli |
-| [D13](architecture/cli/project/README.md#d13) | Agents live in `agent-x/agents/` | cli/project |
 | [D14](architecture/cli/project/README.md#d14) | `web/` and `agent-x/` are independent packages | cli/project |
 | [D15](architecture/cli/README.md#d15) | Any `agentx` hands over to the copy the project pins | cli |
-| [D16](architecture/agent-runtime/pi-package/README.md#d16) | Whoever starts Pi passes agentx's part of the config; the agent's settings are the author's alone | agent-runtime/pi-package |
+| [D16](architecture/agent-runtime/pi-package/README.md#d16) | Whoever starts Pi passes agentx's part of the config | agent-runtime/pi-package |
 | [D17](architecture/agent-runtime/agent/README.md#d17) | One Pi agent directory per project, `agent-x/.pi` | agent-runtime/agent |
-| [D18](architecture/agent-runtime/pi-package/README.md#d18) | The system prompt extension hides `~/.agents/skills` from the model | agent-runtime/pi-package |
 | [D19](architecture/agent-runtime/pi-package/message-queue/README.md#d19) | SQLite through Node's built-in `node:sqlite` | agent-runtime/pi-package/message-queue |
-| [D20](architecture/agent-runtime/pi-package/message-queue/README.md#d20) | One queue file per agent, in `storage/` | agent-runtime/pi-package/message-queue |
 | [D21](architecture/agent-runtime/pi-package/message-queue/README.md#d21) | A thread is a Pi session; the thread id is the session id | agent-runtime/pi-package/message-queue |
 | [D22](architecture/agent-runtime/pi-package/message-queue/README.md#d22) | One live process per thread, by a lease in the queue file | agent-runtime/pi-package/message-queue |
 | [D23](architecture/agent-runtime/agent-runner/README.md#d23) | The message queue extension is the only consumer of the queue; the runner only starts Pi processes | agent-runtime/agent-runner |
 | [D24](architecture/agent-runtime/pi-package/message-queue/README.md#d24) | A retry sends the message again, marked as a retry; three attempts | agent-runtime/pi-package/message-queue |
-| [D25](architecture/agent-runtime/pi-package/message-queue/README.md#d25) | A queue message reaches the model as a user message that starts with a metadata block | agent-runtime/pi-package/message-queue |
-| [D27](architecture/agent-runtime/pi-package/message-queue/README.md#d27) | All queue code lives in the message queue extension's folder | agent-runtime/pi-package/message-queue |
+| [D25](architecture/agent-runtime/pi-package/message-queue/README.md#d25) | A queue message is a user message that starts with a metadata block | agent-runtime/pi-package/message-queue |
 | [D28](architecture/agent-runtime/pi-package/message-queue/README.md#d28) | Only a session that stays open takes messages from the queue | agent-runtime/pi-package/message-queue |
-| [D29](architecture/agent-runtime/agent/README.md#d29) | The agent's prompt, skills and extensions live in `.pi/` | agent-runtime/agent |
 | [D30](architecture/cli/README.md#d30) | `agentx send` takes metadata as repeated `--meta name=value` | cli |
 | [D31](architecture/agent-runtime/agent-runner/README.md#d31) | The runner starts a Pi process per thread, in RPC mode | agent-runtime/agent-runner |
 | [D32](architecture/agent-runtime/pi-package/message-queue/README.md#d32) | The runner's sessions are workers, marked with `--agentx-worker` | agent-runtime/pi-package/message-queue |
 | [D33](architecture/agent-runtime/pi-package/message-queue/README.md#d33) | The runner takes a thread from its dead Pi process by process id | agent-runtime/pi-package/message-queue |
-| [D34](architecture/agent-runtime/README.md#d34) | `src/agent-runtime/` and `src/coordinator-runtime/`, beside `src/cli/` | agent-runtime |
-| [D35](architecture/agent-runtime/agent/README.md#d35) | What an agent learns is kept in `storage/knowledge/`, apart from what its developer gave it | agent-runtime/agent |
+| [D35](architecture/agent-runtime/agent/README.md#d35) | What an agent learns is kept in `storage/knowledge/`, apart from its definition | agent-runtime/agent |
 | [D36](architecture/agent-runtime/agent/README.md#d36) | agentx's own settings for an agent are under `agentx` in its `.pi/settings.json` | agent-runtime/agent |
 | [D37](architecture/agent-runtime/pi-package/message-queue/README.md#d37) | The queue file carries a version; migrations bring older files up | agent-runtime/pi-package/message-queue |
 
