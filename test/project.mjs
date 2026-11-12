@@ -127,7 +127,7 @@ export async function until(check, ms = 20_000) {
 
 /** The messages on the queue of the agent in `agentRoot`, oldest first, read straight from the file as an operator would. */
 export function messages(agentRoot) {
-	return onQueueFile(agentRoot, (db) => db.prepare("SELECT * FROM messages ORDER BY id").all()).map((row) => ({
+	return onQueueFile(agentRoot, (db) => db.prepare("SELECT * FROM messages ORDER BY seq").all()).map((row) => ({
 		id: row.id,
 		threadId: row.thread_id,
 		content: row.content,

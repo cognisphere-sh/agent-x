@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -26,13 +26,51 @@ function otherProcess(root, ...args) {
 	return { child, done, exited, firstLine };
 }
 
-test("enqueue checks the thread id and the metadata names", () => {
+test("enqueue checks the thread id, the metadata names and the text, and gives each message a random id", () => {
 	const queue = new Queue(agentRoot());
-	assert.equal(queue.enqueue({ threadId: "main", content: "a" }), 1);
-	assert.equal(queue.enqueue({ threadId: "support.ticket-42_x", content: "b", metadata: { from: "ops" } }), 2);
+	const first = queue.enqueue({ threadId: "main", content: "a" });
+	const second = queue.enqueue({ threadId: "support.ticket-42_x", content: "b", metadata: { from: "ops" } });
+	assert.match(first, /^[\w-]{12}$/);
+	assert.notEqual(first, second);
 	for (const threadId of ["", "-main", "main-", "a b", "a/b", "x".repeat(201), undefined]) assert.throws(() => queue.enqueue({ threadId, content: "c" }), /Invalid thread id/);
 	for (const name of ["agentX-MessageId", "AGENTX-foo", "a:b", "a\nb", "a\u2028b"]) assert.throws(() => queue.enqueue({ threadId: "main", content: "c", metadata: { [name]: 1 } }), /Invalid metadata name/);
+	// The tag of the harness's block, which would let a sender fake one or end one early.
+	for (const message of [{ content: 'see <agentx-metadata id="x">' }, { content: "c", metadata: { note: "</AgentX-Metadata>" } }, { content: "c", metadata: { list: ["<agentx-metadata"] } }]) {
+		assert.throws(() => queue.enqueue({ threadId: "main", ...message }), /contains "<agentx-metadata"/);
+	}
 	queue.close();
+});
+
+test("a queue file from before versions is migrated once, keeps its order, and gives every message an id", async () => {
+	const root = agentRoot();
+	mkdirSync(join(root, "storage"));
+	// The tables as the first agentx wrote them, at version 0, with one waiting message and one in flight.
+	onQueueFile(
+		root,
+		`CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT NOT NULL, content TEXT NOT NULL, metadata TEXT NOT NULL, do_not_steer INTEGER NOT NULL,
+			is_silent INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL, error TEXT, entry_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+		 CREATE INDEX messages_by_status ON messages (status, thread_id);
+		 CREATE TABLE threads (thread_id TEXT PRIMARY KEY, owner TEXT NOT NULL, heartbeat_at INTEGER NOT NULL);
+		 INSERT INTO messages VALUES (1, 'main', 'old one', '{}', 0, 0, 'in_flight', 1, NULL, NULL, 1, 1), (2, 'main', 'old two', '{}', 0, 0, 'queued', 0, NULL, NULL, 2, 2);`,
+	);
+	// Every process opens the file at once after an upgrade.
+	const codes = await Promise.all(Array.from({ length: 6 }, () => otherProcess(root, "open").exited));
+	assert.deepEqual(codes, Array(6).fill(0));
+	assert.equal(onQueueFile(root, (db) => db.prepare("PRAGMA user_version").get().user_version), 2);
+	const queue = new Queue(root);
+	queue.enqueue({ threadId: "main", content: "new" });
+	const all = messages(root);
+	assert.deepEqual(all.map((message) => [message.content, message.status]), [["old one", "in_flight"], ["old two", "queued"], ["new", "queued"]]);
+	assert.equal(new Set(all.map((message) => message.id)).size, 3);
+	assert.ok(all.every((message) => /^[\w-]{12}$/.test(message.id)));
+	queue.close();
+});
+
+test("a queue file of a newer version is refused, so old code does not write to tables it does not know", () => {
+	const root = agentRoot();
+	new Queue(root).close();
+	onQueueFile(root, "PRAGMA user_version = 99");
+	assert.throws(() => new Queue(root), /is at queue version 99, and this agentx knows versions up to 2/);
 });
 
 test("messages are taken oldest first, by the holder of the thread only", () => {
@@ -103,11 +141,18 @@ test("a message is rendered with the harness's metadata, then the sender's, then
 	queue.acquire("main");
 	queue.enqueue({ threadId: "main", content: "Hello\nthere", metadata: { from: "ops", tags: ["a", "b"], note: "two\nlines" } });
 	queue.enqueue({ threadId: "main", content: "FYI", isSilent: true });
-	const text = render(queue.claim("main"));
-	assert.match(text, /^<metadata>\nagentX-MessageId: 1\nagentX-ThreadId: main\nagentX-CurrentTime: \w+day \d{4}-\d\d-\d\d \d\d:\d\d:\d\d GMT\S*\nagentX-IsRetry: false\nfrom: ops\ntags: \["a","b"\]\nnote: two lines\n<\/metadata>\nHello\nthere\n\n<metadata>\nagentX-MessageId: 2\n/);
-	assert.match(text, /agentX-IsRetry: false\nagentX-IsSilent: true\n<\/metadata>\nFYI$/);
-	assert.deepEqual(messageIds(text), [1, 2]);
-	assert.deepEqual(messageIds("a line of content:\nagentX-MessageId: 7\n"), [], "only the first line of a metadata block names a message");
+	const claimed = queue.claim("main");
+	const text = render(claimed);
+	const time = "\\w+day \\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d:\\d\\d GMT\\S*";
+	assert.match(
+		text,
+		new RegExp(
+			`^<agentx-metadata id="${claimed[0].id}">\\nagentX-ThreadId: main\\nagentX-SentTime: ${time}\\nagentX-CurrentTime: ${time}\\nagentX-IsRetry: false\\nfrom: ops\\ntags: \\["a","b"\\]\\nnote: two lines\\n</agentx-metadata>\\nHello\\nthere\\n\\n<agentx-metadata id="${claimed[1].id}">\\n`,
+		),
+	);
+	assert.match(text, /agentX-IsRetry: false\nagentX-IsSilent: true\n<\/agentx-metadata>\nFYI$/);
+	assert.deepEqual(messageIds(text), claimed.map((message) => message.id));
+	assert.deepEqual(messageIds("a line of content:\nagentX-MessageId: 7\n"), [], "only the opening tag of a block names a message");
 	queue.fail("main", "again");
 	assert.match(render(queue.claim("main")), /agentX-IsRetry: true\nagentX-RetryAttempt: 1\n/);
 	queue.close();

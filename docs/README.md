@@ -27,7 +27,7 @@ The folders follow `src/`: `cli/`, `agent-runtime/` and `coordinator-runtime/`, 
 
 ## Decisions
 
-Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D37**.
+Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D38**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -63,6 +63,7 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | [D34](architecture/agent-runtime/README.md#d34) | `src/agent-runtime/` and `src/coordinator-runtime/`, beside `src/cli/` | agent-runtime |
 | [D35](architecture/agent-runtime/agent/README.md#d35) | What an agent learns is kept in `storage/knowledge/`, apart from what its developer gave it | agent-runtime/agent |
 | [D36](architecture/agent-runtime/agent/README.md#d36) | agentx's own settings for an agent are under `agentx` in its `.pi/settings.json` | agent-runtime/agent |
+| [D37](architecture/agent-runtime/pi-package/message-queue/README.md#d37) | The queue file carries a version; migrations bring older files up | agent-runtime/pi-package/message-queue |
 
 ## User guides
 

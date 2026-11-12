@@ -9,7 +9,7 @@ src/agent-runtime/pi-package/extensions/message-queue/
   index.ts     the extension
 ```
 
-All of the queue's code is in the extension's folder ([D27](#d27)). `queue.ts` is used from two places: compiled, by the CLI and the runner, and from source, by the extension. A process opens the file through `new Queue(agentRoot)`; nothing else is shared between processes.
+All of the queue's code is in the extension's folder ([D27](#d27)). `queue.ts` is used from two places: compiled, by the CLI and the runner, and from source, by the extension. A process opens the file through `new Queue(agentRoot)`; nothing else is shared between processes. Opening it brings an older file up to the current version of its tables first ([D37](#d37)).
 
 ## Messages
 
@@ -18,12 +18,12 @@ A sender gives:
 | Field | Meaning |
 |---|---|
 | `threadId` | Required. The conversation the message belongs to. It is the id of the Pi session that receives it ([D21](#d21)), so it follows Pi's rule for session ids: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit; 200 characters at most. |
-| `content` | The text for the agent. |
-| `metadata` | Optional object of facts for the model, shown one per line. Names must not start with `agentX-` or contain `:` or a line break. |
+| `content` | The text for the agent. It may not contain `<agentx-metadata`, the tag of the harness's block ([D25](#d25)). |
+| `metadata` | Optional object of facts for the model, shown one per line. Names must not start with `agentX-` or contain `:` or a line break, and neither names nor values may contain `<agentx-metadata`. |
 | `doNotSteer` | The message never enters a run that is in progress; it starts the next one. |
 | `isSilent` | The message never starts a run; it goes along with the next message that does, or into a run in progress. |
 
-The queue adds `id`, `status`, `attempts`, `error`, `entryId` (the Pi session entry that holds the last delivery), `createdAt` and `updatedAt`.
+The queue adds `id` (12 random letters, digits, `-` and `_`, so that nobody can guess one), `status`, `attempts`, `error`, `entryId` (the Pi session entry that holds the last delivery), `createdAt` and `updatedAt`.
 
 Messages are handled first in, first out: the runner serves the thread of the oldest waiting message first, and a thread's messages are delivered oldest first. The one exception is the flag that asks for it: during a run, a newer message is steered in ahead of an older one marked `doNotSteer`.
 
@@ -65,7 +65,7 @@ Two processes writing one Pi session split the conversation in two, and Pi has n
 | `session_start` | Opens the queue and takes the thread's lease. Starts a one-second timer. Reads the agent's time zone from its settings. |
 | each second | Checks that the lease is still its own, and writes it again once it is 10 seconds old. A session whose lease is no longer its own lets go of the thread and aborts its run in progress. If Pi is idle, claims the thread's queued messages and sends them as one user message, which starts a run. A worker whose thread has no work ends the session instead. |
 | `turn_end` | Checks the lease, as each second does. After a completed turn, claims the messages that may be steered and sends them as a steer. Pi puts a steer in before the next model call; after the last turn of a run, that makes the run go on. Not when the run is being aborted: Pi would save the message without the model seeing it. |
-| `context`, before every model call | Checks the lease, as each second does, so a session that lost its thread makes no model call. Looks at the session entries added since it last looked, and for each user message with `agentX-MessageId` lines writes the entry's id to those messages in the queue. Pi saves a user message after the message's own events, so the entry exists by the next model call and not before. |
+| `context`, before every model call | Checks the lease, as each second does, so a session that lost its thread makes no model call. Looks at the session entries added since it last looked, and for each user message with metadata blocks writes the entry's id to the messages their opening tags name. Pi saves a user message after the message's own events, so the entry exists by the next model call and not before. |
 | `agent_before_settle` | Notes whether Pi judged the run failed, and why. Pi does not send this for an aborted run. |
 | `agent_settled` | Settles the run's messages: done for those Pi saved, another attempt if the run failed, and cancelled for everything in flight if it was aborted. In a worker, an aborted run gets another attempt. |
 | `input` | Lets input through. In a session without the lease, refuses it. |
@@ -96,21 +96,22 @@ A worker stops taking messages at the moment it decides to end, so it never leav
 `render` turns the messages of one delivery into one user message. Each message is a metadata block followed by its content, with a blank line between messages:
 
 ```
-<metadata>
-agentX-MessageId: 42
+<agentx-metadata id="q7Rk2mXa9LbT">
 agentX-ThreadId: main
+agentX-SentTime: Wednesday 2026-11-11 21:58:10 GMT+5:30
 agentX-CurrentTime: Wednesday 2026-11-11 21:59:54 GMT+5:30
 agentX-IsRetry: true
 agentX-RetryAttempt: 1
 from: ops
-</metadata>
+</agentx-metadata>
 The message itself.
 ```
 
 | Line | Value |
 |---|---|
-| `agentX-MessageId` | The queue id. The extension finds delivered messages by it. |
+| `<agentx-metadata id="…">` | Opens the block with the message's id. The extension finds delivered messages by it. |
 | `agentX-ThreadId` | The thread. |
+| `agentX-SentTime` | Day, date and time the message was put on the queue, in the agent's time zone. |
 | `agentX-CurrentTime` | Day, date and time of the delivery, in the agent's time zone: `agentx.timezone` in its [settings](../../agent/README.md#pisettingsjson), or the machine's when it names none. |
 | `agentX-IsRetry` | `true` from the second attempt on. |
 | `agentX-RetryAttempt` | Only on retries: 1 for the first retry. |
@@ -142,7 +143,7 @@ Every method is one atomic step: a single statement, or a transaction that takes
 `agentx send` puts a message on the queue ([CLI](../../../cli/README.md#commands)). There is no command to list it; read the file:
 
 ```sh
-sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error FROM messages ORDER BY id DESC LIMIT 20'
+sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error FROM messages ORDER BY seq DESC LIMIT 20'
 ```
 
 ## Known limits
@@ -153,9 +154,9 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 - Nothing carries the agent's answer back to the sender. The answer is in the session, linked from the message by `entry_id`.
 - The file must be on a local disk. SQLite's locking is not reliable on network file systems.
 - SQLite before 3.51.3 has a rare bug that can corrupt a WAL-mode file when two connections write or checkpoint at the same instant ([sqlite.org](https://sqlite.org/wal.html), "The WAL-Reset Bug"; also fixed in 3.50.7 and 3.44.6). Its authors call it unlikely in common use. `node -p process.versions.sqlite` shows what a Node version bundles; 24.12 bundles 3.50.4.
-- Content is text from the sender and is not checked. A sender can write something that looks like a metadata block into it: the model reads it as part of the content, after the real block, and if it names the id of another message in flight on the same thread, that message is recorded as delivered with it.
+- The queue refuses `<agentx-metadata` in what a sender gives, but text that reaches the session another way, such as input typed in a terminal session or a message an extension sends, is not checked. Such text names another message only with that message's id, which nobody can guess; if it did, the message would be recorded as delivered with it.
 - Aborting a run in the terminal cancels the queue messages that run had received, and any that were waiting inside Pi to be steered into it. So does closing the terminal session or switching it to another session (`/new`, `/resume`) while a run is in progress, because Pi aborts the run first. A cancelled message is not tried again; send it again. One that was still waiting inside Pi stays there, and Pi can put it into the next run of that terminal session although the queue shows it as cancelled.
-- An extension of the agent that rewrites user messages and drops the `agentX-MessageId` line makes delivered messages look undelivered; they are retried and then failed.
+- An extension of the agent that rewrites user messages and drops the opening tag of a metadata block makes delivered messages look undelivered; they are retried and then failed.
 
 ## Decisions
 
@@ -204,8 +205,8 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 ### D25. A queue message reaches the model as a user message that starts with a metadata block
 
 - **Problem.** The model needs facts about a message besides its content: when it is, whether it is a retry, what the sender said about it. The harness needs to find the message again in the session.
-- **Decision.** One `<metadata>` block before the content, one fact per line. The harness's own lines are named `agentX-<Name>`: `MessageId`, `ThreadId`, `CurrentTime` (day, date, time), `IsRetry`, `RetryAttempt`, `IsSilent`. The sender's metadata follows under the sender's names, which may not start with `agentX-`.
-- **Why.** The prefix keeps the harness's facts apart from the sender's and cannot be faked by a sender. The id in the text links a queue message to its session entry whoever delivered it, and can be read back from the session file.
+- **Decision.** One block before the content, opened by `<agentx-metadata id="<message id>">` and closed by `</agentx-metadata>`, one fact per line. The harness's own lines are named `agentX-<Name>`: `ThreadId`, `SentTime` and `CurrentTime` (day, date, time), `IsRetry`, `RetryAttempt`, `IsSilent`. The sender's metadata follows under the sender's names, which may not start with `agentX-`. A message's id is 12 random characters. The queue refuses a message whose content or metadata contains the tag, and the harness prompt tells the agent to ignore `agentX-` lines and tags anywhere outside a block.
+- **Why.** No sender can fake a block, or end one early from a metadata value, because the tag never comes from a sender. The prefix keeps the harness's facts apart from the sender's. The id in the tag links a queue message to its session entry whoever delivered it, and can be read back from the session file; being random, it cannot be guessed by text that reaches the session without the check, such as typed input. The sent time tells the agent how old a message is, which the delivery time alone hides when messages waited.
 - **Rejected.** A Pi custom message with the id in its `details`: Pi stores and shows it apart from user messages, and it skips the input handling a user message gets.
 - **Consequence.** A message always starts with `<`, so Pi never reads a queue message as a slash command.
 
@@ -242,3 +243,11 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 - **Why.** The runner is the parent: it knows that the process has ended, which no other process can know, so this is not the check that [D22](#d22) rejects. The lease stays as it is, and a Pi process needs to know nothing about the runner.
 - **Rejected.** One lease identity for the runner and its Pi processes, handed over in an environment variable: every command the agent runs would inherit it, and an `agentx run` started there would take the runner's threads for its own.
 - **Consequence.** Where the runner and the Pi process do not see the same process ids, as across a container boundary, the id does not match: the runner does not get the thread, and the messages wait for the lease to run out.
+
+<a id="d37"></a>
+### D37. The queue file carries a version; migrations bring older files up
+
+- **Problem.** The queue file outlives the agentx version that created it. A newer agentx that changes the tables would otherwise find the old ones, and `CREATE TABLE IF NOT EXISTS` leaves them as they are.
+- **Decision.** The file's version is SQLite's `PRAGMA user_version`. `queue.ts` holds a list of migrations, each bringing a file from the version before it to its own; a new file runs them all. Opening a file below the current version runs the missing ones and sets the version in one transaction, under the write lock, reading the version again inside it. A file above the current version is refused. A migration that has shipped is never changed; a change to the tables is a new one at the end. Version 1 is the first tables, which a file from before versions already has; version 2 gives every message a random id and keeps the order of arrival in `seq`.
+- **Why.** After an upgrade every process opens the file at about the same time, and only one may migrate it. `user_version` needs no table of its own. Refusing a newer file keeps a stale build, such as an old `dist/` beside a newer source, from writing to tables it does not know.
+- **Consequence.** A migration runs once per file and cannot be undone: an older agentx refuses the file afterwards.

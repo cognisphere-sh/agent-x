@@ -39,5 +39,5 @@ Pi's `input` event and its results: [Pi](../architecture/agent-runtime/pi/README
 
 ## To check in a spike
 
-- How the terminal UI shows input that an `input` handler returned `handled` for: the text leaves the editor, and the message appears later, starting with the `<metadata>` block.
+- How the terminal UI shows input that an `input` handler returned `handled` for: the text leaves the editor, and the message appears later, starting with the `<agentx-metadata>` block.
 - Whether delivery can start from inside the `input` handler (a re-entrant `sendUserMessage`). If not, a typed message waits up to one tick (1 second) when Pi is idle.

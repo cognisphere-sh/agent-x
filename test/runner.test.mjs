@@ -46,7 +46,8 @@ test("a queued message runs in the session of its thread and is linked to its se
 	const session = onlySession(project);
 	assert.equal(session.id, "main");
 	assert.deepEqual(session.roles, ["system", "user", "assistant"]);
-	assert.match(session.users[0].text, /^<metadata>\nagentX-MessageId: 1\nagentX-ThreadId: main\nagentX-CurrentTime: \w+day [^\n]+\nagentX-IsRetry: false\nfrom: test\n<\/metadata>\nhello$/);
+	assert.equal(session.users[0].text, `<agentx-metadata id="${id}">\n${session.users[0].text.split("\n").slice(1, 4).join("\n")}\nagentX-IsRetry: false\nfrom: test\n</agentx-metadata>\nhello`);
+	assert.match(session.users[0].text, /\nagentX-ThreadId: main\nagentX-SentTime: \w+day [^\n]+\nagentX-CurrentTime: \w+day [^\n]+\n/);
 	assert.equal(message(id).entryId, session.users[0].entryId);
 	assert.equal(message(id).attempts, 1);
 });
@@ -430,13 +431,14 @@ test("agentx send takes the thread, its flags, and metadata as --meta name=value
 	const { project, message } = setup(t);
 	const sent = await agentx(project, ["send", "--thread-id", "support", "--meta", "from=ops", "--meta=ticket=42", "--do-not-steer", "--silent", "two", "words"]);
 	assert.equal(sent.status, 0, sent.stderr);
-	assert.equal(sent.stdout.trim(), 'Queued message 1 on thread "support" with from=ops, ticket=42.');
-	const { threadId, content, metadata, doNotSteer, isSilent, status } = message(1);
+	const [, id] = /^Queued message ([\w-]{12}) on thread "support" with from=ops, ticket=42\.$/.exec(sent.stdout.trim()) ?? [];
+	const { threadId, content, metadata, doNotSteer, isSilent, status } = message(id);
 	assert.deepEqual({ threadId, content, metadata, doNotSteer, isSilent, status }, { threadId: "support", content: "two words", metadata: { from: "ops", ticket: "42" }, doNotSteer: true, isSilent: true, status: "queued" });
 
 	// After `--`, everything is content, however many words and whatever they look like. Without --thread-id the thread is main.
 	assert.equal((await agentx(project, ["send", "--", "--not-an-option", "and", "--more", "words"])).status, 0);
-	assert.deepEqual([message(2).threadId, message(2).content, message(2).metadata], ["main", "--not-an-option and --more words", {}]);
+	const second = messages(project.agent)[1];
+	assert.deepEqual([second.threadId, second.content, second.metadata], ["main", "--not-an-option and --more words", {}]);
 
 	// A misspelt flag is an error, and so is metadata without a name, without a value, or with a name the harness keeps for itself.
 	const typo = await agentx(project, ["send", "--do-not-ster", "hello"]);

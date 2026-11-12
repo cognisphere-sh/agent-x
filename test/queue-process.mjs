@@ -1,4 +1,5 @@
-// A second process on a queue, for queue.test.mjs. Usage: node queue-process.mjs <agentRoot> hold <thread> | work
+// A second process on a queue, for queue.test.mjs. Usage: node queue-process.mjs <agentRoot> open | hold <thread> | work
+// open: opens the queue, which migrates an old file, and closes it.
 // hold: takes the thread and its messages, says so, then waits to be killed.
 // work: takes threads and their messages as a session does, the oldest waiting message's thread first, until none are left; prints the ids it took.
 
@@ -8,7 +9,9 @@ const [agentRoot, mode, threadId] = process.argv.slice(2);
 const queue = new Queue(agentRoot);
 const print = (value) => console.log(JSON.stringify(value));
 
-if (mode === "hold") {
+if (mode === "open") {
+	queue.close();
+} else if (mode === "hold") {
 	print({ acquired: queue.acquire(threadId), ids: queue.claim(threadId).map((message) => message.id) });
 	setInterval(() => queue.renew(threadId), 1000);
 } else {

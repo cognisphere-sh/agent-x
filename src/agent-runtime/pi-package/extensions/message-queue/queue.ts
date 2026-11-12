@@ -1,6 +1,7 @@
 // The message queue of one agent: a SQLite file in the agent's storage/, opened by every process that sends to or runs the agent.
 // Loaded twice: compiled, by the CLI and the runner, and from source, by the message queue extension next to it. The two copies share only the file.
 
+import { randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -23,7 +24,8 @@ export type Status = "queued" | "in_flight" | "done" | "failed" | "cancelled";
 
 /** A message on the queue. */
 export interface Message extends Required<NewMessage> {
-	id: number;
+	/** A random string of 12 letters, digits, `-` and `_`, which nobody can guess. */
+	id: string;
 	status: Status;
 	/** How many times it was taken for delivery. */
 	attempts: number;
@@ -58,31 +60,50 @@ const held = "EXISTS (SELECT 1 FROM threads WHERE threads.thread_id = messages.t
 const startsRun = "status = 'queued' AND is_silent = 0";
 // Messages that need a Pi session: one that can start a run, or one that a session has taken and not finished.
 const work = `((${startsRun}) OR status = 'in_flight')`;
+// The tag of the harness's metadata block (render.ts). No sender's text may hold it, so no message can fake a block or end one early.
+const blockTag = /<\/?agentx-metadata\b/i;
 
-const schema = `
-CREATE TABLE IF NOT EXISTS messages (
-	id INTEGER PRIMARY KEY AUTOINCREMENT,
-	thread_id TEXT NOT NULL,
-	content TEXT NOT NULL,
-	metadata TEXT NOT NULL,
-	do_not_steer INTEGER NOT NULL,
-	is_silent INTEGER NOT NULL,
-	status TEXT NOT NULL,
-	attempts INTEGER NOT NULL,
-	error TEXT,
-	entry_id TEXT,
-	created_at INTEGER NOT NULL,
-	updated_at INTEGER NOT NULL
-);
-CREATE INDEX IF NOT EXISTS messages_by_status ON messages (status, thread_id);
-CREATE TABLE IF NOT EXISTS threads (
-	thread_id TEXT PRIMARY KEY,
-	owner TEXT NOT NULL,
-	heartbeat_at INTEGER NOT NULL
-);`;
+// A message's id: 72 random bits, so that ids are unique without a check and nobody can guess one.
+const newId = () => randomBytes(9).toString("base64url");
+
+// Each migration brings the file from the version before it to its own; a new file gets them all, in order. The file's version is its
+// `PRAGMA user_version`. A change to the tables is a new migration at the end; one that has shipped is never changed.
+const migrations: ((db: DatabaseSync) => void)[] = [
+	// 1: the tables. A file from before versions has them already, at version 0.
+	(db) =>
+		db.exec(`
+			CREATE TABLE IF NOT EXISTS messages (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				thread_id TEXT NOT NULL,
+				content TEXT NOT NULL,
+				metadata TEXT NOT NULL,
+				do_not_steer INTEGER NOT NULL,
+				is_silent INTEGER NOT NULL,
+				status TEXT NOT NULL,
+				attempts INTEGER NOT NULL,
+				error TEXT,
+				entry_id TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS messages_by_status ON messages (status, thread_id);
+			CREATE TABLE IF NOT EXISTS threads (
+				thread_id TEXT PRIMARY KEY,
+				owner TEXT NOT NULL,
+				heartbeat_at INTEGER NOT NULL
+			);`),
+	// 2: a random id for each message, which the model sees. The order of arrival stays in the integer column, now `seq`.
+	(db) => {
+		db.exec("ALTER TABLE messages RENAME COLUMN id TO seq; ALTER TABLE messages ADD COLUMN id TEXT");
+		const setId = db.prepare("UPDATE messages SET id = ? WHERE seq = ?");
+		for (const { seq } of db.prepare("SELECT seq FROM messages").all()) setId.run(newId(), Number(seq));
+		db.exec("CREATE UNIQUE INDEX messages_by_id ON messages (id)");
+	},
+];
 
 interface Row {
-	id: number;
+	seq: number;
+	id: string;
 	thread_id: string;
 	content: string;
 	metadata: string;
@@ -114,18 +135,29 @@ export class Queue {
 	constructor(agentRoot: string) {
 		const storage = join(agentRoot, "storage");
 		mkdirSync(storage, { recursive: true });
+		const file = join(storage, "message_queue.db");
 		// `timeout`: wait for another process's write instead of failing at once.
-		this.db = new (sqlite().DatabaseSync)(join(storage, "message_queue.db"), { timeout: waitMs });
+		this.db = new (sqlite().DatabaseSync)(file, { timeout: waitMs });
 		// WAL lets readers and one writer work at the same time, across processes. The switch to it on a new file is the one step that
 		// does not wait: it fails at once while another process is making the same switch. So it is tried again for as long as a write would wait.
 		for (const deadline = Date.now() + waitMs; ; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)) {
 			try {
-				this.db.exec(`PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; ${schema}`);
-				return;
+				this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL");
+				break;
 			} catch (error) {
 				if ((error as { errcode?: number }).errcode !== sqliteBusy || Date.now() > deadline) throw error;
 			}
 		}
+		// After an upgrade every process opens the file at once, so the version is read again under the write lock: one migrates, the others find it done.
+		const version = () => Number(this.db.prepare("PRAGMA user_version").get()?.user_version);
+		if (version() === migrations.length) return;
+		this.transaction(() => {
+			const from = version();
+			// The code runs from dist/ and from src/; a stale build must not write to tables it does not know.
+			if (from > migrations.length) throw new Error(`${file} is at queue version ${from}, and this agentx knows versions up to ${migrations.length}. Run a newer agentx.`);
+			for (const migrate of migrations.slice(from)) migrate(this.db);
+			this.db.exec(`PRAGMA user_version = ${migrations.length}`);
+		});
 	}
 
 	/** Closes the file. The queue must not be used afterwards. */
@@ -136,7 +168,7 @@ export class Queue {
 	// For senders.
 
 	/** Adds a message and returns its id. */
-	enqueue(message: NewMessage): number {
+	enqueue(message: NewMessage): string {
 		if (typeof message.threadId !== "string" || !threadIdRule.test(message.threadId)) {
 			throw new Error(`Invalid thread id "${message.threadId}": use letters, digits, ".", "_" and "-", starting and ending with a letter or digit, 200 characters at most.`);
 		}
@@ -144,14 +176,18 @@ export class Queue {
 		// Names starting with agentX- are the harness's own lines, and a name with a colon or a line break could fake one.
 		const badKey = Object.keys(metadata).find((key) => /^agentx-|[:\r\n\u2028\u2029]/i.test(key));
 		if (badKey !== undefined) throw new Error(`Invalid metadata name "${badKey}": names must not start with "agentX-" or contain ":" or a line break.`);
+		if ([message.content, ...Object.entries(metadata).map(([name, value]) => `${name} ${JSON.stringify(value)}`)].some((text) => blockTag.test(text))) {
+			throw new Error('Invalid message: its content or metadata contains "<agentx-metadata", the tag of the harness\'s own block.');
+		}
+		const id = newId();
 		const now = Date.now();
-		const { lastInsertRowid } = this.db
+		this.db
 			.prepare(
-				`INSERT INTO messages (thread_id, content, metadata, do_not_steer, is_silent, status, attempts, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
+				`INSERT INTO messages (id, thread_id, content, metadata, do_not_steer, is_silent, status, attempts, created_at, updated_at)
+				 VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?)`,
 			)
-			.run(message.threadId, message.content, JSON.stringify(metadata), Number(message.doNotSteer ?? false), Number(message.isSilent ?? false), now, now);
-		return Number(lastInsertRowid);
+			.run(id, message.threadId, message.content, JSON.stringify(metadata), Number(message.doNotSteer ?? false), Number(message.isSilent ?? false), now, now);
+		return id;
 	}
 
 	// For the process that runs a thread. It holds the thread's lease, and only the holder can take and finish messages.
@@ -223,7 +259,7 @@ export class Queue {
 				`SELECT thread_id FROM messages WHERE ${work}
 				   AND thread_id NOT IN (SELECT thread_id FROM threads WHERE heartbeat_at > ?)
 				   AND thread_id NOT IN (SELECT value FROM json_each(?))
-				 ORDER BY id LIMIT 1`,
+				 ORDER BY seq LIMIT 1`,
 			)
 			.get(Date.now() - leaseMs, JSON.stringify(except));
 		return row && String(row.thread_id);
@@ -255,12 +291,12 @@ export class Queue {
 					 WHERE thread_id = ? AND status = 'queued' ${steer ? "AND do_not_steer = 0" : ""} RETURNING *`,
 				)
 				.all(Date.now(), threadId);
-			return rows.map(toMessage).sort((a, b) => a.id - b.id);
+			return rows.sort((a, b) => Number(a.seq) - Number(b.seq)).map(toMessage);
 		});
 	}
 
 	/** Records the Pi session entry that holds messages in flight on the thread. A message with an entry has reached the model. */
-	delivered(threadId: string, ids: number[], entryId: string): void {
+	delivered(threadId: string, ids: string[], entryId: string): void {
 		this.db
 			.prepare(`UPDATE messages SET entry_id = ?, updated_at = ? WHERE id IN (SELECT value FROM json_each(?)) AND thread_id = ? AND status = 'in_flight' AND ${held}`)
 			.run(entryId, Date.now(), JSON.stringify(ids), threadId, owner);

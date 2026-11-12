@@ -40,25 +40,25 @@ If a message arrives while its thread is already working, the agent gets it at i
 Each message starts with a block of facts, then your text:
 
 ```
-<metadata>
-agentX-MessageId: 42
+<agentx-metadata id="q7Rk2mXa9LbT">
 agentX-ThreadId: support
+agentX-SentTime: Wednesday 2026-11-11 21:58:10 GMT+5:30
 agentX-CurrentTime: Wednesday 2026-11-11 21:59:54 GMT+5:30
 agentX-IsRetry: false
 from: ops
 ticket: 42
-</metadata>
+</agentx-metadata>
 The export is failing again
 ```
 
-The `agentX-` lines are added by agentx. The others are yours. The time is the machine's, unless the agent's settings name a time zone ([customize an agent](customize_an_agent.md#time-zone)).
+The `id` is the message's id, the one `agentx send` prints. The `agentX-` lines are added by agentx: when you sent the message and when the agent got it. The others are yours. The times are the machine's, unless the agent's settings name a time zone ([customize an agent](customize_an_agent.md#time-zone)). A message whose text or metadata contains `<agentx-metadata` is refused, so that nobody can fake the block.
 
 ## See what happened
 
 The queue is a SQLite file in the agent's `storage/`:
 
 ```sh
-sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error FROM messages ORDER BY id DESC LIMIT 20'
+sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error FROM messages ORDER BY seq DESC LIMIT 20'
 ```
 
 | Status | Meaning |

@@ -2,31 +2,32 @@
 
 import type { Message } from "./queue.js";
 
-/** The text Pi receives for messages delivered together. Their time is shown in `timeZone`, or in the machine's time zone when none is given. */
+/** The text Pi receives for messages delivered together. Their times are shown in `timeZone`, or in the machine's time zone when none is given. */
 export function render(messages: Message[], timeZone?: string): string {
 	const now = dayDateTime(Date.now(), timeZone);
 	return messages
 		.map((message) =>
 			[
-				"<metadata>",
-				`agentX-MessageId: ${message.id}`,
+				// The queue refuses a message whose text holds this tag, so only the harness writes one.
+				`<agentx-metadata id="${message.id}">`,
 				`agentX-ThreadId: ${message.threadId}`,
+				`agentX-SentTime: ${dayDateTime(message.createdAt, timeZone)}`,
 				`agentX-CurrentTime: ${now}`,
 				`agentX-IsRetry: ${message.attempts > 1}`,
 				...(message.attempts > 1 ? [`agentX-RetryAttempt: ${message.attempts - 1}`] : []),
 				...(message.isSilent ? ["agentX-IsSilent: true"] : []),
 				// The sender's metadata, one fact per line. A line break in a value could fake a line of the harness.
 				...Object.entries(message.metadata).map(([name, value]) => `${name}: ${(typeof value === "string" ? value : JSON.stringify(value)).replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ")}`),
-				"</metadata>",
+				"</agentx-metadata>",
 				message.content,
 			].join("\n"),
 		)
 		.join("\n\n");
 }
 
-/** The ids of the queue messages in a text that `render` produced: the first line of each metadata block. */
-export function messageIds(text: string): number[] {
-	return [...text.matchAll(/<metadata>\nagentX-MessageId: (\d+)\n/g)].map((match) => Number(match[1]));
+/** The ids of the queue messages in a text that `render` produced, read from the opening tags of their metadata blocks. */
+export function messageIds(text: string): string[] {
+	return [...text.matchAll(/<agentx-metadata id="([\w-]+)">/g)].map((match) => match[1]);
 }
 
 // "Wednesday 2026-11-11 21:59:54 GMT+5:30".
