@@ -9,7 +9,7 @@ pnpm run build    # writes dist/, which the agentx command runs, and marks the C
 pnpm test         # builds, then runs test/*.test.mjs
 ```
 
-The tests need no login and no network. `test/queue.test.mjs` exercises the queue, with several processes on one file. `test/runner.test.mjs` creates scratch projects in the temp directory and runs the built CLI, the runner and real Pi processes in them against `test/fake-model.mjs`, a stand-in for a model endpoint on localhost. It takes about a minute and a half.
+The tests need no login and no network. `test/queue.test.mjs` exercises the queue, with several processes on one file. `test/runner.test.mjs` creates scratch projects in the temp directory, with this checkout linked in as their agentx, and runs the built CLI, the runner and real Pi processes in them against `test/fake-model.mjs`, a stand-in for a model endpoint on localhost. It takes about a minute and a half.
 
 ## Run the local build
 
@@ -24,7 +24,7 @@ agentx init-project my-project         # anywhere
 
 ## Use a local build in a project
 
-agentx is not published yet, so the version that `init-project` pins cannot be installed from the registry. Replace it with the local build:
+agentx is not published yet, so the version that `init-project` pins cannot be installed from the registry. Until agentx is installed in the project, every command there but `init-project` stops. Replace the pinned version with the local build:
 
 ```sh
 cd my-project/agent-x

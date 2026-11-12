@@ -23,12 +23,11 @@ const [command, name] = process.argv.slice(2);
 const args = process.argv.slice(3);
 const cwd = process.cwd();
 
-// Inside a project, the version it pins does the work, whichever `agentx` was started (a global install, a copy fetched from the registry).
-// init-project creates a new project, so it runs from this copy.
-const pinned = command === "init-project" ? undefined : pinnedCli(cwd);
-if (pinned) process.exit(spawnSync(process.execPath, [pinned, ...process.argv.slice(2)], { stdio: "inherit" }).status ?? 1);
-
 try {
+	// Inside a project, the version it pins does the work, whichever `agentx` was started (a global install, a copy fetched from the registry).
+	// init-project creates a new project, so it runs from this copy.
+	const pinned = command === "init-project" ? undefined : pinnedCli(cwd);
+	if (pinned) process.exit(spawnSync(process.execPath, [pinned, ...process.argv.slice(2)], { stdio: "inherit" }).status ?? 1);
 	if (command === "init-project") initProject(name ?? ".", cwd);
 	else if (command === "init-agent" && name) initAgent(name, cwd);
 	// run and send act on the agent directory they are started in.

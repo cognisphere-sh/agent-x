@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -23,6 +23,9 @@ export function createAgent(port) {
 		if (result.status !== 0) throw new Error(`agentx ${args.join(" ")} failed: ${result.stderr}`);
 	};
 	run(["init-project", "project"], root);
+	// The project's agentx is this checkout, linked as `pnpm link` does: without an installed agentx, commands in a project stop.
+	mkdirSync(join(root, "project", "agent-x", "node_modules"));
+	symlinkSync(fileURLToPath(new URL("..", import.meta.url)), join(root, "project", "agent-x", "node_modules", "agent-x"));
 	run(["init-agent", "main"], join(root, "project"));
 	const agent = join(root, "project", "agent-x", "agents", "main");
 	// Pi's agent directory of the project: a provider that needs no login.

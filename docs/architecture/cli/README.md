@@ -10,7 +10,7 @@ What `init-project` creates has its own doc: [project](project/README.md).
 |---|---|
 | `src/cli/agentx.ts` | Entry point. Reads `argv`, dispatches to a command, prints usage or the error message and exits 1 on failure. |
 | `src/cli/copy-template.ts` | `copyTemplate(template, target)`: copies `templates/<template>` to a missing or empty directory. Exports `setPackageFields(dir, fields)`, which sets fields in a `package.json`, and `harnessPackage` (agentx's own name and version). |
-| `src/cli/pinned-cli.ts` | `pinnedCli(cwd)`: the CLI entry file of the agentx the project around `cwd` pins, or undefined ([D15](#d15)). |
+| `src/cli/pinned-cli.ts` | `pinnedCli(cwd)`: the CLI entry file of the agentx the project around `cwd` pins; undefined outside a project or when it is the running copy, and an error when the project has not installed it ([D15](#d15)). Exports `pinsAgentx(dir)`, whether a package lists `agent-x` in its dependencies, which `agentRoot` uses too. |
 | `src/cli/agent-root.ts` | `agentRoot(dir)`: returns `dir` if it is an agent directory, and throws otherwise. |
 | `src/cli/commands/<name>.ts` | One file per command. Exports one function. |
 
@@ -33,7 +33,7 @@ Planned: `serve`, which will start the [coordinator](../coordinator-runtime/READ
 
 The pinned agentx is installed in the project's `agent-x/node_modules`. `pnpm exec agentx` finds its command there from `agent-x/` and from an agent, and the root script `agentx` (`node agent-x/node_modules/agent-x/dist/cli/agentx.js`, run as `pnpm agentx <command>`) starts it from the project root. A global `agentx` (`pnpm add -g agent-x`) and `pnpm dlx agent-x` are other copies.
 
-Whichever copy starts, the pinned one does the work ([D15](#d15)). Before dispatching, `agentx.ts` calls `pinnedCli(cwd)`, which looks for `agent-x/node_modules/agent-x/dist/cli/agentx.js` and `node_modules/agent-x/dist/cli/agentx.js` in `cwd` and each parent directory. If it finds a copy that is not the running one (compared by real path, so a linked checkout counts as the same), the CLI runs that copy with the same arguments and `cwd` and exits with its status. `init-project` is never handed over: it creates a new project.
+Whichever copy starts, the pinned one does the work ([D15](#d15)). Before dispatching, `agentx.ts` calls `pinnedCli(cwd)`, which looks in `cwd` and each parent directory for the package that pins agentx: `agent-x/` there, or the directory itself, with a `package.json` that lists `agent-x` in its dependencies. The first one found is the project's, and its `node_modules/agent-x/dist/cli/agentx.js` is the pinned CLI. If that file is missing, the command stops and asks for `pnpm install`. If it is not the running copy (compared by real path, so a linked checkout counts as the same), the CLI runs it with the same arguments and `cwd` and exits with its status. Outside a project, the running copy does the work. `init-project` is never handed over: it creates a new project.
 
 ## Conventions
 
@@ -62,9 +62,10 @@ Whichever copy starts, the pinned one does the work ([D15](#d15)). Before dispat
 ### D15. Any `agentx` hands over to the copy the project pins
 
 - **Problem.** The pinned agentx is in `agent-x/node_modules` ([D14](project/README.md#d14)), so a global `agentx`, or `pnpm dlx agent-x`, started in the project is another copy: a global install, or the latest registry version. `run` would start that copy's Pi, and `init-agent` would copy another version's template.
-- **Decision.** The CLI looks for the project's pinned copy from the current directory upward and, if it is a different copy, runs it with the same arguments. `init-project` is excluded.
-- **Why.** Commands behave the same from the root, `agent-x/` and an agent, without the user knowing where the install is.
+- **Decision.** The CLI looks from the current directory upward for the package that pins agentx, and runs the copy installed in it with the same arguments, unless that is the running copy. When the project has not installed agentx, the command stops and asks for `pnpm install`. `init-project` is excluded.
+- **Why.** Commands behave the same from the root, `agent-x/` and an agent, without the user knowing where the install is. A command that stops is better than one that runs another version's Pi without a word.
 - **Rejected.** Only the root script `pnpm agentx <command>`: correct, but a global `agentx` stays silently unpinned. A root dev dependency on `agent-x`: a second pin that can drift from the one in `agent-x/package.json`.
+- **Consequence.** In a fresh clone, every command but `init-project` waits for `pnpm install`.
 
 <a id="d30"></a>
 ### D30. `agentx send` reads every option it does not know as metadata

@@ -3,7 +3,7 @@
 
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { Queue } from "../dist/agent-runtime/pi-package/extensions/message-queue/queue.js";
@@ -418,6 +418,29 @@ test("run and send refuse a directory that is not an agent", async (t) => {
 			assert.equal(result.status, 1, `${command[0]} in ${elsewhere}`);
 			assert.match(result.stderr, /is not an agent directory/);
 		}
+	}
+});
+
+test("every command but init-project runs the agentx the project installed, and stops when it has none", async () => {
+	const project = createAgent(model.port);
+	const agentX = join(project.agent, "..", "..");
+	const installed = join(agentX, "node_modules", "agent-x");
+	// Unlinked first: writing through the link would change this checkout.
+	unlinkSync(installed);
+	for (const [dir, command] of [[project.agent, ["send", "hello"]], [dirname(agentX), ["init-agent", "other"]]]) {
+		const result = await agentx({ agent: dir, env: project.env }, command);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /not installed.*pnpm install/);
+	}
+	assert.equal(existsSync(join(agentX, "agents", "other")), false);
+	// Another copy installed: a stand-in that prints where and with what it was started, and exits 3.
+	mkdirSync(join(installed, "dist", "cli"), { recursive: true });
+	writeFileSync(join(installed, "dist", "cli", "agentx.js"), "console.log(JSON.stringify([process.cwd(), ...process.argv.slice(2)])); process.exitCode = 3;");
+	for (const dir of [dirname(agentX), agentX, project.agent]) {
+		const result = await agentx({ agent: dir, env: project.env }, ["send", "--thread-id", "t", "hello"]);
+		assert.equal(result.status, 3);
+		// A process sees its working directory resolved, and on macOS the temp directory is a symlink.
+		assert.deepEqual(JSON.parse(result.stdout), [realpathSync(dir), "send", "--thread-id", "t", "hello"]);
 	}
 });
 

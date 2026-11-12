@@ -22,7 +22,7 @@ The first time, type `/login` in the session and choose a provider. Pi tells you
 
 `web/` and `agent-x/` are two independent packages, each with its own install, so they can be deployed apart (for example the app on Vercel, the agents on a server). `pnpm install` in the root installs both; `pnpm install` inside one installs only that one. npm works the same way; use one package manager per project.
 
-`agentx` commands work in the project root, in `agent-x/` and in an agent, and always run the agentx version the project pins. Without the global command, `pnpm exec agentx <command>` runs the pinned copy from `agent-x/` or an agent, and `pnpm agentx <command>` from the project root.
+`agentx` commands work in the project root, in `agent-x/` and in an agent, and always run the agentx version the project pins; until `pnpm install` has installed it, they stop and ask for it. Without the global command, `pnpm exec agentx <command>` runs the pinned copy from `agent-x/` or an agent, and `pnpm agentx <command>` from the project root.
 
 You now have:
 
