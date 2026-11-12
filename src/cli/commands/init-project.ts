@@ -21,7 +21,8 @@ export function initProject(name: string, cwd: string): void {
 	renameSync(join(root, "gitignore"), join(root, ".gitignore"));
 	// Pi loads `.agents/skills` from an agent and its parent directories up to the git root.
 	// The project's own git root keeps skills of directories above the project out.
-	spawnSync("git", ["init", "-q"], { cwd: root, stdio: "inherit" });
+	const git = spawnSync("git", ["init", "-q"], { cwd: root, stdio: "inherit" });
+	if (git.status !== 0) throw new Error(`Created ${root}, but git init failed${git.error ? ` (${git.error.message})` : ""}. Run git init in it: without a repository, Pi loads skills from the folders above the project.`);
 	console.log(`Created ${root}
 
 Next:${name === "." ? "" : `

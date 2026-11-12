@@ -444,6 +444,22 @@ test("every command but init-project runs the agentx the project installed, and 
 	}
 });
 
+test("init-agent takes only names of letters, digits and dashes, and init-project says when git init fails", async () => {
+	const project = createAgent(model.port);
+	const root = join(project.agent, "..", "..", "..");
+	for (const name of ["../escape", "a/b", "under_score"]) {
+		const result = await agentx({ agent: root, env: project.env }, ["init-agent", name]);
+		assert.equal(result.status, 1);
+		assert.match(result.stderr, /is not an agent name/);
+	}
+	assert.equal(existsSync(join(root, "escape")), false);
+	assert.equal((await agentx({ agent: root, env: project.env }, ["init-agent", "second-agent-2"])).status, 0);
+	// No git on the PATH.
+	const noGit = await agentx({ agent: dirname(root), env: { ...project.env, PATH: "" } }, ["init-project", "without-git"]);
+	assert.equal(noGit.status, 1);
+	assert.match(noGit.stderr, /git init failed/);
+});
+
 test("a new agent has a knowledge folder of its own, and Pi loads what the agent writes there", async (t) => {
 	const { project } = setup(t);
 	const knowledge = join(project.agent, "storage", "knowledge");
