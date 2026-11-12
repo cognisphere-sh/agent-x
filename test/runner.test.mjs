@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
 import { Queue } from "../dist/agent-runtime/pi-package/extensions/message-queue/queue.js";
 import { startFakeModel } from "./fake-model.mjs";
 import { agentx, alive, cli, createAgent, holder, messages, onlySession, onQueueFile, open, runner, sessions, until } from "./project.mjs";
@@ -30,7 +31,7 @@ function setup(t) {
 		project,
 		queue,
 		message,
-		start: (maxWorkers) => servers[servers.push(runner(project, maxWorkers)) - 1],
+		start: (maxWorkers, stallMs) => servers[servers.push(runner(project, maxWorkers, stallMs)) - 1],
 		// Resolves when the messages are all in the given status.
 		reach: (status, ...ids) => until(() => ids.every((id) => message(id).status === status)),
 	};
@@ -362,6 +363,46 @@ test("a send that an extension of the agent gets refused during a run leaves the
 	await reach("done", id);
 	assert.equal(message(id).attempts, 1);
 	assert.match(server.output(), /send_user_message/);
+});
+
+test("the runner ends a worker that stops renewing its lease, and the thread's message gets another attempt", async (t) => {
+	const { project, queue, message, start, reach } = setup(t);
+	// An extension that blocks Pi's main thread for good, once: while the file is there.
+	writeFileSync(join(project.agent, "hang"), "");
+	writeFileSync(join(project.agent, ".pi", "extensions", "hang.ts"), `import { existsSync, rmSync } from "node:fs"; export default function (pi) { pi.on("turn_start", () => { if (!existsSync("hang")) return; rmSync("hang"); for (;;); }); }`);
+	const id = queue.enqueue({ threadId: "main", content: "blocked" });
+	const server = start();
+	await until(() => !existsSync(join(project.agent, "hang")));
+	// As two minutes later: the blocked process has not renewed its lease.
+	onQueueFile(project.agent);
+	await reach("done", id);
+	assert.equal(message(id).attempts, 2);
+	assert.match(server.output(), /main: Pi stopped renewing its lease, so the runner ends it/);
+	assert.match(server.output(), /main: Pi was stopped by SIGKILL/);
+});
+
+test("the runner stops a worker that writes nothing for its stall time, and the message is tried again, three times at most", async (t) => {
+	const { queue, message, start, reach } = setup(t);
+	// A tool that runs longer than the stall time without output.
+	const id = queue.enqueue({ threadId: "main", content: "[sleep 30] stuck" });
+	const server = start(4, 2_000);
+	await reach("failed", id);
+	assert.equal(message(id).attempts, 3);
+	assert.match(server.output(), /main: Pi wrote nothing for 2 s, so the runner stops it/);
+});
+
+test("a forced stop ends the running threads at once, and their messages wait for the next runner", async (t) => {
+	const { queue, message, start } = setup(t);
+	const id = queue.enqueue({ threadId: "main", content: "[sleep 30] long" });
+	const server = start();
+	await until(() => message(id).entryId);
+	// The first signal lets the run finish; the second stops it.
+	server.child.kill("SIGINT");
+	await sleep(500);
+	const stoppedAt = Date.now();
+	assert.equal(await server.end(), 0);
+	assert.ok(Date.now() - stoppedAt < 10_000, "the run is not waited for");
+	assert.deepEqual([message(id).status, message(id).attempts], ["queued", 1]);
 });
 
 test("a session that loses its thread to another process lets go of it, and the runner takes the thread back when that process is gone", async (t) => {

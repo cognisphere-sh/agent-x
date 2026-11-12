@@ -203,6 +203,11 @@ export class Queue {
 		this.release(threadId);
 	}
 
+	/** Whether the lease of the process `pid` on the thread has run out: the process stopped renewing it, as a blocked or hung one does. */
+	expired(threadId: string, pid: number | undefined): boolean {
+		return this.db.prepare("SELECT 1 FROM threads WHERE thread_id = ? AND owner LIKE ? AND heartbeat_at <= ?").get(threadId, `${pid}.%`, Date.now() - leaseMs) !== undefined;
+	}
+
 	/** Whether another live process holds the thread. */
 	heldElsewhere(threadId: string): boolean {
 		return this.db.prepare("SELECT 1 FROM threads WHERE thread_id = ? AND owner != ? AND heartbeat_at > ?").get(threadId, owner, Date.now() - leaseMs) !== undefined;

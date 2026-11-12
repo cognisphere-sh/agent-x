@@ -16,16 +16,22 @@ const pollMs = 1000;
 // The records in Pi's RPC output that the runner acts on. All others report the session's activity. Pi exports no type for an extension's error.
 type PiRecord = RpcExtensionUIRequest | { type: "extension_error"; event: string; extensionPath: string; error: string };
 
-/** Runs the threads of the agent in `agentRoot`: one Pi process per thread, `maxWorkers` at a time, the thread of the oldest waiting message first. */
+/**
+ * Runs the threads of the agent in `agentRoot`: one Pi process per thread, `maxWorkers` at a time, the thread of the oldest waiting message first.
+ * A Pi process that writes nothing for `stallMs` is stopped; set it above the longest a tool of the agent may run without output.
+ */
 export class AgentRunner {
 	private readonly queue: Queue;
 	// The Pi process of each running thread.
 	private readonly workers = new Map<string, ChildProcessWithoutNullStreams>();
+	// When each Pi process last wrote to its output. Pi writes while a run makes progress: the model's text, tool calls, tool output.
+	private readonly heardAt = new Map<ChildProcessWithoutNullStreams, number>();
 	private stopping = false;
 
 	constructor(
 		private readonly agentRoot: string,
 		private readonly maxWorkers: number,
+		private readonly stallMs = 10 * 60_000,
 	) {
 		this.queue = new Queue(agentRoot);
 	}
@@ -33,6 +39,18 @@ export class AgentRunner {
 	/** Serves the queue until `stop` is called and the running threads have finished. */
 	async run(): Promise<void> {
 		while (!this.stopping || this.workers.size > 0) {
+			// The runner starts no second process for a thread it is running, so a worker that is stuck would keep its thread and its place forever.
+			for (const [threadId, child] of this.workers) {
+				// Its lease ran out: its main thread is blocked, and only SIGKILL ends it. Its exit is handled as any death.
+				if (this.queue.expired(threadId, child.pid)) {
+					console.error(`${threadId}: Pi stopped renewing its lease, so the runner ends it`);
+					child.kill("SIGKILL");
+				} else if (!child.killed && Date.now() - (this.heardAt.get(child) ?? 0) >= this.stallMs) {
+					// It writes nothing, as when a tool waits forever. Told to stop, Pi closes its session, which aborts the run and gives its messages another attempt.
+					console.error(`${threadId}: Pi wrote nothing for ${this.stallMs / 1000} s, so the runner stops it`);
+					child.kill("SIGTERM");
+				}
+			}
 			while (!this.stopping && this.workers.size < this.maxWorkers) {
 				// Not a thread that a live process holds, and not one whose own process is still closing: that one has given up its lease already.
 				const threadId = this.queue.nextThread([...this.workers.keys()]);
@@ -44,11 +62,13 @@ export class AgentRunner {
 		this.queue.close();
 	}
 
-	/** Starts no more threads; `run` returns when the running ones are done. Returns false when already stopping. */
-	stop(): boolean {
-		const first = !this.stopping;
+	/**
+	 * Starts no more threads; `run` returns when the running ones are done. With `force`, tells them to stop now: Pi closes each session,
+	 * which aborts its run, and its messages wait for the next runner, with the attempt counted.
+	 */
+	stop(force = false): void {
 		this.stopping = true;
-		return first;
+		if (force) for (const child of this.workers.values()) child.kill("SIGTERM");
 	}
 
 	// One worker: the thread's Pi session in a process of its own, started the way `agentx run --thread-id <thread> --mode rpc` starts it.
@@ -59,12 +79,14 @@ export class AgentRunner {
 			env: piEnv(this.agentRoot),
 		});
 		this.workers.set(threadId, child);
+		this.heardAt.set(child, Date.now());
 		console.log(`${threadId}: session opened`);
 
 		// Pi writes one JSON record per line, ended by a line feed, and waits when nobody reads. A record can be megabytes long,
 		// such as the one that ends a run, so the text is split only when a line is complete.
 		let unread = "";
 		child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+			this.heardAt.set(child, Date.now());
 			unread += chunk;
 			if (!chunk.includes("\n")) return;
 			const lines = unread.split("\n");
@@ -113,6 +135,7 @@ export class AgentRunner {
 		// A process that could not be started reports an error, and sometimes an exit too.
 		if (this.workers.get(threadId) !== child) return;
 		this.workers.delete(threadId);
+		this.heardAt.delete(child);
 		console.log(`${threadId}: session closed`);
 		if (failure === undefined) return;
 		console.error(`${threadId}: ${failure}`);

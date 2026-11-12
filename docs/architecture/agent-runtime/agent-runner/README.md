@@ -27,7 +27,8 @@ sequenceDiagram
 - **Loop.** Once a second, while fewer than `maxWorkers` threads are running, the runner takes the next thread from the [queue](../pi-package/message-queue/README.md#messages): first in, first out. It passes over a thread that a live process holds, and one whose own Pi process has not exited yet.
 - **Worker.** One Pi process per thread: the pinned Pi CLI in RPC mode, in which Pi stays open until its input closes. The runner sends it no prompts. The session takes its thread's lease, works the thread's messages, and ends itself when the thread has no [work](../pi-package/message-queue/README.md#the-queue-class) left.
 - **Limit.** `maxWorkers` is the number of threads, and so Pi processes, running at once. More threads wait their turn.
-- **Stopping.** `stop()` starts no more threads, and `run()` returns when the running ones have ended. If the runner process is ended instead, its Pi processes end with it and their messages get another attempt ([below](#when-a-pi-process-ends)).
+- **Stuck workers.** Once a second the runner also checks each worker. One whose lease has run out has a blocked main thread and is ended with `SIGKILL`. One that has written nothing to its output for `stallMs` (constructor option, 10 minutes by default) is stuck, for example on a tool that never returns, and is told to stop with `SIGTERM`. Pi writes while a run makes progress, so `stallMs` must be longer than the longest a tool of the agent may run without output.
+- **Stopping.** `stop()` starts no more threads, and `run()` returns when the running ones have ended, which under steady traffic can take long: a worker ends only when its thread is empty. `stop(true)` also tells every worker to stop now: Pi closes each session, which aborts its run, and the run's messages wait for the next runner with their attempt counted. `test/runner-process.mjs` does the first on the first `SIGINT` or `SIGTERM`, and the second on the next. If the runner process is ended instead, its Pi processes end with it and their messages get another attempt ([below](#when-a-pi-process-ends)).
 
 One runner serves one agent.
 
@@ -61,8 +62,9 @@ A message's status is changed by whoever is still there to change it.
 |---|---|---|
 | The session ends itself: the thread has no work, or the session lost its thread | The message queue extension has settled them. Pi exits with code 0 and the runner does nothing. | |
 | The Pi process dies: killed, out of memory, crashed | The runner takes the thread from the dead process, which ends the attempt of the messages it left in flight. | at once |
+| The Pi process hangs: its lease has run out, because its main thread is blocked | The runner ends it with `SIGKILL`, the one signal a blocked process cannot miss, and then takes the thread as for a dead process. | at its next check, once the lease has run out |
 | The Pi process cannot run the thread: an extension does not load, or Pi cannot be started | The runner counts an attempt for the thread's waiting messages, with Pi's own error as the reason. | at once |
-| The Pi process is told to stop (`SIGTERM`, `SIGHUP`), or the runner stops or dies and Pi's input closes | Pi closes the session, which aborts a run in progress, and the message queue extension ends the attempt. | at once |
+| The Pi process is told to stop (`SIGTERM`, `SIGHUP`): by the runner for a stall or a forced stop, or by someone else; or the runner dies and Pi's input closes | Pi closes the session, which aborts a run in progress, and the message queue extension ends the attempt. | at once |
 | Everything dies together, as when the machine does | The next process to take the thread, once the dead holder's lease has run out. | 110 to 120 s later |
 
 Ending an attempt puts a message back on the queue, or makes it `failed` when that was its third attempt ([D24](../pi-package/message-queue/README.md#d24)).
@@ -74,7 +76,7 @@ Ending an attempt puts a message back on the queue, or makes it `failed` when th
 ## Known limits
 
 - A Pi process is started for each burst of messages on a thread and ends when the thread is empty, so each burst pays for starting Pi, loading extensions and connecting MCP servers.
-- A Pi process that hangs without exiting keeps its worker and its thread. Nothing limits how long a run may take, and the runner does not check that a session it started is working.
+- Nothing limits how long a run may take while Pi keeps writing, such as a model that calls tools in a loop. A silent tool that legitimately runs longer than `stallMs` is stopped, and its message fails after three attempts.
 - Every interruption costs a message one of its three attempts, also a restart of the runner during its run.
 - Each running thread is a Pi process of about 130 MB.
 - Started from a terminal, the runner shares the terminal's Ctrl-C with its Pi processes: they end at once instead of finishing their runs, and their messages wait for the next runner.
@@ -97,4 +99,4 @@ Ending an attempt puts a message back on the queue, or makes it `failed` when th
 - **Decision.** One runner serves one agent. For each running thread it starts one Pi CLI process in RPC mode, with exactly what `agentx run` passes plus `--mode rpc` and `--agentx-worker`, and `maxWorkers` limits how many run at once. The runner reads each process's output, answers dialogs as cancelled, and acts when the process exits.
 - **Why.** A process is what can die alone, be seen to die, and be killed. `agentx run` and the runner share one way of starting Pi, so the agent is the same under both with nothing to keep in step, and the runner does not load Pi. Starting a process costs little: measured, Pi is ready in 0.15 to 0.2 seconds, beside model calls that take seconds.
 - **Rejected.** Pi's `RpcClient`: it cannot answer an extension's dialog, starts whichever `node` is on `PATH`, and kills the process one second after asking it to stop.
-- **Consequence.** About 130 MB for each running thread. The runner has to read every process's output. A process that hangs is not noticed ([known limits](#known-limits)).
+- **Consequence.** About 130 MB for each running thread. The runner has to read every process's output. A process whose lease runs out, or that writes nothing for `stallMs`, is ended ([known limits](#known-limits)).

@@ -67,10 +67,10 @@ export function open({ agent, env }, args, t) {
 	return child;
 }
 
-/** Starts the AgentRunner for the agent, `maxWorkers` threads at a time. `end()` asks it to finish and resolves to its exit status; `stop()` kills it. */
-export function runner({ agent, env }, maxWorkers = 4) {
+/** Starts the AgentRunner for the agent, `maxWorkers` threads at a time, with its default stall time unless given. `end()` asks it to finish and resolves to its exit status; `stop()` kills it. */
+export function runner({ agent, env }, maxWorkers = 4, stallMs) {
 	const script = fileURLToPath(new URL("runner-process.mjs", import.meta.url));
-	const child = spawn(process.execPath, [script, String(maxWorkers)], { cwd: agent, env, stdio: ["ignore", "pipe", "pipe"] });
+	const child = spawn(process.execPath, [script, String(maxWorkers), ...(stallMs === undefined ? [] : [String(stallMs)])], { cwd: agent, env, stdio: ["ignore", "pipe", "pipe"] });
 	let output = "";
 	child.stdout.on("data", (chunk) => (output += chunk));
 	child.stderr.on("data", (chunk) => (output += chunk));

@@ -127,6 +127,7 @@ The harness prompt explains the block to the agent ([Pi package](../README.md#th
 | `acquire(threadId)`, `renew(threadId)`, `release(threadId)` | the holder | Takes the lease, keeps it by writing it again once it is 10 seconds old (false when it is no longer this process's), gives it up. |
 | `abandon(threadId, pid, failure)` | the runner | Frees a thread whose holder, the process `pid`, has ended, without waiting for its lease to run out. With `failure`, a holder that left nothing in flight costs the waiting messages an attempt. |
 | `heldElsewhere(threadId)` | `agentx run` | Whether another live process holds the thread. |
+| `expired(threadId, pid)` | the runner | Whether the lease of the process `pid` on the thread has run out: it stopped renewing it, as a blocked process does. |
 | `nextThread(except)` | the runner | The thread of the oldest message with work that nobody holds. Work is a queued message that can start a run, or a message in flight. |
 | `hasWork(threadId)` | the extension, in a worker | Whether the thread still has work. |
 | `claim(threadId, steer)`, `inFlight(threadId)` | the extension, the runner | Takes queued messages for delivery; whether a taken message is not settled yet. |
