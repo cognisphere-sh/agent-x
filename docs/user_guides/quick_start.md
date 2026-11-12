@@ -20,6 +20,8 @@ agentx run                              # the agent
 
 The first time, type `/login` in the session and pick a provider. The login is saved in `agent-x/.pi/auth.json` (gitignored), and all agents of the project share it.
 
+For Gmail, Calendar, Drive and other services, put a Composio key in `agent-x/.env` (gitignored): `COMPOSIO_API_KEY=...`. See [External services](customize_an_agent.md#external-services-composio).
+
 What you get:
 
 - `web/`: a Next.js app with `GET /api/health`.

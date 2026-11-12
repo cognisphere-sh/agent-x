@@ -54,6 +54,37 @@ Add servers to `.pi/mcp.json`:
 }
 ```
 
+A server named `composio` would replace the agent's Composio tools; give yours another name.
+
+## External services (Composio)
+
+Every agent can use [Composio](https://docs.composio.dev)'s tools to work in Gmail, Google Calendar, Drive, Sheets and Docs, Supabase, HubSpot and Telegram, through accounts of its own. Create a Composio project and a scoped API key with only **Session management** (read, write) and **Session tool execution** (write), and set it where agents run. Without it, the agent has no Composio tools and says so when a task needs them.
+
+```sh
+# agent-x/.env in the project, which git ignores
+COMPOSIO_API_KEY=...
+```
+
+Every agent of the project gets the variables of `agent-x/.env`. On a server, set them in the environment of the process that runs agentx instead; a variable there wins over the file.
+
+A new agent's `.pi/settings.json` has its Composio user id, `<agent>@<project>`. Keep it as it is: the agent's connected accounts are kept under it. To connect an account, ask the agent in `agentx run`, for example "connect my Gmail"; it gives you a link to sign in.
+
+By default an agent may use those eight services and ask for connections. Change that under `session`, in Composio's [session options](https://docs.composio.dev/docs/configuring-sessions); a key there replaces agentx's default of the same name:
+
+```json
+"agentx": {
+	"composio": {
+		"userId": "main@my-project",
+		"session": {
+			"toolkits": { "enable": ["gmail", "github"] },
+			"manage_connections": { "enable": false }
+		}
+	}
+}
+```
+
+`toolkits.enable` lists the services (Composio's slugs, such as `github` or `slack`); `manage_connections.enable: false` stops the agent from asking for connections. A change applies from each thread's next start. Details: [Composio](../architecture/agent-runtime/pi-package/composio/README.md).
+
 ## Packages
 
 Pi packages bundle extensions, skills, prompt templates and themes, from npm, git or a local path. List them in `.pi/settings.json`:

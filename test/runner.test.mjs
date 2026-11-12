@@ -512,9 +512,9 @@ test("a new agent has a knowledge folder of its own, and Pi loads what the agent
 	const { project } = setup(t);
 	const knowledge = join(project.agent, "storage", "knowledge");
 	assert.deepEqual(readdirSync(knowledge).sort(), ["extensions", "skills", "system_prompt"]);
-	// Its settings load that folder, and name no time zone.
+	// Its settings load that folder, name no time zone, and give it a Composio user id.
 	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
-	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [["../storage/knowledge/extensions"], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"] }]);
+	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [["../storage/knowledge/extensions"], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project" } }]);
 
 	// What an agent can write for itself: a skill, an extension, and a note for its system prompt.
 	mkdirSync(join(knowledge, "skills", "greet"));

@@ -19,7 +19,7 @@ What `init-project` creates: [project](project/README.md).
 | Command | Does |
 |---|---|
 | `agentx init-project [name]` | Creates `<name>/`, or fills the current directory if no name is given. The target must be missing or empty. Names `agent-x/package.json` `<project>-agent-x` and pins `agent-x` at its own version ([D14](project/README.md#d14)). Renames `gitignore` to `.gitignore`. Runs `git init`, and stops with an error if it fails ([D7](project/README.md#d7)). |
-| `agentx init-agent <name>` | Run in the project root or `agent-x/`. The name may use only letters, digits and dashes. Creates `agent-x/agents/<name>` from `templates/agent`, with `storage/workspace` and the `storage/knowledge` folders. See [Agent](../agent-runtime/agent/README.md). |
+| `agentx init-agent <name>` | Run in the project root or `agent-x/`. The name may use only letters, digits and dashes. Creates `agent-x/agents/<name>` from `templates/agent`, with `storage/workspace` and the `storage/knowledge` folders, and writes the agent's Composio user id, `<name>@<project>`, into its settings ([D38](../agent-runtime/pi-package/composio/README.md#d38)). See [Agent](../agent-runtime/agent/README.md). |
 | `agentx run [--thread-id <id>] [pi args]` | Starts the pinned Pi on the thread given, or `main`. Other arguments go to Pi. Refuses a thread another process is running. See [Agent](../agent-runtime/agent/README.md#how-agentx-run-starts-pi). |
 | `agentx send [--thread-id <id>] [--do-not-steer] [--silent] [--meta <name>=<value> ...] [--] <content>` | Puts a message on the agent's queue, on thread `main` by default ([D30](#d30)). Prints the message's id, a random 12-character string. See [Message queue](../agent-runtime/pi-package/message-queue/README.md#messages). |
 

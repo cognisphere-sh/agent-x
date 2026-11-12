@@ -4,7 +4,7 @@ What `agentx init-project [name]` creates from `templates/project/`.
 
 ```
 my-project/
-  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/; per agent: storage/, .pi/npm/, .pi/git/
+  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env; per agent: storage/, .pi/npm/, .pi/git/
   package.json          scripts only: install (both packages), dev, build (the app's), agentx (the pinned CLI)
   web/                  Next.js (App Router); its own package
     app/layout.tsx, app/page.tsx
@@ -12,6 +12,7 @@ my-project/
   agent-x/              everything of agentx in the project; its own package
     package.json        dependency agent-x (exact version)
     .pi/                Pi's agent directory, shared by all agents; gitignored, created by Pi
+    .env                keys for all agents, such as COMPOSIO_API_KEY; gitignored, written by the developer
     agents/             one folder per agent, agents/<name>/, created by init-agent
 ```
 

@@ -18,7 +18,7 @@ agentx is a meta harness around the [pi coding agent](https://github.com/earendi
 agentx (this repo, npm package `agent-x`, command `agentx`)
   CLI        init-project, init-agent, run, send (later: serve, upgrade)
   templates  copied by the CLI into a user's project
-  pi-package `src/agent-runtime/pi-package`, loaded by Pi into every agent: system prompt extension and harness prompt, message queue extension; shared skills are planned
+  pi-package `src/agent-runtime/pi-package`, loaded by Pi into every agent: system prompt extension and harness prompt, message queue extension, Composio extension (each thread's Composio session, for the agent's Composio user id); shared skills are planned
   queue      an agent's message queue (SQLite); its code is in the message queue extension's folder and is used by the CLI and the runner too
   runtime    always-running side. `src/agent-runtime`: everything that runs one agent, with the AgentRunner (built, but no command starts it yet), how Pi is started, and the pi-package. `src/coordinator-runtime` (coordinator) and the AgentManager are not built
 
@@ -33,6 +33,7 @@ my-project/ (created by init-project)
     storage/            gitignored runtime state: sessions/ (one per thread), workspace/, message_queue.db,
                         knowledge/ (what the agent learns: its own skills, extensions and prompt text, loaded through the agent's settings)
   agent-x/.pi/          Pi's agent directory for all agents: login, Pi's state; gitignored
+  agent-x/.env          keys for all agents (COMPOSIO_API_KEY); gitignored; the environment wins
 ```
 
 - An agent is a directory. Running it means starting Pi with that directory as `cwd` and the project's `agent-x/.pi` as Pi's agent directory (`PI_CODING_AGENT_DIR`).

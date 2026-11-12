@@ -52,6 +52,7 @@ The file belongs to the agent's developer. What agentx needs from Pi, `agentx ru
 | Key | Meaning |
 |---|---|
 | `systemPrompt` | Folders whose `*.md` files go into the system prompt after `.pi/system_prompt/`, resolved from `.pi/`. The template adds the agent's knowledge. |
+| `composio` | The agent's Composio user id (`userId`, written by `init-agent`) and its session policy (`session`). See [Composio](../pi-package/composio/README.md#settings). |
 | `timezone` | The time zone of the times on queue messages. `null` means the machine's time zone. An IANA name such as `Asia/Kolkata` fixes it. A name Node does not know is reported when a session starts, and the machine's zone is used. |
 
 ## System prompt
@@ -89,6 +90,7 @@ A thread is one conversation of the agent and one Pi session: the thread id is t
 | Pi CLI | from agentx's own dependency | [D1](#d1) |
 | `cwd` | the agent directory | Pi reads `.pi/` from `cwd` ([D2](#d2)) |
 | `PI_CODING_AGENT_DIR` | `agent-x/.pi` (`<agent>/../../.pi`) | keeps `~/.pi/agent` out; one per project ([D17](#d17)) |
+| the rest of the environment | agentx's own, plus the variables in `agent-x/.env` it does not already have | keys such as `COMPOSIO_API_KEY` for all agents of the project, kept out of git ([D43](#d43)) |
 | `-nc` | except for Pi subcommands | skip `AGENTS.md` and `CLAUDE.md` ([D6](#d6)) |
 | `--approve` | except for Pi subcommands | trust `.pi/` for this run, with no prompt ([D6](#d6)) |
 | `-e <agentx>/src/agent-runtime/pi-package` | except for Pi subcommands | load agentx's Pi package ([D16](../pi-package/README.md#d16)) |
@@ -164,6 +166,13 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 - **Why.** The agents share one login, and nothing comes in from the user's `~/.pi/agent`. Pi locks the files it writes there, so agents can run at the same time.
 - **Rejected.** A checked-in `agent-x/.pi/settings.json` that lists agentx's Pi package: Pi writes machine state to that file.
 
+<a id="d43"></a>
+### D43. Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins
+
+- **Decision.** Whoever starts Pi (`pi-launch.ts`, for `agentx run` and the runner) adds the variables of `agent-x/.env`, read with Node's `util.parseEnv`. A variable already in the environment keeps its value.
+- **Why.** A developer keeps keys in one file next to the project's other agent state, and a deployment sets the same variables in the environment, which then need no file.
+- **Rejected.** `web/.env.local`: it belongs to the app, which deploys apart and must not hold agents' keys. A file per agent: the keys are the project's.
+
 <a id="d35"></a>
 ### D35. What an agent learns is kept in `storage/knowledge/`, apart from its definition
 
@@ -174,6 +183,6 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 <a id="d36"></a>
 ### D36. agentx's own settings for an agent are under `agentx` in its `.pi/settings.json`
 
-- **Decision.** An `agentx` object in the agent's `.pi/settings.json` holds `timezone` and `systemPrompt`, and agentx's extensions read it with `pi.getSettings()`.
+- **Decision.** An `agentx` object in the agent's `.pi/settings.json` holds `timezone`, `systemPrompt` and `composio`, and agentx's extensions read it with `pi.getSettings()`.
 - **Why.** One settings file per agent. Pi accepts keys it does not know, keeps them, and hands them to extensions ([Pi](../pi/README.md#config-locations)).
 - **Rejected.** A separate agentx file is a second place to look.

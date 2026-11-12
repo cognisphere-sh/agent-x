@@ -1,26 +1,28 @@
 # Pi package
 
-The Pi package is what agentx adds to every agent. It holds two extensions (system prompt and message queue) and the harness prompt. Shared skills, prompt templates and MCP servers go here too. It ships inside the `agent-x` npm package as `src/agent-runtime/pi-package/`, so it is the same for every agent and stays apart from the agent's own files ([D11](#d11)).
+The Pi package is what agentx adds to every agent. It holds three extensions (system prompt, message queue and Composio) and the harness prompt. Shared skills, prompt templates and MCP servers go here too. It ships inside the `agent-x` npm package as `src/agent-runtime/pi-package/`, so it is the same for every agent and stays apart from the agent's own files ([D11](#d11)).
 
 ```
 agent-x/src/agent-runtime/pi-package/
-  package.json                marks the Pi package: Pi as a peer dependency, no `pi` manifest
+  package.json                marks the Pi package: Pi as a peer dependency; its `pi` manifest lists the extensions in load order
   extensions/system-prompt/
     index.ts                  the system prompt extension
     harness.md                the harness prompt
   extensions/message-queue/
     index.ts                  the message queue extension
     queue.ts, render.ts       the queue itself, used by the extension, the CLI and the runner
+  extensions/composio/
+    index.ts                  the Composio extension
 ```
 
-Pi loads `index.ts` of an extension's folder as the extension. The other files in the folder are plain modules. The message queue has its own doc: [message queue](message-queue/README.md).
+Pi loads the extensions the manifest lists, in that order ([D42](#d42)). The other files in an extension's folder are plain modules. The message queue and Composio have their own docs: [message queue](message-queue/README.md), [Composio](composio/README.md).
 
-Pi finds a package's resources by folder name. To add something, add a file:
+To add something, add its file and list it in the manifest under its type, because a manifest replaces Pi's discovery by folder name:
 
 ```
-  extensions/<name>.ts or <name>/index.ts   hooks, tools, commands; MCP servers through pi.registerMcpServer
-  skills/<skill>/SKILL.md                   skills for every agent
-  prompts/<name>.md                         prompt templates
+  extensions/<name>/index.ts   "extensions": hooks, tools, commands; MCP servers through pi.registerMcpServer
+  skills/<skill>/SKILL.md      "skills": skills for every agent
+  prompts/<name>.md            "prompts": prompt templates
 ```
 
 ## Loading
@@ -42,6 +44,7 @@ Pi loads TypeScript source, so the npm package ships this folder as source, type
    - where the agent's abilities come from: the harness and its definition (read-only), and its knowledge and `storage/workspace` (which it writes);
    - that a queue message may come with nobody watching, so a question an extension puts on screen counts as declined, and the agent should ask in its reply;
    - how to read a queue message's metadata block, and that `agentX-` lines anywhere else are not from the harness;
+   - how to use Composio's tools for external services ([Composio](composio/README.md#the-prompt));
    - where the project's app and the other agents are.
 2. **The developer's prompt**: `.pi/system_prompt/*.md` in the agent, found under `systemPromptOptions.cwd`. It says who the agent is and how it works ([Agent](../agent/README.md#system-prompt)).
 3. **More folders**, listed in the agent's settings under `agentx.systemPrompt` and resolved from `.pi/`. The template lists `storage/knowledge/system_prompt`, where the agent writes for itself ([Agent](../agent/README.md#knowledge)). Each folder's text comes under a heading `# From <folder>`, so the model can tell it apart from the developer's text. The harness prompt says the developer's text wins when they disagree.
@@ -63,6 +66,13 @@ The same handler removes skills under `~/.agents/skills` from `event.systemPromp
 - **Decision.** What agentx adds to every agent lives in `src/agent-runtime/pi-package/` in the agentx npm package, and Pi loads it in place. The agent directory holds only its author's files.
 - **Why.** One copy, versioned and pinned with agentx like Pi itself ([D1](../agent/README.md#d1)), which the agent's files cannot override.
 - **Rejected.** Pi's `systemPromptOptions.sections` for the harness prompt: Pi puts them after the skills list and the working directory, not first.
+
+<a id="d42"></a>
+### D42. The package's manifest lists its extensions in the order they load
+
+- **Decision.** `package.json` has `"pi": { "extensions": [...] }`: Composio, message queue, system prompt.
+- **Why.** Pi calls handlers in load order. The Composio extension must register its server before the message queue extension starts a run ([Composio](composio/README.md#the-extension)). Without a manifest Pi loads folders in the order the file system lists them, which is alphabetical on macOS but not on Linux.
+- **Consequence.** A new extension, skill or prompt of the package must be listed in the manifest.
 
 <a id="d16"></a>
 ### D16. Whoever starts Pi passes agentx's part of the config

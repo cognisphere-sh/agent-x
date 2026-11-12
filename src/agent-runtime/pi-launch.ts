@@ -1,7 +1,9 @@
 // How Pi is started for an agent. `agentx run` and the runner both start the Pi CLI with what is here, so the agent is the same under both.
 
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 
 /** The Pi CLI this harness pins: Pi's own dependency, never a global `pi` on PATH, so every agent runs the same version. */
 export const piCli = fileURLToPath(new URL("bundle/cli.js", import.meta.resolve("@earendil-works/pi-coding-agent")));
@@ -17,7 +19,12 @@ export function sessionFlags(agentRoot: string, threadId?: string): string[] {
 	return ["-nc", "--approve", "-e", piPackage, "--session-dir", join(agentRoot, "storage", "sessions"), ...(threadId === undefined ? [] : ["--session-id", threadId])];
 }
 
-/** The environment Pi runs in. Its agent directory is the project's agent-x/.pi (agent-x/agents/<name> -> agent-x/.pi): one login and one Pi state for all agents of the project. */
+/**
+ * The environment Pi runs in. Its agent directory is the project's agent-x/.pi (agent-x/agents/<name> -> agent-x/.pi): one login and one Pi state for all agents of the project.
+ * The project's gitignored agent-x/.env adds keys such as COMPOSIO_API_KEY for all its agents; a variable already in the environment wins, as a deployment sets it.
+ */
 export function piEnv(agentRoot: string): NodeJS.ProcessEnv {
-	return { ...process.env, PI_CODING_AGENT_DIR: join(agentRoot, "..", "..", ".pi") };
+	const envFile = join(agentRoot, "..", "..", ".env");
+	const fromFile = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
+	return { ...fromFile, ...process.env, PI_CODING_AGENT_DIR: join(agentRoot, "..", "..", ".pi") };
 }

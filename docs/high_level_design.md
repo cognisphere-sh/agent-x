@@ -23,7 +23,7 @@ flowchart LR
     T["templates<br/>project, agent"]
     subgraph AR["agent-runtime"]
       R["AgentRunner"]
-      CORE["Pi package<br/>system prompt and<br/>message queue extensions"]
+      CORE["Pi package<br/>system prompt, message queue<br/>and Composio extensions"]
       M["AgentManager (planned)"]
     end
     C["coordinator-runtime<br/>(planned)"]
@@ -47,6 +47,8 @@ flowchart LR
   C -.-> R
   C -.-> M
   APP -. "messages (not decided)" .-> Q
+  CX["Composio"]
+  CORE -- "a session per thread; its MCP server" --> CX
 ```
 
 | Component | Role | Doc |
@@ -55,7 +57,8 @@ flowchart LR
 | Project | The generated repo: `web/` and `agent-x/` | [cli/project](architecture/cli/project/README.md) |
 | Agent | One Pi agent's directory, and how Pi starts in it | [agent-runtime/agent](architecture/agent-runtime/agent/README.md) |
 | Agent runner | Starts a Pi process per thread with messages and ends stuck ones; no command starts it yet | [agent-runtime/agent-runner](architecture/agent-runtime/agent-runner/README.md) |
-| Pi package | What agentx adds to every agent: two extensions and the harness prompt. Shared skills are planned | [agent-runtime/pi-package](architecture/agent-runtime/pi-package/README.md) |
+| Pi package | What agentx adds to every agent: three extensions and the harness prompt. Shared skills are planned | [agent-runtime/pi-package](architecture/agent-runtime/pi-package/README.md) |
+| Composio | Each agent's access to external services through its own Composio user id, a Composio session per thread | [agent-runtime/pi-package/composio](architecture/agent-runtime/pi-package/composio/README.md) |
 | Message queue | A versioned SQLite file per agent, and the extension that delivers its messages | [agent-runtime/pi-package/message-queue](architecture/agent-runtime/pi-package/message-queue/README.md) |
 | Pi | The agent engine, and what we rely on in it | [agent-runtime/pi](architecture/agent-runtime/pi/README.md) |
 | Coordinator | Will run all agents of a project; planned | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
@@ -75,7 +78,7 @@ flowchart LR
 | `.pi/skills/`, `.pi/extensions/` | `message_queue.db` |
 | | `knowledge/`: what the agent learns |
 
-`agent-x/.pi/`, also gitignored, holds the login and Pi's state for all agents of the project.
+`agent-x/.pi/`, also gitignored, holds the login and Pi's state for all agents of the project, and `agent-x/.env` their keys, such as `COMPOSIO_API_KEY`.
 
 **Two front ends, one agent.** `agentx run` starts Pi for a person at a terminal. The `AgentRunner` starts the same Pi without a terminal, for threads with messages.
 
@@ -83,11 +86,11 @@ flowchart LR
 
 **Create a project.** `agentx init-project my-project` copies the template, pins `agent-x` in `agent-x/package.json`, and runs `git init`. `pnpm install` in the root installs `web/` and `agent-x/`.
 
-**Create an agent.** `agentx init-agent main`, in the root or `agent-x/`, creates `agent-x/agents/main`.
+**Create an agent.** `agentx init-agent main`, in the root or `agent-x/`, creates `agent-x/agents/main`, with its Composio user id in its settings.
 
 **Which agentx runs.** Inside a project, every command but `init-project` hands over to the agentx the project installed. If none is installed, it stops and says to run `pnpm install`.
 
-**Run an agent.** `agentx run` in `agent-x/agents/main` starts the pinned Pi on the thread `main`. Pi loads agentx's Pi package and the agent's `.pi/`, and saves the session in `storage/sessions`.
+**Run an agent.** `agentx run` in `agent-x/agents/main` starts the pinned Pi on the thread `main`. Pi loads agentx's Pi package and the agent's `.pi/`, and saves the session in `storage/sessions`. The Composio extension gives the thread a Composio session and its tools, or tells the model why it cannot, such as when `COMPOSIO_API_KEY` is not set.
 
 **Handle a message.**
 
@@ -107,4 +110,5 @@ Details: [Agent runner](architecture/agent-runtime/agent-runner/README.md#how-it
 | CLI: `init-project`, `init-agent`, `run`, `send` | `agentx serve`, `agentx upgrade` |
 | Templates; Pi package | Coordinator; `AgentManager` and sandboxes |
 | Queue: versioned SQLite file per agent, threads, retries | App-to-agent messages and answers |
-| `AgentRunner` (no command starts it yet) | |
+| `AgentRunner` (no command starts it yet) | Message channels to people |
+| Composio access, checked against Composio by hand | Composio connect links through channels |

@@ -13,6 +13,7 @@ The tests need no login and no network. They take about a minute and a half.
 
 - `test/queue.test.mjs` tests the queue, with several processes sharing one file.
 - `test/runner.test.mjs` creates scratch projects in the temp directory, with this checkout linked in as their agentx. It runs the built CLI, the runner and real Pi processes against `test/fake-model.mjs`, a fake model server on localhost.
+- `test/composio.test.mjs` does the same for the Composio extension, also against `test/fake-composio.mjs`, a fake Composio with its session routes and an MCP endpoint.
 
 ## Run the local build
 

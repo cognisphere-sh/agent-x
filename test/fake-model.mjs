@@ -3,19 +3,29 @@
 
 import { createServer } from "node:http";
 
-/** Starts the endpoint on a free port. `requests` collects, per request, the texts of its user messages, and `systemPrompts` its system prompt. */
+/**
+ * Starts the endpoint on a free port. `requests` collects, per request, the texts of its user messages, `systemPrompts` its system prompt, and `tools` the names of its tools.
+ * `requests` leaves out the Composio extension's note, which every test session without a Composio key gets; `notes` collects, per request, those it left out.
+ */
 export async function startFakeModel() {
 	const requests = [];
 	const systemPrompts = [];
+	const tools = [];
+	const notes = [];
+	const isNote = (text) => text.startsWith("Composio tools are unavailable in this session:");
 	const server = createServer((request, response) => {
 		let body = "";
 		request.on("data", (chunk) => (body += chunk));
 		request.on("end", () => {
-			const { messages } = JSON.parse(body);
+			const { messages, tools: declared } = JSON.parse(body);
+			tools.push((declared ?? []).map((tool) => tool.function.name));
 			const text = (message) => (typeof message.content === "string" ? message.content : (message.content ?? []).map((part) => part.text ?? "").join("\n"));
-			const last = messages.at(-1);
+			// Pi puts the note after the message it goes in with, so the fake answers the message before it.
+			const last = messages.findLast((message) => !(message.role === "user" && isNote(text(message))));
 			const lastText = text(last);
-			requests.push(messages.filter((message) => message.role === "user").map(text));
+			const users = messages.filter((message) => message.role === "user").map(text);
+			requests.push(users.filter((user) => !isNote(user)));
+			notes.push(users.filter(isNote));
 			systemPrompts.push(messages.filter((message) => message.role === "system" || message.role === "developer").map(text).join("\n"));
 
 			if (last.role === "user" && lastText.includes("[fail]")) {
@@ -39,5 +49,5 @@ export async function startFakeModel() {
 		});
 	});
 	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-	return { requests, systemPrompts, port: server.address().port, close: () => new Promise((resolve) => server.close(resolve)) };
+	return { requests, notes, systemPrompts, tools, port: server.address().port, close: () => new Promise((resolve) => server.close(resolve)) };
 }

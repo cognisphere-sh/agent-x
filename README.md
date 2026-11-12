@@ -28,10 +28,11 @@ src/
   agent-runtime/          Everything that runs one agent.
     agent-runner.ts       AgentRunner: starts a Pi process for each thread with messages. No command starts it yet.
     pi-launch.ts          How Pi is started for an agent, by `agentx run` and by the runner.
-    pi-package/           Loaded by Pi into every agent as a package: the system prompt extension with the harness prompt, and the
-                          message queue extension with the agent's message queue (SQLite), which the CLI and the runner use too.
+    pi-package/           Loaded by Pi into every agent as a package: the system prompt extension with the harness prompt, the
+                          message queue extension with the agent's message queue (SQLite), which the CLI and the runner use too,
+                          and the Composio extension, which gives each thread Composio's tools.
   coordinator-runtime/    The process that runs all agents of a project. Planned.
-test/                     Tests of the queue and, end to end, of the runner against a fake model.
+test/                     Tests of the queue and, end to end, of the runner and Composio against a fake model and a fake Composio.
 templates/
   project/                Copied by init-project.
   agent/                  Copied by init-agent into agent-x/agents/<name>.

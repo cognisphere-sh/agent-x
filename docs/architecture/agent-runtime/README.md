@@ -9,6 +9,7 @@ src/agent-runtime/
   pi-package/            what Pi loads into every agent
     extensions/system-prompt/    builds the system prompt
     extensions/message-queue/    the message queue and the extension that delivers its messages
+    extensions/composio/         gives each thread a Composio session and its tools
   agent-manager.ts       class AgentManager (planned)
 ```
 
@@ -18,6 +19,7 @@ src/agent-runtime/
 | [agent-runner](agent-runner/README.md) | `AgentRunner`: one Pi process per thread with messages, and what happens to the messages when a process ends |
 | [pi-package](pi-package/README.md) | The Pi package agentx adds to every agent: how it loads, and the system prompt extension |
 | [pi-package/message-queue](pi-package/message-queue/README.md) | The message queue and the extension that delivers its messages |
+| [pi-package/composio](pi-package/composio/README.md) | Each agent's access to external services through Composio |
 | [pi](pi/README.md) | The Pi behavior all of this relies on |
 
 ## Planned

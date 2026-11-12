@@ -21,13 +21,14 @@ The folders follow `src/`: `cli/`, `agent-runtime/` and `coordinator-runtime/`, 
 | [agent-runtime/agent](architecture/agent-runtime/agent/README.md) | An agent directory and how Pi is started in it | Built |
 | [agent-runtime/agent-runner](architecture/agent-runtime/agent-runner/README.md) | `AgentRunner`: a Pi process for each thread with messages | Built, with no command to start it |
 | [agent-runtime/pi-package](architecture/agent-runtime/pi-package/README.md) | The Pi package agentx adds to every agent: how it loads, the system prompt extension, the harness prompt | Built |
+| [agent-runtime/pi-package/composio](architecture/agent-runtime/pi-package/composio/README.md) | Each agent's access to external services through Composio: user id, a session per thread, policy, failures | Built; checked against Composio by hand |
 | [agent-runtime/pi-package/message-queue](architecture/agent-runtime/pi-package/message-queue/README.md) | Each agent's message queue and the extension that delivers its messages: messages, states, threads and leases, what the model sees | Built |
 | [agent-runtime/pi](architecture/agent-runtime/pi/README.md) | Pi behavior agentx relies on, with source references | Reference |
 | [coordinator-runtime](architecture/coordinator-runtime/README.md) | The process that will run all agents of a project | Planned |
 
 ## Decisions
 
-Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D38**.
+Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D44**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -57,6 +58,12 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | [D35](architecture/agent-runtime/agent/README.md#d35) | What an agent learns is kept in `storage/knowledge/`, apart from its definition | agent-runtime/agent |
 | [D36](architecture/agent-runtime/agent/README.md#d36) | agentx's own settings for an agent are under `agentx` in its `.pi/settings.json` | agent-runtime/agent |
 | [D37](architecture/agent-runtime/pi-package/message-queue/README.md#d37) | The queue file carries a version; migrations bring older files up | agent-runtime/pi-package/message-queue |
+| [D38](architecture/agent-runtime/pi-package/composio/README.md#d38) | Each agent has its own Composio user id, written into its settings by `init-agent` | agent-runtime/pi-package/composio |
+| [D39](architecture/agent-runtime/pi-package/composio/README.md#d39) | One Composio session per thread, recorded in the thread's Pi session | agent-runtime/pi-package/composio |
+| [D40](architecture/agent-runtime/pi-package/composio/README.md#d40) | The extension registers the session's MCP server, with direct tools, and uses no Composio SDK | agent-runtime/pi-package/composio |
+| [D41](architecture/agent-runtime/pi-package/composio/README.md#d41) | Without Composio, the session starts and the model is told why | agent-runtime/pi-package/composio |
+| [D42](architecture/agent-runtime/pi-package/README.md#d42) | The package's manifest lists its extensions in the order they load | agent-runtime/pi-package |
+| [D43](architecture/agent-runtime/agent/README.md#d43) | Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins | agent-runtime/agent |
 
 ## User guides
 
@@ -65,7 +72,7 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | [quick_start.md](user_guides/quick_start.md) | From nothing to a running app and agent |
 | [run_an_agent.md](user_guides/run_an_agent.md) | Open a thread, continue and resume sessions |
 | [send_messages.md](user_guides/send_messages.md) | Queue messages for an agent and run its queue |
-| [customize_an_agent.md](user_guides/customize_an_agent.md) | System prompt, skills, extensions, MCP servers, packages |
+| [customize_an_agent.md](user_guides/customize_an_agent.md) | System prompt, skills, extensions, MCP servers, Composio, packages |
 | [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
 
 ## Maintaining these docs

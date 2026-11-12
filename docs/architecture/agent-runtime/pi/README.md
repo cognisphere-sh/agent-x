@@ -64,7 +64,8 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - A missing local path is skipped with no warning (`resolveLocalExtensionSource`).
 - `-e <folder>` loads a package folder with all its resources, in temporary scope. A missing path is an error (`resolveExtensionSources` in `src/core/package-manager.ts`, `src/core/resource-loader.ts`).
 - `--session-dir <dir>` sets where sessions are stored and looked up, like `sessionDir` in settings.
-- A folder with no `pi` manifest in a `package.json` is read by convention: `extensions/`, `skills/`, `prompts/` (prompt templates), `themes/`.
+- A folder with no `pi` manifest in a `package.json` is read by convention: `extensions/`, `skills/`, `prompts/` (prompt templates), `themes/`. Pi takes the folder's entries in the order the file system lists them, unsorted (`collectAutoExtensionEntries` in `src/core/package-manager.ts`).
+- A `pi` manifest with resource fields (`extensions`, `skills`, `prompts`, `themes`) replaces that: Pi loads only what it lists, in the listed order, and no other type (`collectPackageResources`).
 - A package carries extensions, skills, prompt templates and themes. MCP servers are not a package resource; an extension adds them with `pi.registerMcpServer` (`docs/mcp.md`).
 - Project-scope npm and git packages are installed into `<cwd>/.pi/npm` and `<cwd>/.pi/git` (`getNpmInstallRoot`, `getGitInstallRoot` in `src/core/package-manager.ts`).
 - Pi warns when a package's `package.json` lists a host package, such as `@earendil-works/pi-coding-agent`, in `dependencies` (`src/core/resource-loader.ts`).
@@ -75,6 +76,20 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
 - The `input` event can return `continue`, `transform` or `handled` (skip the model).
 - `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
+- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it.
+- `pi.sendMessage(message, { deliverAs: "nextTurn" })` keeps a custom message for the next prompt and starts nothing. Custom messages reach the model (`docs/extensions.md`).
+- `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
+
+## MCP servers
+
+Sources: `docs/mcp.md`, `docs/extensions.md`.
+
+- `pi.registerMcpServer(name, config)` takes the shape of an `mcpServers` entry in `mcp.json`. Registered during `session_start`, a server connects at once. A registration is not saved, so an extension registers again on every load. A server of the same name in `mcp.json` takes precedence.
+- `env` and `headers` values can name environment variables as `${NAME}`. Pi fills them in when it connects, also for a registered server.
+- `exposure` decides how tools reach the model. `codemode`, the default: not declared; scripts in the `codemode` tool call them. `deferred`: found and loaded with `tool_search`. `direct`: declared like a built-in tool. Pi lists a server's instructions and `description` in the system prompt only for servers whose tools are not declared.
+- The first prompt waits up to 10 seconds for servers with `direct` tools, so their tools are in its request.
+- An MCP request times out after 60 seconds unless the server's `timeout` is raised.
+- Pi takes an HTTP server without an `Authorization` header for one that may sign in with OAuth, so a server that refuses its key shows in `/mcp` as needing sign-in.
 
 ## RPC mode
 
