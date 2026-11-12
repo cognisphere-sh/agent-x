@@ -6,6 +6,7 @@ Work that is planned or being thought about, one Markdown file per item in this 
 |---|---|---|---|
 | [Queue the messages typed into a terminal session](queue-terminal-input.md) | feature | none | idea |
 | [Give each agent its own access to external services through Composio](composio-access.md) | feature | none | idea |
+| [Connect agents to people through message channels](message-channels.md) | feature | none | idea |
 
 ## A todo file
 
