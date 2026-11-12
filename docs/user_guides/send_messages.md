@@ -19,7 +19,7 @@ Nothing runs threads in the background yet: `agentx serve` is planned.
 
 ```sh
 agentx send "Summarize storage/workspace/notes.md"
-agentx send --thread-id support --from ops --ticket 42 "The export is failing again"
+agentx send --thread-id support --meta from=ops --meta ticket=42 "The export is failing again"
 ```
 
 | Option | Effect |
@@ -27,9 +27,9 @@ agentx send --thread-id support --from ops --ticket 42 "The export is failing ag
 | `--thread-id <id>` | The conversation the message belongs to. Default `main`. Letters, digits, `.`, `_` and `-`. |
 | `--do-not-steer` | If the thread is busy, wait for its next run instead of joining the one in progress. |
 | `--silent` | Do not start a run for this message; it goes along with the next message of the thread. |
-| `--<name> <value>` | Any other option is a fact for the agent about the message, such as `--from ops`. |
+| `--meta <name>=<value>` | A fact for the agent about the message, such as `--meta from=ops`. Repeat it for more. |
 
-The command confirms what it queued, with the thread and the facts it understood. Put `--` before content that starts with dashes.
+Any other option is an error. The command confirms what it queued, with the thread and the facts. Put `--` before content that starts with dashes.
 
 A thread is one conversation, kept in one Pi session. Messages of the same thread are handled in the order they were sent, except that a `--do-not-steer` message can be overtaken by a later one that joins the run in progress. Different threads run side by side.
 

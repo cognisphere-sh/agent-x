@@ -16,8 +16,8 @@ const usage = `usage:
 in an agent directory:
   agentx run [--thread-id <id>] [pi args]
                                start Pi on a thread, "main" unless told otherwise
-  agentx send [--thread-id <id>] [--do-not-steer] [--silent] [--<name> <value> ...] <content>
-                               queue a message for a thread, "main" unless told otherwise; other options are metadata`;
+  agentx send [--thread-id <id>] [--do-not-steer] [--silent] [--meta <name>=<value> ...] <content>
+                               queue a message for a thread, "main" unless told otherwise, with facts for the agent`;
 
 const [command, name] = process.argv.slice(2);
 const args = process.argv.slice(3);

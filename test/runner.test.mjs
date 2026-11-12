@@ -382,9 +382,9 @@ test("a session that loses its thread to another process lets go of it, and the 
 	assert.deepEqual(sessions(project).map((session) => session.id), ["main"]);
 });
 
-test("agentx send takes the thread, its flags, and every other option as metadata", async (t) => {
+test("agentx send takes the thread, its flags, and metadata as --meta name=value", async (t) => {
 	const { project, message } = setup(t);
-	const sent = await agentx(project, ["send", "--thread-id", "support", "--from", "ops", "--ticket=42", "--do-not-steer", "--silent", "two", "words"]);
+	const sent = await agentx(project, ["send", "--thread-id", "support", "--meta", "from=ops", "--meta=ticket=42", "--do-not-steer", "--silent", "two", "words"]);
 	assert.equal(sent.status, 0, sent.stderr);
 	assert.equal(sent.stdout.trim(), 'Queued message 1 on thread "support" with from=ops, ticket=42.');
 	const { threadId, content, metadata, doNotSteer, isSilent, status } = message(1);
@@ -394,12 +394,14 @@ test("agentx send takes the thread, its flags, and every other option as metadat
 	assert.equal((await agentx(project, ["send", "--", "--not-an-option", "and", "--more", "words"])).status, 0);
 	assert.deepEqual([message(2).threadId, message(2).content, message(2).metadata], ["main", "--not-an-option and --more words", {}]);
 
-	// A misspelt flag reads as metadata and takes the content as its value: nothing is queued.
+	// A misspelt flag is an error, and so is metadata without a name, without a value, or with a name the harness keeps for itself.
 	const typo = await agentx(project, ["send", "--do-not-ster", "hello"]);
 	assert.equal(typo.status, 1);
-	assert.match(typo.stderr, /Nothing to send/);
-	assert.equal((await agentx(project, ["send", "--from"])).status, 1);
-	assert.equal((await agentx(project, ["send", "--agentX-MessageId", "9", "hello"])).status, 1);
+	assert.match(typo.stderr, /Unknown option '--do-not-ster'/);
+	assert.match((await agentx(project, ["send", "--meta", "from", "hello"])).stderr, /needs a name and a value/);
+	assert.equal((await agentx(project, ["send", "--meta", "=ops", "hello"])).status, 1);
+	assert.equal((await agentx(project, ["send", "--meta", "agentX-MessageId=9", "hello"])).status, 1);
+	assert.match((await agentx(project, ["send", "--silent"])).stderr, /Nothing to send/);
 	assert.equal(messages(project.agent).length, 2);
 });
 

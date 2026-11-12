@@ -56,7 +56,7 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | [D27](architecture/agent-runtime/pi-package/message-queue/README.md#d27) | All queue code lives in the message queue extension's folder | agent-runtime/pi-package/message-queue |
 | [D28](architecture/agent-runtime/pi-package/message-queue/README.md#d28) | Only a session that stays open takes messages from the queue | agent-runtime/pi-package/message-queue |
 | [D29](architecture/agent-runtime/agent/README.md#d29) | The agent's prompt, skills and extensions live in `.pi/` | agent-runtime/agent |
-| [D30](architecture/cli/README.md#d30) | `agentx send` reads every option it does not know as metadata | cli |
+| [D30](architecture/cli/README.md#d30) | `agentx send` takes metadata as repeated `--meta name=value` | cli |
 | [D31](architecture/agent-runtime/agent-runner/README.md#d31) | The runner starts a Pi process per thread, in RPC mode | agent-runtime/agent-runner |
 | [D32](architecture/agent-runtime/pi-package/message-queue/README.md#d32) | The runner's sessions are workers, marked with `--agentx-worker` | agent-runtime/pi-package/message-queue |
 | [D33](architecture/agent-runtime/pi-package/message-queue/README.md#d33) | The runner takes a thread from its dead Pi process by process id | agent-runtime/pi-package/message-queue |
