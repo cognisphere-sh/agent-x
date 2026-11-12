@@ -4,13 +4,8 @@ import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from "no
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-// dist/cli/copy-template.js -> the package root.
-const harnessRoot = fileURLToPath(new URL("../..", import.meta.url));
-
-/** The harness's own package.json, for its name and version. */
-export const harnessPackage: { name: string; version: string } = JSON.parse(
-	readFileSync(join(harnessRoot, "package.json"), "utf8"),
-);
+/** The harness's package root: dist/cli/copy-template.js -> two levels up. */
+export const harnessRoot = fileURLToPath(new URL("../..", import.meta.url));
 
 /** Sets `fields` in the package.json of `dir`. */
 export function setPackageFields(dir: string, fields: Record<string, unknown>): void {

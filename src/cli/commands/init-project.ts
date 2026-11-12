@@ -1,9 +1,9 @@
 // `agentx init-project <name>`: creates a project with a Next.js app in web/ and agents in agent-x/agents/.
 
 import { spawnSync } from "node:child_process";
-import { renameSync } from "node:fs";
+import { readFileSync, renameSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { copyTemplate, harnessPackage, setPackageFields } from "../copy-template.js";
+import { copyTemplate, harnessRoot, setPackageFields } from "../copy-template.js";
 
 /** Creates `<cwd>/<name>` (`.` for `cwd` itself) from templates/project, pins this harness as a dependency of its agent-x/ and makes it a git repo. */
 export function initProject(name: string, cwd: string): void {
@@ -11,10 +11,11 @@ export function initProject(name: string, cwd: string): void {
 	const projectName = basename(root);
 	copyTemplate("project", root);
 	setPackageFields(root, { name: projectName });
-	// A dependency, not a dev dependency: a production install of agent-x/ must keep it.
+	// The version of this harness, pinned exactly. A dependency, not a dev dependency: a production install of agent-x/ must keep it.
+	const { version } = JSON.parse(readFileSync(join(harnessRoot, "package.json"), "utf8"));
 	setPackageFields(join(root, "agent-x"), {
 		name: `${projectName}-agent-x`,
-		dependencies: { [harnessPackage.name]: harnessPackage.version },
+		dependencies: { "agent-x": version },
 	});
 	// npm drops .gitignore files from published packages, so the template ships it as `gitignore`.
 	renameSync(join(root, "gitignore"), join(root, ".gitignore"));

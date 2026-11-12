@@ -9,7 +9,7 @@ What `init-project` creates has its own doc: [project](project/README.md).
 | File | Role |
 |---|---|
 | `src/cli/agentx.ts` | Entry point. Reads `argv`, dispatches to a command, prints usage or the error message and exits 1 on failure. |
-| `src/cli/copy-template.ts` | `copyTemplate(template, target)`: copies `templates/<template>` to a missing or empty directory. Exports `setPackageFields(dir, fields)`, which sets fields in a `package.json`, and `harnessPackage` (agentx's own name and version). |
+| `src/cli/copy-template.ts` | `copyTemplate(template, target)`: copies `templates/<template>` to a missing or empty directory. Exports `setPackageFields(dir, fields)`, which sets fields in a `package.json`, and `harnessRoot` (agentx's package root, where `init-project` reads the version it pins). |
 | `src/cli/pinned-cli.ts` | `pinnedCli(cwd)`: the CLI entry file of the agentx the project around `cwd` pins; undefined outside a project or when it is the running copy, and an error when the project has not installed it ([D15](#d15)). Exports `pinsAgentx(dir)`, whether a package lists `agent-x` in its dependencies, which `agentRoot` uses too. |
 | `src/cli/agent-root.ts` | `agentRoot(dir)`: returns `dir` if it is an agent directory, and throws otherwise. |
 | `src/cli/commands/<name>.ts` | One file per command. Exports one function. |
