@@ -1,9 +1,0 @@
-{
-	"name": "agent",
-	"private": true,
-	"scripts": {
-		"pi": "agentx run",
-		"continue": "agentx run -c",
-		"resume": "agentx run -r"
-	}
-}

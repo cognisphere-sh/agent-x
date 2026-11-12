@@ -19,9 +19,8 @@ export function setPackageFields(dir: string, fields: Record<string, unknown>): 
 	writeFileSync(packagePath, `${JSON.stringify({ ...packageJson, ...fields }, null, "\t")}\n`);
 }
 
-/** Copies `templates/<template>` to `target`, which must be missing or empty, and sets `packageFields` in its package.json. */
-export function copyTemplate(template: string, target: string, packageFields: Record<string, unknown>): void {
+/** Copies `templates/<template>` to `target`, which must be missing or empty. */
+export function copyTemplate(template: string, target: string): void {
 	if (existsSync(target) && readdirSync(target).length > 0) throw new Error(`${target} already exists and is not empty`);
 	cpSync(join(harnessRoot, "templates", template), target, { recursive: true });
-	setPackageFields(target, packageFields);
 }

@@ -9,7 +9,8 @@ import { copyTemplate, harnessPackage, setPackageFields } from "../copy-template
 export function initProject(name: string, cwd: string): void {
 	const root = resolve(cwd, name);
 	const projectName = basename(root);
-	copyTemplate("project", root, { name: projectName });
+	copyTemplate("project", root);
+	setPackageFields(root, { name: projectName });
 	// A dependency, not a dev dependency: a production install of agent-x/ must keep it.
 	setPackageFields(join(root, "agent-x"), {
 		name: `${projectName}-agent-x`,
@@ -24,8 +25,8 @@ export function initProject(name: string, cwd: string): void {
 
 Next:${name === "." ? "" : `
   cd ${name}`}
-  npm install                              # installs agent-x/ and web/
-  npx ${harnessPackage.name} init-agent main
-  npm run dev                              # the app
-  cd agent-x/agents/main && npm run pi     # the agent`);
+  pnpm install                             # installs agent-x/ and web/
+  agentx init-agent main
+  pnpm dev                                 # the app
+  cd agent-x/agents/main && agentx run     # the agent`);
 }

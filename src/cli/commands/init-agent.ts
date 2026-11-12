@@ -9,11 +9,13 @@ export function initAgent(name: string, cwd: string): void {
 	const agents = [join(cwd, "agent-x", "agents"), join(cwd, "agents")].find((dir) => existsSync(dir));
 	if (!agents) throw new Error(`No agent-x/agents/ or agents/ in ${cwd}. Run this in a project's root or its agent-x/ directory.`);
 	const root = join(agents, name);
-	// Workspace package names in agent-x/ must be unique.
-	copyTemplate("agent", root, { name: `agent-${name}` });
-	mkdirSync(join(root, "storage", "workspace"), { recursive: true });
+	copyTemplate("agent", root);
+	// storage/ is not checked in. These are the folders the agent writes to: its working files, and what it learns and keeps.
+	for (const dir of ["workspace", "knowledge/skills", "knowledge/extensions", "knowledge/system_prompt"]) {
+		mkdirSync(join(root, "storage", dir), { recursive: true });
+	}
 	console.log(`Created ${root}
 
 Next:
-  cd ${root} && npm run pi`);
+  cd ${root} && agentx run`);
 }

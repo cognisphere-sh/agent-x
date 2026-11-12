@@ -13,8 +13,9 @@
 		"templates"
 	],
 	"scripts": {
-		"build": "tsc",
-		"check": "tsc --noEmit"
+		"build": "tsc && node -e \"require('node:fs').chmodSync('dist/cli/agentx.js', 0o755)\"",
+		"check": "tsc --noEmit",
+		"test": "pnpm run build && node --test \"test/*.test.mjs\""
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "1.5.2"
@@ -24,6 +25,6 @@
 		"typescript": "7.0.2"
 	},
 	"engines": {
-		"node": ">=22"
+		"node": ">=22.19.0"
 	}
 }

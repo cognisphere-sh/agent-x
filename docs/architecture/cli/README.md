@@ -1,29 +1,37 @@
 # CLI
 
-The `agentx` command, published in the npm package `agent-x` ([D12](#d12)). Built from `src/cli/` into `dist/cli/`; `package.json` `bin` points `agentx` and `agent-x` at `dist/cli/agentx.js`.
+The `agentx` command, published in the npm package `agent-x` ([D12](#d12)). Built from `src/cli/` into `dist/cli/`; `package.json` `bin` points `agentx` and `agent-x` at `dist/cli/agentx.js`. The build marks that file executable, which `tsc` does not do and a linked checkout needs: its `agentx` command is a link to the file itself.
+
+What `init-project` creates has its own doc: [project](project/README.md).
 
 ## Files
 
 | File | Role |
 |---|---|
 | `src/cli/agentx.ts` | Entry point. Reads `argv`, dispatches to a command, prints usage or the error message and exits 1 on failure. |
-| `src/cli/copy-template.ts` | `copyTemplate(template, target, packageFields)`: copies `templates/<template>` to a missing or empty directory and merges fields into its `package.json`. Exports `setPackageFields(dir, fields)` and `harnessPackage` (agentx's own name and version). |
+| `src/cli/copy-template.ts` | `copyTemplate(template, target)`: copies `templates/<template>` to a missing or empty directory. Exports `setPackageFields(dir, fields)`, which sets fields in a `package.json`, and `harnessPackage` (agentx's own name and version). |
 | `src/cli/pinned-cli.ts` | `pinnedCli(cwd)`: the CLI entry file of the agentx the project around `cwd` pins, or undefined ([D15](#d15)). |
+| `src/cli/agent-root.ts` | `agentRoot(dir)`: returns `dir` if it is an agent directory, and throws otherwise. |
 | `src/cli/commands/<name>.ts` | One file per command. Exports one function. |
 
 ## Commands
 
 | Command | Function | Does |
 |---|---|---|
-| `agentx init-project [name]` | `initProject(name, cwd)` | Creates `<cwd>/<name>` from `templates/project`, or fills the current directory when no name is given and names the project after it. The target must be missing or empty. Names `agent-x/package.json` `<project>-agent-x` and pins `agent-x` as its dependency ([D14](../project/README.md#d14)), renames `gitignore` to `.gitignore` ([D9](../project/README.md#d9)), runs `git init` ([D7](../project/README.md#d7)). See [project.md](../project/README.md). |
-| `agentx init-agent <name>` | `initAgent(name, cwd)` | Run in the project root or in `agent-x/`: uses `agent-x/agents/` or `agents/` of the current directory, whichever exists. Creates `agent-x/agents/<name>` from `templates/agent`, names the package `agent-<name>`, creates `storage/workspace`. See [Agent](../agent/README.md). |
-| `agentx run [pi args]` | `runAgent(agentRoot, piArgs)` | Starts the pinned Pi CLI in the current directory, which must be an agent, with agentx's Pi package and the agent's session folder. See [Agent](../agent/README.md#how-agentx-run-starts-pi). |
+| `agentx init-project [name]` | `initProject(name, cwd)` | Creates `<cwd>/<name>` from `templates/project`, or fills the current directory when no name is given and names the project after it. The target must be missing or empty. Names `agent-x/package.json` `<project>-agent-x` and pins `agent-x` as its dependency ([D14](project/README.md#d14)), renames `gitignore` to `.gitignore` ([D9](project/README.md#d9)), runs `git init` ([D7](project/README.md#d7)). See [project.md](project/README.md). |
+| `agentx init-agent <name>` | `initAgent(name, cwd)` | Run in the project root or in `agent-x/`: uses `agent-x/agents/` or `agents/` of the current directory, whichever exists. Creates `agent-x/agents/<name>` from `templates/agent`, with `storage/workspace` and the folders of `storage/knowledge`. See [Agent](../agent-runtime/agent/README.md). |
+| `agentx run [--thread-id <id>] [pi args]` | `runAgent(agentRoot, args)` | Starts the pinned Pi CLI with agentx's Pi package and the agent's session folder, on the thread named, or `main`. Every other argument goes to Pi. Refuses a thread another process is running. See [Agent](../agent-runtime/agent/README.md#how-agentx-run-starts-pi). |
+| `agentx send [--thread-id <id>] [--do-not-steer] [--silent] [--<name> <value> ...] [--] <content>` | `sendMessage(agentRoot, args)` | Puts a message on the agent's queue, for the thread `main` unless told otherwise, and says what it queued. Every option that is not one of the three is metadata ([D30](#d30)). See [Message queue](../agent-runtime/pi-package/message-queue/README.md#messages). |
 
-Planned: `upgrade`, `serve` (starts the [runtime](../runtime/README.md)).
+`run` and `send` act on the agent directory they are run in. `agentRoot` checks that the current directory is one: a folder in `agents/` of a package that lists `agent-x` in its dependencies. That is the layout the rest of agentx relies on, for Pi's shared directory and for finding the pinned CLI. A command run anywhere else stops before it creates a `storage/` there.
+
+agentx's own flags are spelled like Pi's, in lower case with dashes. Where agentx and Pi have different words for one thing, the flag uses agentx's: `--thread-id`, which `run` hands to Pi as `--session-id` ([D21](../agent-runtime/pi-package/message-queue/README.md#d21)).
+
+Planned: `serve`, which will start the [coordinator](../coordinator-runtime/README.md), and `upgrade`.
 
 ## Where the command comes from
 
-The pinned agentx is installed in the project's `agent-x/node_modules`. Inside `agent-x/` and its agents, npm and pnpm find the `agentx` bin there. In the project root, `npx agent-x` finds a global link or the registry copy, and the root script `agentx` (`node agent-x/node_modules/agent-x/dist/cli/agentx.js`) runs the pinned copy directly.
+The pinned agentx is installed in the project's `agent-x/node_modules`. `pnpm exec agentx` finds its command there from `agent-x/` and from an agent, and the root script `agentx` (`node agent-x/node_modules/agent-x/dist/cli/agentx.js`, run as `pnpm agentx <command>`) starts it from the project root. A global `agentx` (`pnpm add -g agent-x`) and `pnpm dlx agent-x` are other copies.
 
 Whichever copy starts, the pinned one does the work ([D15](#d15)). Before dispatching, `agentx.ts` calls `pinnedCli(cwd)`, which looks for `agent-x/node_modules/agent-x/dist/cli/agentx.js` and `node_modules/agent-x/dist/cli/agentx.js` in `cwd` and each parent directory. If it finds a copy that is not the running one (compared by real path, so a linked checkout counts as the same), the CLI runs that copy with the same arguments and `cwd` and exits with its status. `init-project` is never handed over: it creates a new project.
 
@@ -31,29 +39,38 @@ Whichever copy starts, the pinned one does the work ([D15](#d15)). Before dispat
 
 - Commands throw `Error` with a user-facing message; only `agentx.ts` prints and exits.
 - Commands take the directory they act on as a parameter instead of reading `process.cwd()`, so the runtime can call them later.
-- `run` is called through npm scripts in the agent's `package.json`. npm and pnpm run scripts with the package directory as `cwd`, which is why `process.cwd()` is the agent directory.
+- `run` and `send` are started in the agent directory, so `process.cwd()` is the agent.
+- `run` and `send` read their own flags by hand, because both pass on what they do not know: `run` to Pi, `send` as metadata.
 
 ## Adding a command
 
 1. Add `src/cli/commands/<name>.ts` exporting one function.
 2. Add a branch and a usage line in `src/cli/agentx.ts`.
-3. Add a row above and, if it involved a choice, an entry under "Decisions" in the README of the component it affects.
-
+3. Add a row above and, if it involved a choice, an entry under "Decisions" in the README of the module it affects.
 
 ## Decisions
 
 <a id="d12"></a>
-### D12. npm package `agent-x`; the command stays `agentx`
+### D12. npm package `agent-x`; the command is `agentx`
 
-- **Problem.** `agentx` on npm is an unrelated package, so `npx agentx` outside a project would run someone else's code.
-- **Decision.** The package is `agent-x`. Its command is `agentx`, with `agent-x` as a second name for it, so `npx agent-x <command>` works from the registry and from a global link (`npm link`), where npx looks for a bin named like the package. Projects depend on `agent-x`; agents run `agentx run`.
-- **Why.** It matches the repository name and is free on npm. Keeping the command avoids renaming every script and doc.
-- **Rejected.** `agentx-pi`: the package is a harness that uses Pi, not a Pi package; only its `src/agent-runtime/pi-package` is one. A scope such as `@cognisphere/agentx`: needs an npm org and a longer first command.
+- **Problem.** `agentx` on npm is an unrelated package, so `pnpm dlx agentx` or `npx agentx` outside a project would run someone else's code.
+- **Decision.** The package is `agent-x`. Its command is `agentx`, with `agent-x` as a second name, so `pnpm dlx agent-x <command>` and `npx agent-x <command>` work from the registry: both look for a bin named like the package.
+- **Why.** `agent-x` matches the repository name and is free on npm; `agentx` is the short name to type.
+- **Rejected.** `agentx-pi`: the package is a harness that uses Pi, not a Pi package. A scope such as `@cognisphere/agentx`: needs an npm org and a longer first command.
 
 <a id="d15"></a>
 ### D15. Any `agentx` hands over to the copy the project pins
 
-- **Problem.** The pinned agentx is in `agent-x/node_modules` ([D14](../project/README.md#d14)), so `npx agent-x` in the project root runs a global link or the latest registry version. `run` would then start that copy's Pi, breaking "one pinned Pi", and `init-agent` would copy another version's template.
+- **Problem.** The pinned agentx is in `agent-x/node_modules` ([D14](project/README.md#d14)), so a global `agentx`, or `pnpm dlx agent-x`, started in the project is another copy: a global install, or the latest registry version. `run` would start that copy's Pi, and `init-agent` would copy another version's template.
 - **Decision.** The CLI looks for the project's pinned copy from the current directory upward and, if it is a different copy, runs it with the same arguments. `init-project` is excluded.
 - **Why.** Commands behave the same from the root, `agent-x/` and an agent, without the user knowing where the install is.
-- **Rejected.** Only the root script `npm run agentx -- <command>`: correct, but a bare `npx agent-x` stays silently unpinned. A root dev dependency on `agent-x`: a second pin that can drift from the one in `agent-x/package.json`.
+- **Rejected.** Only the root script `pnpm agentx <command>`: correct, but a global `agentx` stays silently unpinned. A root dev dependency on `agent-x`: a second pin that can drift from the one in `agent-x/package.json`.
+
+<a id="d30"></a>
+### D30. `agentx send` reads every option it does not know as metadata
+
+- **Problem.** A sender attaches facts to a message, such as who it is from. Their names are the sender's, so the command cannot list them.
+- **Decision.** `--thread-id`, `--do-not-steer` and `--silent` are agentx's. Any other `--name value` or `--name=value` becomes the metadata entry `name`, with the value as text. `--` ends the options, and what is left is the content.
+- **Why.** Metadata reads like the options of the command: `agentx send --from ops --ticket 42 "..."`.
+- **Rejected.** `--metadata '<json>'`: JSON quoted inside a shell argument, for values that are almost always plain text.
+- **Consequence.** A misspelt flag is taken as metadata and takes the next word as its value. When that word was the content, the command stops with "Nothing to send". Otherwise the message is queued with the stray entry, which the confirmation line shows.
