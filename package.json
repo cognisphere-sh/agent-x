@@ -7,8 +7,10 @@
 		"agentx": "dist/cli/agentx.js",
 		"agent-x": "dist/cli/agentx.js"
 	},
+	"types": "dist/agent-runtime/functions/contracts.d.ts",
 	"files": [
-		"src/agent-runtime/pi-package",
+		"src/agent-runtime/pi/pi-package",
+		"src/agent-runtime/events/queue.ts",
 		"dist",
 		"templates"
 	],

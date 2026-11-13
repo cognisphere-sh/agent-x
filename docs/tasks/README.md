@@ -13,7 +13,6 @@ A task that is dropped is deleted, together with its row below.
 |---|---|---|---|
 | [Queue the messages typed into a terminal session](backlog/queue-terminal-input.md) | feature | none | idea |
 | [Connect agents to people through message channels](backlog/message-channels.md) | feature | none | idea |
-| [Run an agent with `agentx run`, its event router and its workflows](backlog/agentx-run.md) | feature | none | planned |
 | [Run every agent of a project with `agentx serve`](backlog/coordinator.md) | feature | none | planned |
 | [Bring Composio trigger events to agents](backlog/coordinator-webhooks.md) | feature | none | idea |
 | [Make each agent's Composio triggers](backlog/composio-triggers.md) | feature | none | idea |
@@ -23,6 +22,7 @@ A task that is dropped is deleted, together with its row below.
 | Task | Type | Done |
 |---|---|---|
 | [Give each agent its own access to external services through Composio](done/1-composio-access.md) | feature | 2026-11-13 |
+| [Run an agent with `agentx run`, its event router and its workflows](done/2-agentx-run.md) | feature | 2026-11-14 |
 
 ## A task file
 
@@ -36,7 +36,7 @@ description: One sentence: what changes and why.
 type: feature                     # feature | bug | chore | docs | research
 priority: none                    # none | low | medium | high
 status: idea                      # idea | planned | in-progress | blocked | done
-modules: [agent-runtime/pi-package/message-queue]   # folders under docs/architecture/ it touches
+modules: [agent-runtime/events]   # folders under docs/architecture/ it touches
 created: 2026-11-12
 updated: 2026-11-12
 ---

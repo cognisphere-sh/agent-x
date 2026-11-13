@@ -20,7 +20,7 @@ npm drops `.gitignore` from published packages, so the template ships `gitignore
 
 ## Packages
 
-`web/` and `agent-x/` are separate packages ([D14](#d14)). Each has its own `package.json`, lockfile and `node_modules`, installs alone and deploys alone. They run as separate processes: the app is the Next.js server, and agents run under `agentx run` (later also the [agent runner](../../agent-runtime/agent-runner/README.md)).
+`web/` and `agent-x/` are separate packages ([D14](#d14)). Each has its own `package.json`, lockfile and `node_modules`, installs alone and deploys alone. They run as separate processes: the app is the Next.js server, and each agent runs under `agentx run` ([agent supervisor](../../agent-runtime/supervisor/README.md)), or under `agentx chat` for a person at a terminal.
 
 `agent-x/` depends on the `agent-x` npm package at an exact version. It is a dependency, not a dev dependency, so a production install keeps it. Agents are plain folders, not packages. `pnpm exec agentx` finds the bin in `agent-x/node_modules/.bin` from `agent-x/` and from every agent.
 
@@ -36,7 +36,7 @@ The root has scripts only:
 
 ## Not decided yet
 
-- How the app talks to agents. Any process on the machine can put messages on an agent's [queue](../../agent-runtime/pi-package/message-queue/README.md), and `agentx send` does so from a shell. What the app calls, and how answers get back, is open ([Agent runtime](../../agent-runtime/README.md#open-questions)).
+- How the app talks to agents. `agentx event send` puts events on an agent's [queue](../../agent-runtime/events/README.md) from a shell, and the planned coordinator will add events from other services. What the app calls, and how answers get back, is open ([Agent runtime](../../agent-runtime/README.md#open-questions)).
 
 ## Decisions
 

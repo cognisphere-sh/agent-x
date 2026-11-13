@@ -1,15 +1,15 @@
-// Tests of the queue module alone, against the built code: message states, thread leases, and several processes on one file.
+// Tests of the queue module alone, against the built code: event states, thread leases, and several processes on one file.
 
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { Queue } from "../dist/agent-runtime/pi-package/extensions/message-queue/queue.js";
-import { messageIds, render } from "../dist/agent-runtime/pi-package/extensions/message-queue/render.js";
-import { messages, onQueueFile } from "./project.mjs";
+import { Queue } from "../dist/agent-runtime/events/queue.js";
+import { eventIds, render } from "../dist/agent-runtime/pi/pi-package/extensions/event-queue/render.js";
+import { events, onQueueFile } from "./project.mjs";
 
 const agentRoot = () => mkdtempSync(join(tmpdir(), "agentx-queue-"));
 const helper = fileURLToPath(new URL("queue-process.mjs", import.meta.url));
@@ -26,13 +26,15 @@ function otherProcess(root, ...args) {
 	return { child, done, exited, firstLine };
 }
 
-test("enqueue checks the thread id, the metadata names and the text, and gives each message a random id", () => {
+test("enqueue checks the thread id, the metadata names and the text, and gives each event a random id", () => {
 	const queue = new Queue(agentRoot());
 	const first = queue.enqueue({ threadId: "main", content: "a" });
 	const second = queue.enqueue({ threadId: "support.ticket-42_x", content: "b", metadata: { from: "ops" } });
 	assert.match(first, /^[\w-]{12}$/);
+	// None starts with "-", which a command line would take for an option.
+	for (let n = 0; n < 200; n++) assert.doesNotMatch(queue.enqueue({ threadId: "main", content: "x" }), /^-/);
 	assert.notEqual(first, second);
-	for (const threadId of ["", "-main", "main-", "a b", "a/b", "x".repeat(201), undefined]) assert.throws(() => queue.enqueue({ threadId, content: "c" }), /Invalid thread id/);
+	for (const threadId of ["", "-main", "main-", "a b", "a/b", "x".repeat(201), null]) assert.throws(() => queue.enqueue({ threadId, content: "c" }), /Invalid thread id/);
 	for (const name of ["agentX-MessageId", "AGENTX-foo", "a:b", "a\nb", "a\u2028b"]) assert.throws(() => queue.enqueue({ threadId: "main", content: "c", metadata: { [name]: 1 } }), /Invalid metadata name/);
 	// The tag of the harness's block, which would let a sender fake one or end one early.
 	for (const message of [{ content: 'see <agentx-metadata id="x">' }, { content: "c", metadata: { note: "</AgentX-Metadata>" } }, { content: "c", metadata: { list: ["<agentx-metadata"] } }]) {
@@ -41,39 +43,18 @@ test("enqueue checks the thread id, the metadata names and the text, and gives e
 	queue.close();
 });
 
-test("a queue file from before versions is migrated once, keeps its order, and gives every message an id", async () => {
+test("several processes that open a new queue file at once all find its tables", async () => {
 	const root = agentRoot();
-	mkdirSync(join(root, "storage"));
-	// The tables as the first agentx wrote them, at version 0, with one waiting message and one in flight.
-	onQueueFile(
-		root,
-		`CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, thread_id TEXT NOT NULL, content TEXT NOT NULL, metadata TEXT NOT NULL, do_not_steer INTEGER NOT NULL,
-			is_silent INTEGER NOT NULL, status TEXT NOT NULL, attempts INTEGER NOT NULL, error TEXT, entry_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
-		 CREATE INDEX messages_by_status ON messages (status, thread_id);
-		 CREATE TABLE threads (thread_id TEXT PRIMARY KEY, owner TEXT NOT NULL, heartbeat_at INTEGER NOT NULL);
-		 INSERT INTO messages VALUES (1, 'main', 'old one', '{}', 0, 0, 'in_flight', 1, NULL, NULL, 1, 1), (2, 'main', 'old two', '{}', 0, 0, 'queued', 0, NULL, NULL, 2, 2);`,
-	);
-	// Every process opens the file at once after an upgrade.
 	const codes = await Promise.all(Array.from({ length: 6 }, () => otherProcess(root, "open").exited));
 	assert.deepEqual(codes, Array(6).fill(0));
-	assert.equal(onQueueFile(root, (db) => db.prepare("PRAGMA user_version").get().user_version), 2);
 	const queue = new Queue(root);
-	queue.enqueue({ threadId: "main", content: "new" });
-	const all = messages(root);
-	assert.deepEqual(all.map((message) => [message.content, message.status]), [["old one", "in_flight"], ["old two", "queued"], ["new", "queued"]]);
-	assert.equal(new Set(all.map((message) => message.id)).size, 3);
-	assert.ok(all.every((message) => /^[\w-]{12}$/.test(message.id)));
+	queue.enqueue({ threadId: "main", content: "first", key: "k" });
+	queue.enqueue({ threadId: "main", content: "again", key: "k" });
+	assert.deepEqual(events(root).map((event) => event.content), ["first"]);
 	queue.close();
 });
 
-test("a queue file of a newer version is refused, so old code does not write to tables it does not know", () => {
-	const root = agentRoot();
-	new Queue(root).close();
-	onQueueFile(root, "PRAGMA user_version = 99");
-	assert.throws(() => new Queue(root), /is at queue version 99, and this agentx knows versions up to 2/);
-});
-
-test("messages are taken oldest first, by the holder of the thread only", () => {
+test("events are taken oldest first, by the holder of the thread only", () => {
 	const root = agentRoot();
 	const queue = new Queue(root);
 	for (const content of ["one", "two", "three"]) queue.enqueue({ threadId: "main", content });
@@ -84,11 +65,11 @@ test("messages are taken oldest first, by the holder of the thread only", () => 
 	assert.deepEqual(taken.map((message) => [message.content, message.status, message.attempts]), [["one", "in_flight", 1], ["two", "in_flight", 1], ["three", "in_flight", 1]]);
 	assert.deepEqual(queue.claim("main"), [], "a message is taken once");
 	assert.equal(queue.inFlight("main"), true);
-	assert.equal(messages(root).find((message) => message.threadId === "other").status, "queued");
+	assert.equal(events(root).find((message) => message.threadId === "other").status, "queued");
 	queue.close();
 });
 
-test("a silent message starts no run and a do-not-steer message enters none", () => {
+test("a silent event starts no run and a do-not-steer event enters none", () => {
 	const queue = new Queue(agentRoot());
 	queue.acquire("main");
 	queue.enqueue({ threadId: "main", content: "quiet", isSilent: true });
@@ -106,7 +87,7 @@ test("settling: done for what Pi saved, three attempts before failed, and an abo
 	const queue = new Queue(root);
 	queue.acquire("main");
 	const [saved, failing, unsaved] = ["saved", "failing", "unsaved"].map((content) => queue.enqueue({ threadId: "main", content }));
-	const message = (id) => messages(root).find((found) => found.id === id);
+	const message = (id) => events(root).find((found) => found.id === id);
 
 	queue.claim("main");
 	queue.delivered("main", [saved], "entry-1");
@@ -136,7 +117,7 @@ test("settling: done for what Pi saved, three attempts before failed, and an abo
 	queue.close();
 });
 
-test("a message is rendered with the harness's metadata, then the sender's, then its content", () => {
+test("an event is rendered with the harness's metadata, then the sender's, then its content", () => {
 	const queue = new Queue(agentRoot());
 	queue.acquire("main");
 	queue.enqueue({ threadId: "main", content: "Hello\nthere", metadata: { from: "ops", tags: ["a", "b"], note: "two\nlines" } });
@@ -151,14 +132,14 @@ test("a message is rendered with the harness's metadata, then the sender's, then
 		),
 	);
 	assert.match(text, /agentX-IsRetry: false\nagentX-IsSilent: true\n<\/agentx-metadata>\nFYI$/);
-	assert.deepEqual(messageIds(text), claimed.map((message) => message.id));
-	assert.deepEqual(messageIds("a line of content:\nagentX-MessageId: 7\n"), [], "only the opening tag of a block names a message");
+	assert.deepEqual(eventIds(text), claimed.map((message) => message.id));
+	assert.deepEqual(eventIds("a line of content:\nagentX-MessageId: 7\n"), [], "only the opening tag of a block names a message");
 	queue.fail("main", "again");
 	assert.match(render(queue.claim("main")), /agentX-IsRetry: true\nagentX-RetryAttempt: 1\n/);
 	queue.close();
 });
 
-test("the time on a message is shown in the time zone that is asked for", () => {
+test("the time on an event is shown in the time zone that is asked for", () => {
 	const queue = new Queue(agentRoot());
 	queue.acquire("main");
 	queue.enqueue({ threadId: "main", content: "hello" });
@@ -180,7 +161,7 @@ test("one process holds a thread; another takes it over when the holder is gone"
 	assert.equal(queue.acquire("main"), false);
 	assert.deepEqual(queue.claim("main"), []);
 	assert.equal(queue.nextThread(), "idle", "a held thread is not offered");
-	assert.equal(messages(root)[0].status, "in_flight");
+	assert.equal(events(root)[0].status, "in_flight");
 
 	holder.child.kill("SIGKILL");
 	await holder.done;
@@ -189,7 +170,7 @@ test("one process holds a thread; another takes it over when the holder is gone"
 	assert.equal(queue.nextThread(), "main", "the oldest message with work comes first, also when it was left in flight");
 	assert.equal(queue.nextThread(["main"]), "idle");
 	assert.equal(queue.acquire("main"), true);
-	const [message] = messages(root);
+	const [message] = events(root);
 	assert.deepEqual([message.status, message.attempts, message.error], ["queued", 1, "The process running this thread stopped."]);
 	assert.equal(queue.claim("main")[0].attempts, 2);
 	queue.close();
@@ -203,7 +184,7 @@ test("a thread is freed at once from a holder that was seen to end, by its proce
 	await holder.firstLine;
 	holder.child.kill("SIGKILL");
 	await holder.done;
-	const state = () => [messages(root)[0].status, messages(root)[0].attempts, messages(root)[0].error];
+	const state = () => [events(root)[0].status, events(root)[0].attempts, events(root)[0].error];
 
 	assert.equal(queue.acquire("main"), false, "the lease has not run out");
 	queue.abandon("main", Math.trunc(holder.child.pid / 10));
@@ -212,13 +193,13 @@ test("a thread is freed at once from a holder that was seen to end, by its proce
 	assert.equal(queue.heldElsewhere("main"), false);
 	assert.deepEqual(state(), ["queued", 1, "The process running this thread stopped."]);
 
-	// A holder that failed and left nothing in flight could not run the thread: the waiting messages lose an attempt.
+	// A holder that failed and left nothing in flight could not run the thread: the waiting events lose an attempt.
 	queue.abandon("main", undefined, "Pi could not start.");
 	assert.deepEqual(state(), ["queued", 2, "Pi could not start."]);
 	queue.close();
 });
 
-test("eight processes working one queue take every message exactly once", async () => {
+test("eight processes working one queue take every event exactly once", async () => {
 	const root = agentRoot();
 	const queue = new Queue(root);
 	const threads = 40;
@@ -227,7 +208,7 @@ test("eight processes working one queue take every message exactly once", async 
 	const taken = (await Promise.all(Array.from({ length: 8 }, () => otherProcess(root, "work").done))).flat().flatMap((line) => line.ids);
 	assert.equal(taken.length, threads * perThread);
 	assert.equal(new Set(taken).size, threads * perThread);
-	assert.deepEqual([...new Set(messages(root).map((message) => message.status))], ["done"]);
+	assert.deepEqual([...new Set(events(root).map((message) => message.status))], ["done"]);
 	assert.equal(queue.nextThread(), undefined);
 	queue.close();
 });
@@ -256,7 +237,7 @@ test("a holder writes its lease again only once it is 10 s old, and learns when 
 	queue.close();
 });
 
-test("taking messages renews the lease, so a holder that was paused keeps its thread once it works again", async () => {
+test("taking events renews the lease, so a holder that was paused keeps its thread once it works again", async () => {
 	const root = agentRoot();
 	const queue = new Queue(root);
 	queue.acquire("main");
@@ -267,5 +248,65 @@ test("taking messages renews the lease, so a holder that was paused keeps its th
 	assert.equal((await other.firstLine).acquired, false);
 	other.child.kill("SIGKILL");
 	await other.exited;
+	queue.close();
+});
+
+test("an event with a key is added once, and an event without a thread waits for the router, which routes it once", () => {
+	const root = agentRoot();
+	const queue = new Queue(root);
+	const first = queue.enqueue({ content: "from a webhook", key: "delivery-1", metadata: { source: "composio" } });
+	assert.equal(queue.enqueue({ content: "the same delivery again", key: "delivery-1" }), first);
+	assert.equal(events(root).length, 1);
+	assert.equal(queue.nextThread(), undefined, "no thread has work: the event has no thread yet");
+
+	assert.equal(queue.nextUnrouted().id, first);
+	assert.equal(queue.route(first, "support", { source: "composio", note: "routed" }), true);
+	assert.equal(queue.route(first, "main", {}), false, "an event is routed once");
+	assert.equal(queue.nextUnrouted(), undefined);
+	const [routed] = events(root);
+	assert.deepEqual([routed.threadId, routed.status, routed.metadata], ["support", "queued", { source: "composio", note: "routed" }]);
+	assert.equal(queue.nextThread(), "support");
+	assert.throws(() => queue.route(queue.enqueue({ content: "x" }), "no good", {}), /Invalid thread id/);
+	queue.close();
+});
+
+test("workflow threads are offered apart from Pi threads, run one event at a time, and fail rather than retry when taken over without retries", async () => {
+	const root = agentRoot();
+	const queue = new Queue(root);
+	const [one, two] = ["one", "two"].map((content) => queue.enqueue({ threadId: "workflow.w", content }));
+	queue.enqueue({ threadId: "main", content: "for Pi" });
+	assert.equal(queue.nextThread(), "main");
+	assert.equal(queue.nextThread([], true), "workflow.w");
+
+	assert.equal(queue.acquire("workflow.w"), true);
+	assert.equal(queue.claimOldest("workflow.w").id, one);
+	assert.deepEqual(events(root).map((event) => event.status), ["in_flight", "queued", "queued"], "one event at a time");
+	queue.finish("workflow.w", one);
+	queue.release("workflow.w");
+	assert.equal(events(root)[0].status, "done");
+
+	// A process that dies during a run leaves its event in flight; whoever takes the thread over fails it, with no second attempt.
+	const holder = otherProcess(root, "hold-one", "workflow.w");
+	assert.deepEqual((await holder.firstLine).id, two);
+	holder.child.kill("SIGKILL");
+	await holder.done;
+	onQueueFile(root);
+	assert.deepEqual(queue.inFlightIds("workflow.w"), [two]);
+	// A workflow's runner takes the thread over without retries.
+	assert.equal(queue.acquire("workflow.w", false), true);
+	const cutOff = events(root).find((event) => event.id === two);
+	assert.deepEqual([cutOff.status, cutOff.attempts, cutOff.error], ["failed", 1, "The process running this thread stopped."]);
+	queue.close();
+});
+
+test("an audit finds events by id, by key and by a metadata value, newest first in a list", () => {
+	const queue = new Queue(agentRoot());
+	const run = queue.enqueue({ threadId: "workflow.w", content: "{}" });
+	const sent = queue.enqueue({ threadId: "main", content: "from the run", metadata: { source: "workflow.w" } }, { "agentX-WorkflowRun": run });
+	const report = queue.enqueue({ threadId: "main", content: "it failed", key: `failed:${run}` });
+	assert.deepEqual(queue.list(2).map((event) => event.id), [report, sent]);
+	assert.equal(queue.get(sent).content, "from the run");
+	assert.equal(queue.byKey(`failed:${run}`).id, report);
+	assert.deepEqual(queue.withMetadata("agentX-WorkflowRun", run).map((event) => event.id), [sent]);
 	queue.close();
 });

@@ -5,14 +5,14 @@ description: The coordinator makes the Composio triggers declared for an agent, 
 type: feature
 priority: none
 status: idea
-modules: [coordinator-runtime, agent-runtime/agent, agent-runtime/pi-package/composio]
+modules: [coordinator-runtime, agent-runtime/agent, agent-runtime/pi/pi-package/composio]
 created: 2026-11-13
 updated: 2026-11-13
 ---
 
 # Make each agent's Composio triggers
 
-A Composio trigger makes Composio send an event when something happens in a service, such as a new email in a mailbox. [Webhooks](coordinator-webhooks.md), which this plan needs first, bring each event to the agent whose Composio user id the trigger was made for, and the agent's [router](agentx-run.md) decides what it becomes. This task makes the triggers.
+A Composio trigger makes Composio send an event when something happens in a service, such as a new email in a mailbox. [Webhooks](coordinator-webhooks.md), which this plan needs first, bring each event to the agent whose Composio user id the trigger was made for, and the agent's [router](../../architecture/agent-runtime/events/README.md) decides what it becomes. This task makes the triggers.
 
 ## How triggers are made
 
@@ -27,9 +27,9 @@ The same check, with a full project key and Gmail's `GMAIL_NEW_GMAIL_MESSAGE`:
 
 A Composio key belongs to the whole Composio project, and no key can be limited to one user id. A trigger call names any user id, or only a trigger id, and the key accepts it. All agents of a project share one Composio project, each with its own user id. So a key that can make triggers can make, change or delete any agent's triggers, or send their events elsewhere with `egress_url`.
 
-- The agents' key, `COMPOSIO_API_KEY`, is a scoped key for sessions only ([Composio](../../architecture/agent-runtime/pi-package/composio/README.md)), so it cannot touch triggers. It must stay that way: a full project key there would give every agent every trigger and the webhook's secret, and a sandbox would not help.
-- Pick: **the coordinator holds a key with Triggers**, `COMPOSIO_COORDINATOR_API_KEY`, and always sends the agent's own user id. It reads the key as it reads the webhook secret. The `AgentManager` leaves it out of the agent's process, and `piEnv` leaves it out of what Pi, the router and workflows get from `agent-x/.env`.
-- Rejected: tools in agentx's Pi package that call the trigger API with that key. The key would be in the agent's process by design, so even sandboxes could not keep it from the agent. agentx would also own tools over Composio's REST API, which [D40](../../architecture/agent-runtime/pi-package/composio/README.md#d40) avoids.
+- The agents' key, `COMPOSIO_API_KEY`, is a scoped key for sessions only ([Composio](../../architecture/agent-runtime/pi/pi-package/composio/README.md)), so it cannot touch triggers. It must stay that way: a full project key there would give every agent every trigger and the webhook's secret, and a sandbox would not help.
+- Pick: **the coordinator holds a key with Triggers**, `COMPOSIO_COORDINATOR_API_KEY`, and always sends the agent's own user id. It reads the key as it reads the webhook secret. The `AgentManager` leaves it out of the agent's process, and `agentEnv` leaves it out of what Pi, the router and workflows get from `agent-x/.env`.
+- Rejected: tools in agentx's Pi package that call the trigger API with that key. The key would be in the agent's process by design, so even sandboxes could not keep it from the agent. agentx would also own tools over Composio's REST API, which [D40](../../architecture/agent-runtime/pi/pi-package/composio/README.md#d40) avoids.
 - Rejected: a command the developer runs to make triggers. The key would move to laptops, and nothing would turn triggers back on after a person reconnects an account.
 
 ## Who declares an agent's triggers

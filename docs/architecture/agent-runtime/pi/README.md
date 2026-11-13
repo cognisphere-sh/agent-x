@@ -1,109 +1,142 @@
-# Pi integration
+# Pi
 
-What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Paths are in the Pi repo, under `packages/coding-agent/`. Check them again when upgrading Pi.
+Starting Pi for an agent (`pi/pi-launch.ts`), and the Pi runner, which runs an agent's Pi threads. What Pi loads into every agent: [Pi package](pi-package/README.md). What agentx relies on in Pi: [Pi reference](pi-reference/README.md).
 
-## Config locations
+## The Pi runner
 
-- Pi reads config from two places only: its agent directory (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) and `<cwd>/.pi/`. It does not look for `.pi/` in parent directories (`src/core/settings-manager.ts`).
-- In a trusted project, Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` with no settings (`docs/configuration.md`). Its own project prompt is one file, `.pi/SYSTEM.md`. It has no prompt folder.
-- The agent directory holds config and state together: `settings.json`, `auth.json`, `trust.json`, `models.json`, `bin/`.
-- In `.pi/settings.json`, resource paths resolve from `.pi/`. `sessionDir` resolves from `cwd` and is read before trust is checked. `extensions` and `skills` list more folders to load. A folder that does not exist is skipped with no warning.
-- Pi accepts settings keys it does not know. It gives no warning, keeps them when it rewrites a settings file, and returns them from `pi.getSettings()`. That call gives an extension the user and project settings merged (`persistScopedSettings` in `src/core/settings-manager.ts`, `docs/extensions.md`).
+The `PiRunner` (`src/agent-runtime/pi/pi-runner.ts`) is one of the three loops of `agentx run` ([agent supervisor](../supervisor/README.md)). It serves the Pi threads of one agent's queue: it starts a Pi process for each thread that has events. Workflow threads, `workflow.<name>`, are the [workflow runner](../workflows/README.md)'s. A session opened with `agentx chat` also works its thread's queue ([Agent](../agent/README.md#threads)).
 
-## Project trust
+### How it works
 
-- Resources in `.pi/` load only when the project is trusted. Interactive mode asks. Print mode (`-p`) skips an untrusted `.pi/` without a word.
-- `--approve` trusts the project for one run. Saved choices are in `<agentDir>/trust.json`.
-- `pi mcp ...` checks only saved trust and ignores `--approve` (`src/extensions/mcp/cli.ts`).
+The runner only starts Pi processes ([D31](#d31)). The [event queue extension](pi-package/event-queue/README.md#the-event-queue-extension) in each session takes, delivers and settles the events ([D23](#d23)), and ends the session when its thread has no work left ([D32](pi-package/event-queue/README.md#d32)).
 
-## Skills discovery
+```mermaid
+sequenceDiagram
+  participant S as sender
+  participant Q as event_queue.db
+  participant R as PiRunner
+  participant P as Pi process (thread t)
+  S->>Q: enqueue (thread t)
+  R->>Q: nextThread() = t
+  R->>P: start Pi (RPC mode, worker)
+  P->>Q: acquire(t), claim(t)
+  P->>P: run: prompt, model, tools
+  S->>Q: enqueue (thread t)
+  P->>Q: claim(t, steer) at the end of a turn
+  P->>Q: delivered, settle
+  P->>Q: hasWork(t) = false, release(t)
+  P-->>R: exit 0
+```
 
-- `~/.agents/skills` loads for every project. Only user-level settings can exclude it.
-- Each skill has a `filePath`. A `before_agent_start` handler can replace `event.systemPromptOptions.skills`, the list Pi adds to the prompt.
-- `.agents/skills` in `cwd` and its parents, up to the git root, loads when the project is trusted (`src/core/package-manager.ts`).
-- `-ns` drops all skills, the agent's own too.
+`new PiRunner(agentRoot, maxThreads, stallMs = 10 minutes)` serves one agent. `agentx run` takes both from the agent's settings ([agent supervisor](../supervisor/README.md#settings)). Once a second it:
 
-## CLI
+1. **Ends stuck workers.** A worker whose lease has run out has a blocked main thread; it gets `SIGKILL`. A worker that wrote nothing on stdout for `stallMs` is stuck, for example on a tool that never returns; it gets `SIGTERM` once. Set `stallSeconds` above the longest a tool may run without output.
+2. **Starts threads.** While fewer than `maxThreads` run, it takes the Pi thread of the oldest waiting [event](../events/README.md#events). It skips threads it already runs, threads a live process holds, workflow threads, and events that have no thread yet.
 
-- Subcommands (`install`, `remove`, `update`, `list`, `config`, `mcp`, `auth`) count only as the first argument. `uninstall` is another name for `remove` (`src/package-manager-cli.ts`).
-- `auth login <provider>` and `auth logout <provider>` write `auth.json` in the agent directory without starting a session.
-- `-nc` skips `AGENTS.md` and `CLAUDE.md`. `-c` continues the latest session. `-r` opens a picker. `--session <id>` accepts part of an id.
-- With `-p`, Pi reads stdin until it closes.
-- The CLI entry is `dist/bundle/cli.js` in the package.
+A worker is the pinned Pi CLI in RPC mode, which stays open until its input closes. The runner sends it no prompts. The session takes the thread's lease, works its events, and ends itself when the thread has no [work](../events/README.md#the-queue-class) left.
 
-## Sessions
+**Stopping.** `stop()` starts no more threads; `run()` returns when the running ones end, which can take long under steady traffic. `stop(true)` also sends `SIGTERM` to every worker: each run is aborted and its events wait for the next start, with the attempt counted. `agentx run` calls `stop()` on the first `SIGINT` or `SIGTERM` and `stop(true)` on the second. If `agentx run` dies, its Pi processes end with it, because their input closes.
 
-- `--session-id <id>` opens the session with exactly that id among those stored for the working directory, or creates it. It cannot be combined with `--session`, `-c` or `-r`. Given twice, the last one counts (`createSessionManager` in `src/main.ts`).
-- A session id must match `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$` (`assertValidSessionId` in `src/core/session-manager.ts`). The id is part of the file name, `<time>_<id>.jsonl`, which limits its length.
-- Pi finds a session by its id among those stored for the working directory, and compares the directory as text (`SessionManager.findById` in `src/core/session-manager.ts`). A path through a symlink does not match the resolved path. The CLI always uses the resolved path as its working directory, so `agentx run` and the runner, which both start the CLI, find the same session file.
-- Pi writes the session file when the first message is added. A session that never got a message leaves no file.
-- Nothing locks a session file. Two processes that open the same session each append from their own last entry, which forks the conversation. A reader takes the last line as the current end.
-- Replacing the session in a running Pi (`/new`, `/resume`, `/fork`, `/clone`, `/import`) sends `session_shutdown`, with a reason, to the extensions. Pi then runs every extension's factory again and sends `session_start` to the new instances. `/reload` does the same and also loads the extension's module again. `/tree` keeps the session.
-- After a session is replaced or closed, the old `ctx` and `pi` objects throw when used. A timer an extension started keeps the process alive, and an uncaught throw from it ends the process. So an extension must stop its timers on `session_shutdown`.
+**Health.** `lastRound()` says when the loop last looked at the queue. The supervisor writes the agent's heartbeat only while that was in the last 30 seconds.
 
-## Delivering messages
+### Starting a thread's Pi process
 
-- `pi.sendUserMessage(text, { deliverAs: "steer" })` queues the text as a steer while a run is in progress, and starts a run when Pi is idle. It returns nothing at runtime. A failure (no model, no login, compaction in progress) goes to the host's extension-error listener, not to the caller (`sendUserMessage` in the extension actions of `src/core/agent-session.ts`).
-- A steer goes in before the next model call: after the tool calls of the current turn, and also after a final turn with no tool calls, which then is not the last. A steer sent from a `turn_end` handler is delivered in the same run.
-- Each steer becomes its own user message, by default one per turn (`steeringMode`).
-- After a provider error, Pi still delivers pending steers, in a retry or in a new run. After an abort, pending steers stay with Pi and go in with the next prompt. `session.clearQueue()` drops them. Extensions can only ask `ctx.hasPendingMessages()`.
-- When a run is aborted during a tool call, the turn still ends with `turn_end` and outcome `completed`. The outcome comes from the assistant message, which asked for the tool. By then `ctx.signal.aborted` is true. A steer sent at that point is saved to the session, and the model call that would read it is aborted.
-- Before a run starts, Pi prepares the prompt: `input` handlers, template expansion, the model and login check. During that time `ctx.isIdle()` is still true and nothing is pending (`_preparePrompt` in `src/core/agent-session.ts`).
-- Closing or replacing a session first aborts a run in progress. So the extensions see `agent_settled` with `aborted: true` before `session_shutdown` (`src/core/agent-session-runtime.ts`).
-- An extension can abort the run in progress with `ctx.abort()`, from any handler or timer (`ExtensionContext` in `src/core/extensions/types.ts`). A tool call in progress stops, and no further model call is made.
-- Pi adds a user message to the session after the message's `message_end` event. By the next `context` event, which comes before every model call, the entry exists. No event carries a user message's entry id.
-- `agent_before_settle` carries `outcome` (`completed` or `error`, after Pi's own retries). It is not sent for an aborted run. `agent_settled` carries `aborted` and comes last.
-- `pi.sendUserMessage()` does not run extension commands, and does not expand templates and skills unless told to. What it sends goes through `input` handlers, and a handler that returns `handled` drops the input with no run.
-- With no usable model set, `ctx.model` is not empty. It is a placeholder for a model of a provider Pi does not know, so `ctx.modelRegistry.getProvider(ctx.model.provider)` is undefined. `ctx.modelRegistry.getApiKeyAndHeaders(model)` tells whether Pi can log in for a model, and why not when it cannot. Before a run, Pi itself refuses a prompt when there is no model, or no login for its provider (`_preparePrompt` in `src/core/agent-session.ts`).
-- `ctx.mode` is `tui`, `rpc`, `json` or `print`: the mode the host bound the extensions with, and `print` if the host does not say. `ctx.hasUI` is true when the host bound a UI, as the terminal UI and RPC mode do (`setUIContext` in `src/core/extensions/runner.ts`).
-- Print mode writes the run's last assistant message to stdout. It binds no shutdown handler, so `ctx.shutdown()` does nothing. Pi sets the exit code only when the run failed, and keeps a code an extension has set (`src/modes/print-mode.ts`, `src/main.ts`).
+The runner starts Pi as `agentx chat --thread-id <thread> --mode rpc` does. Both take the CLI and flags from `pi/pi-launch.ts` and the environment from `agent-env.ts` ([below](#how-agentx-chat-starts-pi)).
 
-## Packages
+| The runner passes | Why |
+|---|---|
+| `cwd` = the agent directory, `PI_CODING_AGENT_DIR` = `agent-x/.pi` | as `agentx chat` |
+| `-nc`, `--approve`, `-e <pi-package>`, `--session-dir` | as `agentx chat` |
+| `--session-id <thread>` | the thread is the session ([D21](#d21)) |
+| `--mode rpc` | Pi stays open and reports on stdout, with no terminal UI |
+| `--agentx-worker` | tells the event queue extension that nobody watches the session ([D32](pi-package/event-queue/README.md#d32)) |
 
-- `packages` in `.pi/settings.json` accepts a local path, resolved from `<cwd>/.pi/` (`getBaseDirForScope` in `src/core/package-manager.ts`). Pi loads it where it is, with no copy or install.
-- A missing local path is skipped with no warning (`resolveLocalExtensionSource`).
-- `-e <folder>` loads a package folder with all its resources, in temporary scope. A missing path is an error (`resolveExtensionSources` in `src/core/package-manager.ts`, `src/core/resource-loader.ts`).
-- `--session-dir <dir>` sets where sessions are stored and looked up, like `sessionDir` in settings.
-- A folder with no `pi` manifest in a `package.json` is read by convention: `extensions/`, `skills/`, `prompts/` (prompt templates), `themes/`. Pi takes the folder's entries in the order the file system lists them, unsorted (`collectAutoExtensionEntries` in `src/core/package-manager.ts`).
-- A `pi` manifest with resource fields (`extensions`, `skills`, `prompts`, `themes`) replaces that: Pi loads only what it lists, in the listed order, and no other type (`collectPackageResources`).
-- A package carries extensions, skills, prompt templates and themes. MCP servers are not a package resource; an extension adds them with `pi.registerMcpServer` (`docs/mcp.md`).
-- Project-scope npm and git packages are installed into `<cwd>/.pi/npm` and `<cwd>/.pi/git` (`getNpmInstallRoot`, `getGitInstallRoot` in `src/core/package-manager.ts`).
-- Pi warns when a package's `package.json` lists a host package, such as `@earendil-works/pi-coding-agent`, in `dependencies` (`src/core/resource-loader.ts`).
+Each Pi process gets a process group of its own ([D46](../supervisor/README.md#d46)), so a terminal's Ctrl-C reaches only `agentx run`, which lets the run finish. Pi itself ends at once on `SIGINT`.
 
-## Extensions
+While it runs ([Pi](pi-reference/README.md#rpc-mode)), the runner:
 
-- `before_agent_start` can set `event.systemPromptOptions.customPrompt`. It replaces the default preamble and drops the default tool list, rules and Pi docs sections. Pi still adds the skills list and `cwd` (`src/core/system-prompt.ts`). Tool schemas still reach the model.
-- `event.systemPromptOptions.sections` holds custom sections, each wrapped in `<name>` tags. They stay when `customPrompt` is set. When a section changes, Pi sends the model a patch of the changed sections instead of the whole prompt (`diffSystemPromptSections` in `src/core/agent-session.ts`).
-- An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
-- The `input` event can return `continue`, `transform` or `handled` (skip the model).
-- `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
-- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's own extensions, then its built-in ones such as MCP support.
-- Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
-- Every session start (start-up, `/new`, `/resume`, `/fork`, `/reload`) emits `session_start`, then, once all its handlers have finished, `resources_discover`, if any extension handles it. Nothing follows at start-up: the mode then waits for input (RPC, terminal) or sends its prompt (print) (`bindExtensions` in `src/core/agent-session.ts`). `session_start` fires whether or not a message comes.
-- `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
+- **Reads stdout**, one JSON record per line. Pi waits when nobody reads.
+- **Cancels every extension request.** Nobody is there, and an unanswered dialog would block its run forever. The extension gets `false` or no value. The runner logs each cancelled dialog's title, so an extension that keeps asking can be found. The harness prompt tells the model that such questions count as declined. In RPC mode `ctx.hasUI` is true, so extensions still ask.
+- **Logs** extension notifications and extension errors with the thread id. It ignores other records.
+- **Keeps stdin open**, because Pi closes its session when stdin closes.
+- **Keeps the end of stderr**, which says why Pi stopped.
 
-## MCP servers
+The runner holds no lease. The Pi process holds the thread from the moment its session starts ([Event queue](../events/README.md#threads-and-leases)).
 
-Sources: `docs/mcp.md`, `docs/extensions.md`.
+### When a Pi process ends
 
-- `pi.registerMcpServer(name, config)` takes the shape of an `mcpServers` entry in `mcp.json`. Registered during `session_start`, a server connects at once. A registration is not saved, so an extension registers again on every load. A server of the same name in `mcp.json` takes precedence.
-- `env` and `headers` values can name environment variables as `${NAME}`. Pi fills them in when it connects, also for a registered server.
-- `exposure` decides how tools reach the model. `codemode`, the default: not declared; scripts in the `codemode` tool call them. `deferred`: found and loaded with `tool_search`. `direct`: declared like a built-in tool. Pi lists a server's instructions and `description` in the system prompt only for servers whose tools are not declared.
-- The first prompt waits up to 10 seconds for servers with `direct` tools, so their tools are in its request.
-- An MCP request times out after 60 seconds unless the server's `timeout` is raised.
-- Pi takes an HTTP server without an `Authorization` header for one that may sign in with OAuth, so a server that refuses its key shows in `/mcp` as needing sign-in.
+| What happens | Who updates the events |
+|---|---|
+| The session ends itself because its thread has no work left; exit 0 | The extension has settled them. The runner does nothing. |
+| The session lost its lease to another process; exit 0 | It aborts its run at once. The new holder took its events in flight and gives them another attempt. The runner does nothing. |
+| Pi is told to stop: `SIGTERM` or `SIGHUP`, or stdin closes because `agentx run` died | Pi closes the session and aborts the run; the extension ends the attempt. A runner that is still there also puts back anything left in flight, with no extra attempt counted. |
+| Pi dies by itself (crash, out of memory, killed), cannot start, or hangs and gets `SIGKILL` | The runner, at once. Events left in flight lose their attempt. If none were in flight, the waiting events lose one, with Pi's error as the reason. |
+| Everything dies, as when the machine does | The next process to take the thread, once the lease runs out: 110 to 120 s later |
 
-## RPC mode
+A lost attempt puts an event back on the queue, or marks it `failed` after the third ([D24](pi-package/event-queue/README.md#d24)).
 
-What the runner relies on when it starts Pi for a thread ([Agent runner](../agent-runner/README.md#starting-a-threads-pi-process)). Sources: `docs/rpc.md`, `docs/rpc-extension-ui.md`, `src/modes/rpc/rpc-mode.ts`.
+- The runner frees the thread at once by its dead process's id, instead of waiting up to two minutes for the lease to run out ([D33](#d33)).
+- Waiting events lose an attempt so that a broken agent fails its events after three starts, instead of restarting every second forever.
+- Exit codes 143 and 129 (Pi closing after `SIGTERM` or `SIGHUP`), and the signals `SIGTERM`, `SIGHUP` and `SIGINT`, count as told to stop.
+- The reason is the last stderr line like `Error: ...` or `TypeError: ...`, or else the signal or exit code. The runner logs it.
 
-- `--mode rpc` keeps Pi running with no terminal. It takes the other flags as usual. It reads commands from its input and writes records to its output: one JSON object per line, each ended by a line feed only. Pi waits when nobody reads its output. Diagnostics go to its error output.
-- A session works with no command sent: its extensions start and their timers run. The runner needs nothing more, because the message queue extension delivers the messages.
-- Pi closes the session and exits when its input closes (exit code 0), and on `SIGTERM` (143) or `SIGHUP` (129). It does not handle `SIGINT`, which ends it at once. Closing the session first aborts a run in progress ([delivering messages](#delivering-messages)).
-- `ctx.shutdown()` ends Pi at once when the session is idle and no command is being handled, also when called during `session_start`. During a run it takes effect when the run has settled. The exit code is 0.
-- An extension's dialog (`ctx.ui.select`, `confirm`, `input`, `editor`) is written to the output as an `extension_ui_request`. It waits for an `extension_ui_response` with the same id on the input, with no time limit unless the extension set one. If the answer has `cancelled: true`, `confirm` returns false and the others return nothing. Pi ignores an answer whose id it is not waiting for (`handleInputLine` in `src/modes/rpc/rpc-mode.ts`).
-- `ctx.ui.notify` is written the same way and expects no answer. An error in an extension's handler is written as an `extension_error` record.
-- When Pi cannot start a session without a terminal, for example because an extension does not load, it writes a line starting with `Error:` to its error output and exits with code 1 (`src/main.ts`). A missing model does not stop it: the session starts with the placeholder model.
-- Opening a session id that does not exist yet writes a warning to the error output, so not every line there is a failure.
-- `RpcClient`, Pi's own client for this mode, cannot answer a dialog, starts `node` from `PATH`, and kills the process one second after asking it to stop (`src/modes/rpc/rpc-client.ts`).
-- Measured with the bundled CLI (`dist/bundle/cli.js`, which uses Node's compile cache): ready in 0.15 to 0.2 seconds, and about 130 MB while idle.
+## How `agentx chat` starts Pi
+
+`src/cli/commands/chat.ts` runs `node <pi>/bundle/cli.js [flags] [args]`:
+
+| Setting | Value | Why |
+|---|---|---|
+| Pi CLI | from agentx's own dependency | [D1](../agent/README.md#d1) |
+| `cwd` | the agent directory | Pi reads `.pi/` from `cwd` ([D2](../agent/README.md#d2)) |
+| `PI_CODING_AGENT_DIR` | `agent-x/.pi` (`<agent>/../../.pi`) | keeps `~/.pi/agent` out; one per project ([D17](../agent/README.md#d17)) |
+| the rest of the environment | agentx's own, plus the variables in `agent-x/.env` it does not already have | keys such as `COMPOSIO_API_KEY` for all agents of the project, kept out of git ([D43](../agent/README.md#d43)) |
+| `PATH` | `agent-x/node_modules/.bin` first | `agentx` in Pi's bash tool, the router and workflows is the one the project pins |
+| `-nc` | except for Pi subcommands | skip `AGENTS.md` and `CLAUDE.md` ([D6](../agent/README.md#d6)) |
+| `--approve` | except for Pi subcommands | trust `.pi/` for this run, with no prompt ([D6](../agent/README.md#d6)) |
+| `-e <agentx>/src/agent-runtime/pi/pi-package` | except for Pi subcommands | load agentx's Pi package ([D16](pi-package/README.md#d16)) |
+| `--session-dir <agent>/storage/sessions/<thread>` | except for Pi subcommands | keep each thread's sessions in a folder of its own in the agent's storage ([D16](pi-package/README.md#d16), [D21](#d21)). The thread is the `--thread-id` value, or the id given to Pi's own `--session-id`, or `main`. With `-c` or `-r`, Pi picks among the sessions of that folder. |
+| `--session-id <thread>` | the `--thread-id` value, which `chat` takes out of the arguments. Otherwise `main`, unless the arguments pick a session or open none (`--session-id`, `--session`, `-c`, `-r`, `--fork`, `--no-session`, `--export`, `--list-models`, `--help`, `--version`) | the session is the thread ([D21](#d21)) |
+
+Pi subcommands (`install`, `remove`, `uninstall`, `update`, `list`, `config`, `mcp`, `auth`) must be the first argument, so `chat` adds no flags before them.
+
+The Pi CLI and the flags come from `src/agent-runtime/pi/pi-launch.ts`, and the environment from `src/agent-runtime/agent-env.ts`, which the router and workflows get too. The Pi runner uses the same files, so a thread's session is the same under both ([Pi runner](#starting-a-threads-pi-process)). The router and workflows get the same environment.
+
+When `chat` opens `main` or a `--thread-id`, it first checks `storage/event_queue.db` for a live holder of the thread and stops if there is one. `chat` creates `storage/event_queue.db`; Pi creates `agent-x/.pi` and `storage/sessions` when they are missing.
+
+## Known limits
+
+- Each burst of events on a thread starts a new Pi process, which pays for starting Pi, loading extensions and connecting MCP servers. Pi is ready in 0.15 to 0.2 s on a laptop.
+- Nothing limits a run that keeps writing, such as a model that calls tools in a loop. A silent tool that rightly runs longer than `stallSeconds` is stopped, and its event fails after three attempts.
+- Every interruption costs an event an attempt, including a restart of `agentx run`.
+- Each running thread is a Pi process of about 130 MB.
+- Threads of one agent share `storage/workspace`; nothing stops two from writing the same file.
+- A session made with `/new` or `/fork` is a thread of its own, but lies in the folder of the thread it came from. Events for its thread start a new session in a folder of that thread's name, apart from it; reach the old one with `agentx chat --thread-id <old thread> -r`.
+
+## Decisions
+
+<a id="d23"></a>
+### D23. The event queue extension is the only consumer of a Pi thread's events; the runner only starts Pi processes
+
+- **Decision.** The extension in every session takes its thread's events, starts or joins a run, and settles them. The runner only starts a Pi process per thread, and touches events only when that process fails.
+- **Why.** One delivery path for a person's session and the runner's, so the agent behaves the same in both.
+
+<a id="d31"></a>
+### D31. The runner starts a Pi process per thread, in RPC mode
+
+- **Decision.** Each running thread gets one Pi CLI process in RPC mode, started with what `agentx chat` passes plus `--agentx-worker`; `maxThreads` caps how many run at once.
+- **Why.** A process can fail alone, be seen to fail, and be killed. Sharing `pi/pi-launch.ts` keeps the agent the same as under `agentx chat`.
+- **Rejected.** Pi's `RpcClient`: it cannot answer dialogs, runs whichever `node` is on `PATH`, and kills the process one second after asking it to stop.
+
+<a id="d21"></a>
+### D21. A thread is a Pi session; the thread id is the session id
+
+- **Decision.** The Pi runner and `agentx chat --thread-id <id>` pass the thread id to Pi as `--session-id`, which opens or creates that session, and the thread's folder, `storage/sessions/<id>/`, as `--session-dir`. `agentx chat` uses `main` by default.
+- **Why.** No table maps threads to sessions, and a person and `agentx run` land in the same session file. A folder per thread keeps each thread's files apart, and Pi's own choices (`-c`, `-r`) to one thread.
+- **Consequence.** `/new`, `/resume` and `/fork` in a terminal move the session to another thread. A session that `/new` or `/fork` creates has a new id, which is a new thread, but its file stays in the folder of the thread it came from.
+
+<a id="d33"></a>
+### D33. The Pi runner takes a thread from its dead Pi process by process id
+
+- **Decision.** When a Pi process the Pi runner started ends with a failure, the runner calls `abandon(threadId, pid, failure)`: it deletes that process's lease, takes the thread (ending the attempts left in flight), and gives it up.
+- **Why.** The runner is the parent, so it knows the process has ended and need not wait for the lease.
+- **Consequence.** Across a container boundary the process id does not match, and the events wait for the lease to run out.

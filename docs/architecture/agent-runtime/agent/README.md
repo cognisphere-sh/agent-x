@@ -4,7 +4,7 @@ An agent is a directory, `agent-x/agents/<name>/`. `agentx init-agent <name>` cr
 
 | Source | Where | Written by | Checked in | To the agent |
 |---|---|---|---|---|
-| The harness | agentx's [Pi package](../pi-package/README.md), in the agentx version the project pins | agentx | with agentx | read-only |
+| The harness | agentx's [Pi package](../pi/pi-package/README.md), in the agentx version the project pins | agentx | with agentx | read-only |
 | The agent's definition | `.pi/` in the agent directory | its developer | yes ([D4](#d4)) | read-only |
 | The agent's knowledge | `storage/knowledge/` in the agent directory | the agent, while it runs | no | its own ([D35](#d35)) |
 
@@ -17,19 +17,26 @@ agent-x/agents/<name>/
       00-identity.md    who the agent is; rewrite it for each agent
     skills/<skill>/SKILL.md   the developer's skills (empty in the template)
     extensions/         the developer's extensions (empty in the template)
+    workflows.json      the developer's workflows, optional, with the scripts it names
   storage/              gitignored
     knowledge/          what the agent learns and keeps
       system_prompt/  skills/  extensions/    loaded after the developer's, through the settings
-    sessions/           every session of the agent, one per thread
+      event_router.mjs  the agent's event router, written as a starter by `agentx run` when missing
+      workflows.json    the agent's own workflows, optional
+    sessions/<thread>/  the thread's Pi sessions, one folder per thread
     workspace/          the agent's working files
-    message_queue.db    the agent's message queue
+      workflow-logs/<workflow>/<event id>.log   what each workflow run printed
+      router-logs/<event id>.log                what the router printed for an event it failed on
+    attachments/        files that came with events, named in their content
+    event_queue.db      the agent's event queue
+    heartbeat           the time `agentx run` last saw all its loops working
 ```
 
 Pi's own state (login, saved trust, Pi's settings) is not in the agent. All agents of a project share `agent-x/.pi/` ([below](#pis-agent-directory)).
 
 ## .pi/settings.json
 
-The file belongs to the agent's developer. What agentx needs from Pi, `agentx run` passes as flags ([below](#how-agentx-run-starts-pi)). The template:
+The file belongs to the agent's developer. What agentx needs from Pi, `agentx chat` and `agentx run` pass as flags ([Pi](../pi/README.md#how-agentx-chat-starts-pi)). The template:
 
 ```json
 {
@@ -44,7 +51,7 @@ The file belongs to the agent's developer. What agentx needs from Pi, `agentx ru
 }
 ```
 
-- Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` by itself, so they need no line here ([Pi](../pi/README.md#config-locations)).
+- Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` by itself, so they need no line here ([Pi](../pi/pi-reference/README.md#config-locations)).
 - `extensions` and `skills` add more folders, resolved from `.pi/`. The template adds the agent's [knowledge](#knowledge). A missing folder is skipped.
 - `packages` takes Pi packages (`npm:...`, git, local paths). Pi installs missing npm and git packages on start, into `.pi/npm/` and `.pi/git/`, which the project's `.gitignore` leaves out.
 - `agentx` holds agentx's own settings for the agent ([D36](#d36)):
@@ -52,12 +59,13 @@ The file belongs to the agent's developer. What agentx needs from Pi, `agentx ru
 | Key | Meaning |
 |---|---|
 | `systemPrompt` | Folders whose `*.md` files go into the system prompt after `.pi/system_prompt/`, resolved from `.pi/`. The template adds the agent's knowledge. |
-| `composio` | The agent's Composio user id (`userId`, written by `init-agent`) and its session policy (`session`). See [Composio](../pi-package/composio/README.md#settings). |
-| `timezone` | The time zone of the times on queue messages. `null` means the machine's time zone. An IANA name such as `Asia/Kolkata` fixes it. A name Node does not know is reported when a session starts, and the machine's zone is used. |
+| `composio` | The agent's Composio user id (`userId`, written by `init-agent`) and its session policy (`session`). See [Composio](../pi/pi-package/composio/README.md#settings). |
+| `runner` | The limits of `agentx run`: `maxThreads`, `stallSeconds`, `routerSeconds`. See [agent supervisor](../supervisor/README.md#settings). |
+| `timezone` | The time zone of the times on queued events. `null` means the machine's time zone. An IANA name such as `Asia/Kolkata` fixes it. A name Node does not know is reported when a session starts, and the machine's zone is used. |
 
 ## System prompt
 
-The system prompt extension in agentx's Pi package builds the prompt in this order: the harness prompt, then `.pi/system_prompt/*.md` in filename order, then the folders under `agentx.systemPrompt` ([Pi package](../pi-package/README.md#the-system-prompt-extension)). `00-identity.md` says who the agent is; the developer adds more numbered files. Pi itself knows only one file, `.pi/SYSTEM.md`; the `system_prompt/` folder is agentx's ([D5](#d5)).
+The system prompt extension in agentx's Pi package builds the prompt in this order: the harness prompt, then `.pi/system_prompt/*.md` in filename order, then the folders under `agentx.systemPrompt` ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension)). `00-identity.md` says who the agent is; the developer adds more numbered files. Pi itself knows only one file, `.pi/SYSTEM.md`; the `system_prompt/` folder is agentx's ([D5](#d5)).
 
 ## Knowledge
 
@@ -65,49 +73,33 @@ The system prompt extension in agentx's Pi package builds the prompt in this ord
 
 | In `storage/knowledge/` | Loaded | Through |
 |---|---|---|
-| `system_prompt/*.md` | before every message, at the end of the system prompt | `agentx.systemPrompt` in the settings |
+| `system_prompt/*.md` | before every user message, at the end of the system prompt | `agentx.systemPrompt` in the settings |
 | `skills/<name>/SKILL.md` | when a session starts | `skills` in the settings |
 | `extensions/` | when a session starts | `extensions` in the settings |
+| `event_router.mjs` | for every event without a thread | always ([event router](../events/README.md#routing)) |
+| `workflows.json` and its scripts | for every event, and for every run | always ([workflows](../workflows/README.md)) |
 | anything else: notes, files, scripts | when the agent reads it | |
 
 `init-agent` creates the folders. They are not checked in, so they can be missing, as after a fresh clone; the agent creates what it needs. All threads of the agent share them.
 
 ## Threads
 
-A thread is one conversation of the agent and one Pi session: the thread id is the session id ([D21](../pi-package/message-queue/README.md#d21)). A message on the agent's [queue](../pi-package/message-queue/README.md) names its thread, and that thread's session receives it.
+A thread is one conversation of the agent and one Pi session: the thread id is the session id ([D21](../pi/README.md#d21)). An event on the agent's [queue](../events/README.md) names its thread, or gets one from the router, and that thread's session receives it. A workflow's thread, `workflow.<name>`, is not a Pi session ([workflows](../workflows/README.md)).
 
-- `agentx run` opens the thread `main`, and `agentx run --thread-id <thread>` opens another. One-shot runs too: `agentx run -p "..."` adds to `main`.
-- A session that stays open (terminal UI, RPC mode) receives its thread's queued messages. A one-shot run answers only its own prompt.
-- With one of Pi's own session flags (`-c`, `-r`, `--session`, `--session-id`, `--fork`, `--no-session`), Pi picks the session, and that session is the thread.
-- An open session holds its thread; no other process can run it ([D22](../pi-package/message-queue/README.md#d22)). If another process holds the thread, `agentx run` stops with an error before Pi starts.
+- `agentx chat` opens the thread `main`, and `agentx chat --thread-id <thread>` opens another. One-shot runs too: `agentx chat -p "..."` adds to `main`.
+- A session that stays open (terminal UI, RPC mode) receives its thread's queued events. A one-shot run answers only its own prompt.
+- With one of Pi's own session flags (`-c`, `-r`, `--session`, `--session-id`, `--fork`, `--no-session`), Pi picks the session, and that session is the thread. Pi looks only in the folder of the thread given with `--thread-id`, or named by `--session-id`, or else `main`.
+- An open session holds its thread; no other process can run it ([D22](../events/README.md#d22)). If another process holds the thread, `agentx chat` stops with an error before Pi starts. It refuses a workflow's thread too.
 
-## How `agentx run` starts Pi
+## How Pi starts in it
 
-`src/cli/commands/run.ts` runs `node <pi>/bundle/cli.js [flags] [args]`:
-
-| Setting | Value | Why |
-|---|---|---|
-| Pi CLI | from agentx's own dependency | [D1](#d1) |
-| `cwd` | the agent directory | Pi reads `.pi/` from `cwd` ([D2](#d2)) |
-| `PI_CODING_AGENT_DIR` | `agent-x/.pi` (`<agent>/../../.pi`) | keeps `~/.pi/agent` out; one per project ([D17](#d17)) |
-| the rest of the environment | agentx's own, plus the variables in `agent-x/.env` it does not already have | keys such as `COMPOSIO_API_KEY` for all agents of the project, kept out of git ([D43](#d43)) |
-| `-nc` | except for Pi subcommands | skip `AGENTS.md` and `CLAUDE.md` ([D6](#d6)) |
-| `--approve` | except for Pi subcommands | trust `.pi/` for this run, with no prompt ([D6](#d6)) |
-| `-e <agentx>/src/agent-runtime/pi-package` | except for Pi subcommands | load agentx's Pi package ([D16](../pi-package/README.md#d16)) |
-| `--session-dir <agent>/storage/sessions` | except for Pi subcommands | keep sessions in the agent's storage ([D16](../pi-package/README.md#d16)) |
-| `--session-id <thread>` | the `--thread-id` value, which `run` takes out of the arguments. Otherwise `main`, unless the arguments pick a session or open none (`--session-id`, `--session`, `-c`, `-r`, `--fork`, `--no-session`, `--export`, `--list-models`, `--help`, `--version`) | the session is the thread ([D21](../pi-package/message-queue/README.md#d21)) |
-
-Pi subcommands (`install`, `remove`, `uninstall`, `update`, `list`, `config`, `mcp`, `auth`) must be the first argument, so `run` adds no flags before them.
-
-The Pi CLI, the flags and the environment come from `src/agent-runtime/pi-launch.ts`. The runner uses the same file, so a thread's session is the same under both ([Agent runner](../agent-runner/README.md#starting-a-threads-pi-process)).
-
-When `run` opens `main` or a `--thread-id`, it first checks `storage/message_queue.db` for a live holder of the thread and stops if there is one. `run` creates `storage/message_queue.db`; Pi creates `agent-x/.pi` and `storage/sessions` when they are missing.
+`agentx chat` and the Pi runner start Pi in the agent directory with the flags of `pi/pi-launch.ts` and the environment of `agent-env.ts`: [Pi](../pi/README.md#how-agentx-chat-starts-pi).
 
 ## Pi's agent directory
 
 `agent-x/.pi/` is gitignored state that Pi writes and all agents of the project share ([D17](#d17)):
 
-- `auth.json`: one login for all agents (`/login`, or `agentx run auth login <provider>` in any agent). Every agent can reach it, so the harness prompt forbids reading it.
+- `auth.json`: one login for all agents (`/login`, or `agentx chat auth login <provider>` in any agent). Every agent can reach it, so the harness prompt forbids reading it.
 - `settings.json`: Pi's user-level settings, written by Pi (`defaultProvider` and `defaultModel` when a model is chosen, `deviceId`, `lastChangelogVersion`). An agent's `.pi/settings.json` overrides it key by key, so an agent that needs a fixed model sets `defaultProvider` and `defaultModel` there.
 - `trust.json`, `models-store.json`, `bin/`: saved trust per agent path, the model list, tools Pi downloads.
 - Packages installed with `pi install` without `-l`, and anything in its `extensions/`, `skills/` or `prompts/`, load in every agent on this machine and are not checked in.
@@ -119,9 +111,9 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 - `agent-x/.pi/` applies to every agent but is not checked in, so the model Pi last chose there is the default of every agent that sets none.
 - Skills in `~/.agents/skills` stay loaded in Pi. The system prompt extension only takes them off the skills list the model sees.
 - Knowledge is gitignored state, lost with the rest of `storage/`. An agent whose settings lack the template's lines loads none of it, though the harness prompt tells every agent about it.
-- If an extension the agent wrote for itself fails to load, no later session starts until a person removes the file. Under the runner, its messages end as `failed` after three attempts.
-- Whatever gets the agent to write into its knowledge, a message included, lasts for every later session and thread. Its prompt text is read on every message, and an extension is code that Pi runs.
-- `agentx run mcp list` needs the project trusted once with `/trust` in an interactive session ([D6](#d6)).
+- If an extension the agent wrote for itself fails to load, no later session starts until a person removes the file. Under `agentx run`, its events end as `failed` after three attempts.
+- Whatever gets the agent to write into its knowledge, an event included, lasts for every later session and thread. Its prompt text is read on every user message, and an extension, its router and its workflows are code that runs.
+- `agentx chat mcp list` needs the project trusted once with `/trust` in an interactive session ([D6](#d6)).
 
 ## Decisions
 
@@ -135,13 +127,13 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 ### D2. The agent directory is Pi's working directory, and the agent's definition is in its `.pi/`
 
 - **Decision.** Pi runs with `cwd` = the agent directory, and the agent's settings, MCP servers, prompt, skills and extensions are all in its `.pi/`.
-- **Why.** Pi reads project config only from `<cwd>/.pi/` and loads `.pi/skills/` and `.pi/extensions/` with no settings ([Pi](../pi/README.md#config-locations)), so the whole definition is one folder.
+- **Why.** Pi reads project config only from `<cwd>/.pi/` and loads `.pi/skills/` and `.pi/extensions/` with no settings ([Pi](../pi/pi-reference/README.md#config-locations)), so the whole definition is one folder.
 - **Rejected.** `cwd` = `storage/workspace`: config would have to be copied there at start, against [D4](#d4).
 
 <a id="d4"></a>
 ### D4. Starting an agent changes nothing that is checked in
 
-- **Decision.** `run` only starts Pi, and everything a run writes goes to the gitignored `storage/`.
+- **Decision.** `chat` and `run` only start processes, and everything they write goes to the gitignored `storage/`. `agentx run` writes the starter router there when the agent has none.
 - **Why.** If starting an agent wrote config, the config in effect would differ from what is checked in.
 - **Consequence.** Limits that only generated files could remove are accepted ([D6](#d6)).
 
@@ -153,7 +145,7 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 - **Rejected.** `.pi/SYSTEM.md` is one file only, and `--system-prompt` joins the files once, at start.
 
 <a id="d6"></a>
-### D6. `run` passes `-nc` and `--approve`, except before Pi subcommands
+### D6. `chat` passes `-nc` and `--approve`, except before Pi subcommands
 
 - **Decision.** Session runs get `-nc --approve`; a Pi subcommand, which must come first, gets nothing added.
 - **Why.** Otherwise `AGENTS.md` and `CLAUDE.md` leak into the prompt, and Pi without a terminal skips an untrusted `.pi/` without a word.
@@ -169,7 +161,7 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 <a id="d43"></a>
 ### D43. Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins
 
-- **Decision.** Whoever starts Pi (`pi-launch.ts`, for `agentx run` and the runner) adds the variables of `agent-x/.env`, read with Node's `util.parseEnv`. A variable already in the environment keeps its value.
+- **Decision.** Every process of the agent, Pi, its router and its workflows, gets the environment of `agent-env.ts`, which adds the variables of `agent-x/.env`, read with Node's `util.parseEnv`. A variable already in the environment keeps its value.
 - **Why.** A developer keeps keys in one file next to the project's other agent state, and a deployment sets the same variables in the environment, which then need no file.
 - **Rejected.** `web/.env.local`: it belongs to the app, which deploys apart and must not hold agents' keys. A file per agent: the keys are the project's.
 
@@ -183,6 +175,7 @@ It is not project config. Pi reads `.pi/` only from its working directory, never
 <a id="d36"></a>
 ### D36. agentx's own settings for an agent are under `agentx` in its `.pi/settings.json`
 
-- **Decision.** An `agentx` object in the agent's `.pi/settings.json` holds `timezone`, `systemPrompt` and `composio`, and agentx's extensions read it with `pi.getSettings()`.
-- **Why.** One settings file per agent. Pi accepts keys it does not know, keeps them, and hands them to extensions ([Pi](../pi/README.md#config-locations)).
+- **Decision.** An `agentx` object in the agent's `.pi/settings.json` holds `timezone`, `systemPrompt`, `composio` and `runner`. agentx's extensions read it with `pi.getSettings()`. agentx code that runs outside Pi, such as `agentx run`, reads the agent's own file as JSON.
+- **Why.** One settings file per agent. Pi accepts keys it does not know, keeps them, and hands them to extensions ([Pi](../pi/pi-reference/README.md#config-locations)).
+- **Consequence.** Outside Pi, `agentx` keys in the shared `agent-x/.pi/settings.json` do not apply.
 - **Rejected.** A separate agentx file is a second place to look.

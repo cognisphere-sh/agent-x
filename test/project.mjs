@@ -67,16 +67,23 @@ export function open({ agent, env }, args, t) {
 	return child;
 }
 
-/** Starts the AgentRunner for the agent, `maxWorkers` threads at a time, with its default stall time unless given. `end()` asks it to finish and resolves to its exit status; `stop()` kills it. */
-export function runner({ agent, env }, maxWorkers = 4, stallMs) {
-	const script = fileURLToPath(new URL("runner-process.mjs", import.meta.url));
-	const child = spawn(process.execPath, [script, String(maxWorkers), ...(stallMs === undefined ? [] : [String(stallMs)])], { cwd: agent, env, stdio: ["ignore", "pipe", "pipe"] });
+/**
+ * Starts `agentx run` for the agent, with `agentx.runner` in its settings: `maxThreads` Pi threads at a time, and a stall time unless the default.
+ * `end()` asks it to finish and resolves to its exit status; `stop()` kills it; `exited` resolves to its exit status.
+ */
+export function runner({ agent, env }, maxThreads = 4, stallSeconds) {
+	const settingsPath = join(agent, ".pi", "settings.json");
+	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+	writeFileSync(settingsPath, JSON.stringify({ ...settings, agentx: { ...settings.agentx, runner: { ...settings.agentx?.runner, maxThreads, ...(stallSeconds === undefined ? {} : { stallSeconds }) } } }));
+	// A process group of its own, so a test can signal it as a terminal does, the whole group at once.
+	const child = spawn(process.execPath, [cli, "run"], { cwd: agent, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
 	let output = "";
 	child.stdout.on("data", (chunk) => (output += chunk));
 	child.stderr.on("data", (chunk) => (output += chunk));
 	const exited = new Promise((resolve) => child.on("exit", resolve));
 	return {
 		child,
+		exited,
 		output: () => output,
 		end: () => {
 			child.kill("SIGINT");
@@ -89,13 +96,14 @@ export function runner({ agent, env }, maxWorkers = 4, stallMs) {
 	};
 }
 
-/** The agent's sessions as { id, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions. `contents` is what was typed or queued: each user message without its metadata block. */
+/** The agent's sessions as { id, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. `contents` is what was typed or queued: each user message without its metadata block. */
 export function sessions({ agent }) {
+	// One folder per thread, storage/sessions/<thread>/, with the thread's session files.
 	const directory = join(agent, "storage", "sessions");
 	return readdirSync(directory)
-		.filter((file) => file.endsWith(".jsonl"))
+		.flatMap((thread) => readdirSync(join(directory, thread)).filter((file) => file.endsWith(".jsonl")).map((file) => join(directory, thread, file)))
 		.map((file) => {
-			const entries = readFileSync(join(directory, file), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+			const entries = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
 			const text = (content) => (typeof content === "string" ? content : content.map((part) => part.text ?? "").join("\n"));
 			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: text(entry.message.content) }));
 			return {
@@ -126,9 +134,9 @@ export async function until(check, ms = 20_000) {
 	}
 }
 
-/** The messages on the queue of the agent in `agentRoot`, oldest first, read straight from the file as an operator would. */
-export function messages(agentRoot) {
-	return onQueueFile(agentRoot, (db) => db.prepare("SELECT * FROM messages ORDER BY seq").all()).map((row) => ({
+/** The events on the queue of the agent in `agentRoot`, oldest first, read straight from the file as an operator would. */
+export function events(agentRoot) {
+	return onQueueFile(agentRoot, (db) => db.prepare("SELECT * FROM events ORDER BY seq").all()).map((row) => ({
 		id: row.id,
 		threadId: row.thread_id,
 		content: row.content,
@@ -139,11 +147,12 @@ export function messages(agentRoot) {
 		attempts: row.attempts,
 		error: row.error,
 		entryId: row.entry_id,
+		key: row.key,
 		updatedAt: row.updated_at,
 	}));
 }
 
-/** The id of the process that holds the thread's lease: the Pi process that runs the thread. */
+/** The id of the process that holds the thread's lease: the Pi process that runs the thread, or `agentx run` for a workflow's thread. */
 export function holder(agentRoot, threadId) {
 	const lease = onQueueFile(agentRoot, (db) => db.prepare("SELECT owner FROM threads WHERE thread_id = ?").get(threadId));
 	return lease && Number(lease.owner.split(".")[0]);
@@ -164,7 +173,7 @@ export function alive(pid) {
  * as after the time a lease lasts without a heartbeat. With a function, calls it with the open file and returns what it returns.
  */
 export function onQueueFile(agentRoot, work = "UPDATE threads SET heartbeat_at = 0") {
-	const db = new DatabaseSync(join(agentRoot, "storage", "message_queue.db"));
+	const db = new DatabaseSync(join(agentRoot, "storage", "event_queue.db"));
 	try {
 		return typeof work === "string" ? db.exec(work) : work(db);
 	} finally {

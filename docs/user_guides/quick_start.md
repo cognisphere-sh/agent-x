@@ -15,7 +15,7 @@ In a second terminal:
 
 ```sh
 cd my-project/agent-x/agents/main
-agentx run                              # the agent
+agentx chat                             # talk to the agent
 ```
 
 The first time, type `/login` in the session and pick a provider. The login is saved in `agent-x/.pi/auth.json` (gitignored), and all agents of the project share it.
@@ -31,6 +31,6 @@ What you get:
 
 `agentx` works in the project root, in `agent-x/` and in an agent, and always runs the version the project pins. Before `pnpm install`, it stops and asks you to run it. Without a global `agentx`, use `pnpm exec agentx <command>` in `agent-x/` or an agent, and `pnpm agentx <command>` in the root.
 
-Next: [run an agent](run_an_agent.md), [send it messages](send_messages.md), [customize an agent](customize_an_agent.md).
+Next: [chat with an agent](chat_with_an_agent.md), [run it and send it events](send_events.md), [customize an agent](customize_an_agent.md).
 
 agentx is not on npm yet. Until it is, use a local build: [develop_agentx.md](develop_agentx.md#use-a-local-build-in-a-project).

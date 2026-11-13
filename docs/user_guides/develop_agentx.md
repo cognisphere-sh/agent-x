@@ -9,10 +9,11 @@ pnpm run build    # writes dist/, which the agentx command runs
 pnpm test         # builds, then runs test/*.test.mjs
 ```
 
-The tests need no login and no network. They take about a minute and a half.
+The tests need no login and no network. They take about two minutes.
 
 - `test/queue.test.mjs` tests the queue, with several processes sharing one file.
-- `test/runner.test.mjs` creates scratch projects in the temp directory, with this checkout linked in as their agentx. It runs the built CLI, the runner and real Pi processes against `test/fake-model.mjs`, a fake model server on localhost.
+- `test/runner.test.mjs` creates scratch projects in the temp directory, with this checkout linked in as their agentx. It runs the built CLI, `agentx run` and real Pi processes against `test/fake-model.mjs`, a fake model server on localhost.
+- `test/agentx-run.test.mjs` does the same for the rest of `agentx run`: the router, workflows and their failure reports, stopping, a crashed loop, and `agentx event`.
 - `test/composio.test.mjs` does the same for the Composio extension, also against `test/fake-composio.mjs`, a fake Composio with its session routes and an MCP endpoint.
 
 ## Run the local build
@@ -42,8 +43,8 @@ After a change to agentx:
 | Changed | Do |
 |---|---|
 | Most code | `pnpm run build`. The project uses `dist/` through the link. |
-| `src/agent-runtime/pi-package/` | Nothing. Pi loads it from the link when a session starts. |
-| The queue code in `pi-package/extensions/message-queue/` | `pnpm run build`. The CLI and the runner use it from `dist/`. |
+| `src/agent-runtime/pi/pi-package/`, and `src/agent-runtime/events/queue.ts`, which its event queue extension imports | Nothing. Pi loads it from the link when a session starts. |
+| The queue, `src/agent-runtime/events/queue.ts` | Also `pnpm run build`: the CLI and `agentx run` use it from `dist/`. |
 
 ## Before changing code
 

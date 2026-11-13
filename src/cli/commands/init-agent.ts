@@ -2,13 +2,14 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { nameRule } from "../../agent-runtime/events/queue.js";
 import { copyTemplate } from "../copy-template.js";
 import { pinsAgentx } from "../pinned-cli.js";
 
 /** Creates `agent-x/agents/<name>` from templates/agent. `cwd` is the project root or its agent-x/. */
 export function initAgent(name: string, cwd: string): void {
 	// The name is a folder name, so it cannot point outside agents/.
-	if (!/^[a-zA-Z0-9-]+$/.test(name)) throw new Error(`"${name}" is not an agent name. Use letters, digits and dashes.`);
+	if (!nameRule.test(name)) throw new Error(`"${name}" is not an agent name. Use letters, digits and dashes.`);
 	const agentX = [join(cwd, "agent-x"), cwd].find(pinsAgentx);
 	if (!agentX) throw new Error(`${cwd} is not a project's root or its agent-x/ directory. Run this in one of them.`);
 	const root = join(agentX, "agents", name);
@@ -27,5 +28,5 @@ export function initAgent(name: string, cwd: string): void {
 	console.log(`Created ${root}
 
 Next:
-  cd ${root} && agentx run`);
+  cd ${root} && agentx chat    # talk to the agent; agentx run runs it in the background`);
 }

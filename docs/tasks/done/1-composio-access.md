@@ -12,7 +12,7 @@ updated: 2026-11-13
 
 # Give each agent its own access to external services through Composio
 
-Built on 2026-11-13 in commits `324da22` (the extension) and `8fc9371` (cleanup), from the plan in `ac2fc96`, which is kept [below](#original-plan). The design as built: [Composio](../../architecture/agent-runtime/pi-package/composio/README.md).
+Built on 2026-11-13 in commits `324da22` (the extension) and `8fc9371` (cleanup), from the plan in `ac2fc96`, which is kept [below](#original-plan). The design as built: [Composio](../../architecture/agent-runtime/pi/pi-package/composio/README.md).
 
 ## What was built
 
@@ -28,13 +28,13 @@ Built on 2026-11-13 in commits `324da22` (the extension) and `8fc9371` (cleanup)
 
 | # | Decision |
 |---|---|
-| [D38](../../architecture/agent-runtime/pi-package/composio/README.md#d38) | Each agent has its own Composio user id, written into its settings by `init-agent` |
-| [D39](../../architecture/agent-runtime/pi-package/composio/README.md#d39) | One Composio session per thread, recorded in the thread's Pi session |
-| [D40](../../architecture/agent-runtime/pi-package/composio/README.md#d40) | The extension registers the session's MCP server, with direct tools, and uses no Composio SDK |
-| [D41](../../architecture/agent-runtime/pi-package/composio/README.md#d41) | Without Composio, the session starts and the model is told why |
-| [D42](../../architecture/agent-runtime/pi-package/README.md#d42) | The package's manifest lists its extensions in the order they load |
+| [D38](../../architecture/agent-runtime/pi/pi-package/composio/README.md#d38) | Each agent has its own Composio user id, written into its settings by `init-agent` |
+| [D39](../../architecture/agent-runtime/pi/pi-package/composio/README.md#d39) | One Composio session per thread, recorded in the thread's Pi session |
+| [D40](../../architecture/agent-runtime/pi/pi-package/composio/README.md#d40) | The extension registers the session's MCP server, with direct tools, and uses no Composio SDK |
+| [D41](../../architecture/agent-runtime/pi/pi-package/composio/README.md#d41) | Without Composio, the session starts and the model is told why |
+| [D42](../../architecture/agent-runtime/pi/pi-package/README.md#d42) | The package's manifest lists its extensions in the order they load |
 | [D43](../../architecture/agent-runtime/agent/README.md#d43) | Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins |
-| [D44](../../architecture/agent-runtime/pi-package/message-queue/README.md#d44) | The session takes queued messages only once every extension has started |
+| [D44](../../architecture/agent-runtime/pi/pi-package/event-queue/README.md#d44) | The session takes queued messages only once every extension has started |
 
 ## Changes from the plan
 
@@ -96,7 +96,7 @@ For a project created with an earlier agentx. New projects and agents need none 
 
 - **Links through channels**: [message channels](../backlog/message-channels.md). Until then, an unattended agent's accounts are connected ahead of time in `agentx run`.
 - **Triggers**: [webhooks](../backlog/coordinator-webhooks.md) and [Composio triggers](../backlog/composio-triggers.md).
-- **Keeping the key from the agent**: later, with the sandboxes of the planned [AgentManager](../../architecture/agent-runtime/README.md#planned); a known limit of [Composio](../../architecture/agent-runtime/pi-package/composio/README.md#known-limits).
+- **Keeping the key from the agent**: later, with the sandboxes of the planned [AgentManager](../../architecture/agent-runtime/README.md#planned); a known limit of [Composio](../../architecture/agent-runtime/pi/pi-package/composio/README.md#known-limits).
 - **Several accounts of one toolkit** (`multi_account`): not looked at.
 
 ## Original plan
@@ -153,7 +153,7 @@ At the terminal, the channel drops out: the person reads the link in the agent's
 
 | Kind | What | Why |
 |---|---|---|
-| Extension | `extensions/composio/` in agentx's [Pi package](../../architecture/agent-runtime/pi-package/README.md) | The only code: opens the thread's session and registers its MCP server ([below](#the-extension)). |
+| Extension | `extensions/composio/` in agentx's [Pi package](../../architecture/agent-runtime/pi/pi-package/README.md) | The only code: opens the thread's session and registers its MCP server ([below](#the-extension)). |
 | Prompt | A `Composio` section in `harness.md` | Every agent has Composio, so the rules are part of the harness prompt, worded to fit any policy ([below](#the-prompt)). |
 | Agent settings | `agentx.composio` in `.pi/settings.json`: `userId`, optional `session` | Identity and policy are part of the agent's definition and are checked in ([D36](../../architecture/agent-runtime/agent/README.md#d36)). |
 | CLI | `init-agent` writes `agentx.composio.userId` into the new agent's settings | Every agent needs a user id that never changes. |
@@ -238,7 +238,7 @@ A person in `agentx run` reads everything the agent writes, so the agent puts th
 
 #### Through a channel
 
-A message from the queue, also one that arrives in a terminal session, came from a channel and carries metadata naming it. The agent's text reaches nobody, so it sends the link with the channel's tool. The person's "done" comes back on the same channel as a new queue message on the thread; under the [runner](../../architecture/agent-runtime/agent-runner/README.md) it starts the thread again, and the session still holds the task. This needs nothing from the Composio extension: no capturing of the link and no watcher for the account.
+A message from the queue, also one that arrives in a terminal session, came from a channel and carries metadata naming it. The agent's text reaches nobody, so it sends the link with the channel's tool. The person's "done" comes back on the same channel as a new queue message on the thread; under the [runner](../../architecture/agent-runtime/pi/README.md) it starts the thread again, and the session still holds the task. This needs nothing from the Composio extension: no capturing of the link and no watcher for the account.
 
 Until channels exist, an agent that runs unattended has no way to send a link. Its accounts get connected ahead of time instead: a person runs it with `agentx run` and asks it to connect what it will need. The accounts belong to the agent's user id, so every later session, the runner's included, uses them.
 
