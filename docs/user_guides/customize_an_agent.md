@@ -69,7 +69,7 @@ Every agent of the project gets the variables of `agent-x/.env`. On a server, se
 
 A new agent's `.pi/settings.json` has its Composio user id, `<agent>@<project>`. Keep it as it is: the agent's connected accounts are kept under it. To connect an account, ask the agent in `agentx run`, for example "connect my Gmail"; it gives you a link to sign in.
 
-By default an agent may use those eight services and ask for connections. Change that under `session`, in Composio's [session options](https://docs.composio.dev/docs/configuring-sessions); a key there replaces agentx's default of the same name:
+By default an agent may use those eight services and ask for connections. Change that under `session`, in Composio's [session options](https://docs.composio.dev/docs/configuring-sessions); what you give replaces agentx's default key by key, and `toolkits` as a whole:
 
 ```json
 "agentx": {

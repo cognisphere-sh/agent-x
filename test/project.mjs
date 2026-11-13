@@ -89,7 +89,7 @@ export function runner({ agent, env }, maxWorkers = 4, stallMs) {
 	};
 }
 
-/** The agent's sessions as { id, users: [{ entryId, text }], contents, roles }, read from storage/sessions. `contents` is what was typed or queued: each user message without its metadata block. */
+/** The agent's sessions as { id, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions. `contents` is what was typed or queued: each user message without its metadata block. */
 export function sessions({ agent }) {
 	const directory = join(agent, "storage", "sessions");
 	return readdirSync(directory)
@@ -100,6 +100,7 @@ export function sessions({ agent }) {
 			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: text(entry.message.content) }));
 			return {
 				id: entries[0].id,
+				entries,
 				users,
 				contents: users.map((user) => user.text.split("\n").at(-1)),
 				roles: entries.filter((entry) => entry.type === "message").map((entry) => entry.message.role),

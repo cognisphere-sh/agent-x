@@ -24,7 +24,8 @@ export function sessionFlags(agentRoot: string, threadId?: string): string[] {
  * The project's gitignored agent-x/.env adds keys such as COMPOSIO_API_KEY for all its agents; a variable already in the environment wins, as a deployment sets it.
  */
 export function piEnv(agentRoot: string): NodeJS.ProcessEnv {
-	const envFile = join(agentRoot, "..", "..", ".env");
+	const agentX = join(agentRoot, "..", "..");
+	const envFile = join(agentX, ".env");
 	const fromFile = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
-	return { ...fromFile, ...process.env, PI_CODING_AGENT_DIR: join(agentRoot, "..", "..", ".pi") };
+	return { ...fromFile, ...process.env, PI_CODING_AGENT_DIR: join(agentX, ".pi") };
 }

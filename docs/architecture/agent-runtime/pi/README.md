@@ -73,11 +73,12 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 ## Extensions
 
 - `before_agent_start` can set `event.systemPromptOptions.customPrompt`. It replaces the default preamble and drops the default tool list, rules and Pi docs sections. Pi still adds the skills list and `cwd` (`src/core/system-prompt.ts`). Tool schemas still reach the model.
+- `event.systemPromptOptions.sections` holds custom sections, each wrapped in `<name>` tags. They stay when `customPrompt` is set. When a section changes, Pi sends the model a patch of the changed sections instead of the whole prompt (`diffSystemPromptSections` in `src/core/agent-session.ts`).
 - An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
 - The `input` event can return `continue`, `transform` or `handled` (skip the model).
 - `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
-- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it.
-- `pi.sendMessage(message, { deliverAs: "nextTurn" })` keeps a custom message for the next prompt and starts nothing. Custom messages reach the model (`docs/extensions.md`).
+- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's own extensions, then its built-in ones such as MCP support.
+- Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
 - `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
 
 ## MCP servers
