@@ -55,7 +55,7 @@ Docs are part of every change. A change is not done until the docs match the cod
 | A module's behavior, then its "Decisions" section | `docs/architecture/`, in the same hierarchy as `src/`: `cli/`, `agent-runtime/` and `coordinator-runtime/`, each with a `README.md`, and inside each a folder with a `README.md` for every independent module. Images and diagrams go in the module's folder |
 | A small part of a module | a section in the module's README |
 | How to use something | `docs/user_guides/` |
-| Planned work not yet built: one file per item, YAML frontmatter, format in its README | `docs/todos/` |
+| Work on agentx, one file per task with YAML frontmatter, format in its README: not done yet in `backlog/`, finished in `done/` | `docs/tasks/` |
 | Index of all of the above and of all decisions | `docs/README.md` |
 
 After creating a module or sub-module:

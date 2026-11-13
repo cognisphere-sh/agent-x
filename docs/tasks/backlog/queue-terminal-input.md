@@ -16,25 +16,25 @@ Under `agentx run`, typed messages go straight to Pi; only messages sent with `a
 
 ## Plan
 
-Change the `input` handler of the [message queue extension](../architecture/agent-runtime/pi-package/message-queue/README.md#the-message-queue-extension) (`src/agent-runtime/pi-package/extensions/message-queue/index.ts`):
+Change the `input` handler of the [message queue extension](../../architecture/agent-runtime/pi-package/message-queue/README.md#the-message-queue-extension) (`src/agent-runtime/pi-package/extensions/message-queue/index.ts`):
 
 1. `event.source === "extension"`: continue. That is the queue's own delivery coming back through `pi.sendUserMessage`.
 2. Plain text typed in a session that takes messages (`event.source === "interactive"` and `takesMessages(ctx)`): enqueue it on the session's thread and return `{ action: "handled" }`, so Pi starts no run for it. `event.streamingBehavior === "followUp"` becomes `doNotSteer`.
 3. Everything else passes through as today.
 4. The existing paths deliver it: the tick when Pi is idle, `turn_end` during a run.
 
-Pi's `input` event and its results: [Pi](../architecture/agent-runtime/pi/README.md#delivering-messages), and `docs/extensions.md` of the Pi package ("Input Events").
+Pi's `input` event and its results: [Pi](../../architecture/agent-runtime/pi/README.md#delivering-messages), and `docs/extensions.md` of the Pi package ("Input Events").
 
 ## What passes through unchanged, and why
 
 - **Input starting with `/`.** Pi expands skills (`/skill:name`) and prompt templates after `input`, and `sendUserMessage` does not expand them.
 - **Input with images.** The queue holds text only. Queuing it would need a column for images.
-- **One-shot runs and unsaved sessions** (`-p`, `--mode json`, `--no-session`). They take nothing from the queue ([D28](../architecture/agent-runtime/pi-package/message-queue/README.md#d28)), so a queued prompt would never be answered.
+- **One-shot runs and unsaved sessions** (`-p`, `--mode json`, `--no-session`). They take nothing from the queue ([D28](../../architecture/agent-runtime/pi-package/message-queue/README.md#d28)), so a queued prompt would never be answered.
 - **RPC input** (`event.source === "rpc"`). A `prompt` command would report disposition `"handled"`, which tells the client not to wait for `agent_settled`.
 
 ## To decide before building
 
-- **Retries.** A typed message whose run fails would be sent again, marked as a retry, up to three attempts ([D24](../architecture/agent-runtime/pi-package/message-queue/README.md#d24)). Today the person sees the error and decides. Either accept that, or mark typed messages so they get one attempt.
+- **Retries.** A typed message whose run fails would be sent again, marked as a retry, up to three attempts ([D24](../../architecture/agent-runtime/pi-package/message-queue/README.md#d24)). Today the person sees the error and decides. Either accept that, or mark typed messages so they get one attempt.
 - **Errors.** With no model or login, the message would fail in the queue file without the person seeing why. The extension must notify the terminal when a typed message fails.
 
 ## To check in a spike

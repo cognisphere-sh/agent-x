@@ -7,7 +7,7 @@ New here: [quick start](user_guides/quick_start.md).
 | [high_level_design.md](high_level_design.md) | The overall design: goals, components, how they fit, main flows |
 | [architecture/](#architecture) | One folder per module, in the same hierarchy as `src/`: its `README.md` (behavior and decisions) plus images or other assets |
 | [user_guides/](#user-guides) | How to use agentx |
-| [todos/](todos/README.md) | Planned work, one file per item with YAML frontmatter (type, priority, status) |
+| [tasks/](tasks/README.md) | Work on agentx, one file per task with YAML frontmatter: `backlog/` and `done/` |
 
 ## Architecture
 

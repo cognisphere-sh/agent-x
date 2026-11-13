@@ -1,23 +1,26 @@
 ---
 name: composio-access
-title: Finish each agent's access to external services through Composio
-description: The Composio extension is built and checked against Composio; what remains is reaching people through channels, and keeping the key from the agent.
+title: Give each agent its own access to external services through Composio
+description: Every agent gets Composio's tools under a Composio user id of its own, a Composio session per thread, and a policy from its settings; checked against Composio with a real model.
 type: feature
 priority: none
-status: in-progress
+status: done
 modules: [agent-runtime/pi-package/composio]
 created: 2026-11-12
 updated: 2026-11-13
 ---
 
-# Finish each agent's access to external services through Composio
+# Give each agent its own access to external services through Composio
 
-What is built: [Composio](../architecture/agent-runtime/pi-package/composio/README.md).
+Built: [Composio](../../architecture/agent-runtime/pi-package/composio/README.md), decisions D38 to D43. Checked against a live Composio project, including an agent with a real model that connected Gmail and sent an email.
 
-## Still to build
+## Follow-ups
 
-- **Links through channels.** A session the runner started cannot show a Connect Link to anyone. With [message channels](message-channels.md), the agent sends the link through the channel the message came from, and the person's "done" comes back as a new message on the thread, which starts it again.
-- **Keeping the key from the agent** (later). agentx itself, outside the agent's process, opens each thread's session and hands Pi only the URL, with a key that can only execute. It pays off only with the sandboxes of the planned [AgentManager](../architecture/agent-runtime/README.md#planned). Composio does not document whether a session can then be used only with the key that made it.
+Each has a task of its own or a place in the design:
+
+- **Links through channels.** A session the runner started cannot show a Connect Link to anyone. With [message channels](../backlog/message-channels.md), the agent sends the link through the channel the message came from, and the person's "done" comes back as a new message on the thread, which starts it again.
+- **Triggers.** Events from services, such as a new email, reach the agent through the coordinator: [webhooks](../backlog/coordinator-webhooks.md) and [Composio triggers](../backlog/composio-triggers.md).
+- **Keeping the key from the agent.** Later, with the sandboxes of the planned [AgentManager](../../architecture/agent-runtime/README.md#planned): agentx itself, outside the agent's process, opens each thread's session and hands Pi only the URL, with a key that can only execute. Recorded as a known limit of [Composio](../../architecture/agent-runtime/pi-package/composio/README.md#known-limits).
 
 ## Costs and data
 
