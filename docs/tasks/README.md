@@ -3,7 +3,7 @@
 Work on agentx, one Markdown file per task. A task holds the plan, not the design: the design goes to the module's doc as it is built.
 
 - `backlog/`: tasks not done yet.
-- `done/`: finished tasks, kept as a record of what was planned and why. The design they produced lives in the module docs; a done task does not change after it is moved.
+- `done/`: finished tasks, kept as a record. The design they produced lives in the module docs; a done task does not change after it is written up.
 
 A task that is dropped is deleted, together with its row below.
 
@@ -22,11 +22,11 @@ A task that is dropped is deleted, together with its row below.
 
 | Task | Type | Done |
 |---|---|---|
-| [Give each agent its own access to external services through Composio](done/composio-access.md) | feature | 2026-11-13 |
+| [Give each agent its own access to external services through Composio](done/1-composio-access.md) | feature | 2026-11-13 |
 
 ## A task file
 
-The file name is the task's `name` plus `.md`. It starts with YAML frontmatter, then the plan in prose.
+The file name is the task's `name` plus `.md`. In `done/` it starts with the task's number in the order tasks were finished, `<n>-<name>.md`, such as `1-composio-access.md`. It starts with YAML frontmatter, then the plan in prose.
 
 ```yaml
 ---
@@ -49,4 +49,12 @@ updated: 2026-11-12
 | `status` | `idea`: worth doing, not planned in detail. `planned`: the plan is settled. `in-progress`: being built. `blocked`: waiting on something the file names. `done`: built; the file is in `done/`. |
 | `modules` | Where the design is documented once it is built. |
 
-When a task is done, set `status: done` and `updated`, move its file to `done/`, and move its row to the Done table.
+When a task is done, move its file to `done/` under the next free number, set `status: done` and `updated`, and move its row to the Done table. Then write it up, in this order, keeping the plan below the notes:
+
+1. **What was built**: the parts, and the commits.
+2. **Decisions**: the decisions it made, linked to the module docs.
+3. **Changes from the plan**: what the plan said, what was built instead, and why.
+4. **Migration**: what an existing project or agent must change to take it up, what behaves differently afterwards, and what to check for.
+5. **Verification**: the tests, and what was checked by hand.
+6. **Follow-ups**: what is left, linked to its backlog task or to the design.
+7. **Original plan**: the plan as approved before building, unchanged except for its links, its headings one level down.

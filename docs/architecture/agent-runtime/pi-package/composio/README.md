@@ -1,6 +1,6 @@
 # Composio
 
-Every agent gets [Composio](https://docs.composio.dev)'s tools, which act in external services (Gmail, GitHub, Slack and about a thousand more) through the agent's own connected accounts. The Composio extension (`src/agent-runtime/pi-package/extensions/composio/index.ts`) gives each thread a Composio session and hands its MCP server to Pi. The plan it was built from, with its follow-ups: [Composio access](../../../../tasks/done/composio-access.md).
+Every agent gets [Composio](https://docs.composio.dev)'s tools, which act in external services (Gmail, GitHub, Slack and about a thousand more) through the agent's own connected accounts. The Composio extension (`src/agent-runtime/pi-package/extensions/composio/index.ts`) gives each thread a Composio session and hands its MCP server to Pi. The plan it was built from, with its follow-ups: [Composio access](../../../../tasks/done/1-composio-access.md).
 
 ## Composio in brief
 
@@ -56,7 +56,7 @@ On `session_start`:
 3. With no entry, other settings, or a session Composio no longer has (404), it creates one with the defaults, `session` and `user_id`.
 4. It registers the session's MCP URL with Pi: `pi.registerMcpServer("composio", { url, headers: { "x-api-key": "${COMPOSIO_API_KEY}" }, exposure: "direct" })` ([D40](#d40)). Only a URL on Composio's own origin gets the key, as Composio's SDK checks.
 
-Both REST calls send `x-api-key` and give up after 10 seconds. The first message already sees the tools, for two reasons. Pi awaits `session_start` handlers one after another, and the Composio extension's comes before the message queue extension's, which starts delivering, because the package's manifest lists it first ([D42](../README.md#d42)). And the first prompt waits for servers with direct tools ([Pi](../../pi/README.md#mcp-servers)). A test guards this. `COMPOSIO_BASE_URL` points the extension elsewhere, as the tests do.
+Both REST calls send `x-api-key` and give up after 10 seconds. The first message already sees the tools, for two reasons. The message queue extension starts delivering only after every extension's `session_start` handler has finished ([D44](../message-queue/README.md#d44)), so the server is registered by then. And the first prompt waits for servers with direct tools ([Pi](../../pi/README.md#mcp-servers)). A test guards this. `COMPOSIO_BASE_URL` points the extension elsewhere, as the tests do.
 
 - **A new session is recorded when a run starts** (`before_agent_start`), not at `session_start`: a session that does not hold its thread runs nothing, and a write from it would fork the conversation.
 - **A new account needs no new session.** Composio looks up the user id's accounts when a tool runs. A change to `agentx.composio` makes a new session at each thread's next start.

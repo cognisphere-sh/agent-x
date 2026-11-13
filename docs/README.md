@@ -28,7 +28,7 @@ The folders follow `src/`: `cli/`, `agent-runtime/` and `coordinator-runtime/`, 
 
 ## Decisions
 
-Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D44**.
+Each decision lives in the "Decisions" section of the module it affects, and describes the design as it is. Numbers are global and are not used again when a decision is deleted; the next free number is **D45**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -64,6 +64,7 @@ Each decision lives in the "Decisions" section of the module it affects, and des
 | [D41](architecture/agent-runtime/pi-package/composio/README.md#d41) | Without Composio, the session starts and the model is told why | agent-runtime/pi-package/composio |
 | [D42](architecture/agent-runtime/pi-package/README.md#d42) | The package's manifest lists its extensions in the order they load | agent-runtime/pi-package |
 | [D43](architecture/agent-runtime/agent/README.md#d43) | Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins | agent-runtime/agent |
+| [D44](architecture/agent-runtime/pi-package/message-queue/README.md#d44) | The session takes queued messages only once every extension has started | agent-runtime/pi-package/message-queue |
 
 ## User guides
 

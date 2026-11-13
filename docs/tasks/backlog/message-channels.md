@@ -26,7 +26,7 @@ cognisphere-harness works this way: its prompt says "your text output is interna
 
 - **The harness prompt.** "To ask a person something, ask in your reply" holds only at the terminal. For a queue message: the reply reaches nobody; ask through the channel the message came from.
 - **Answers back to senders.** The [message queue's](../../architecture/agent-runtime/pi-package/message-queue/README.md#known-limits) open question, how an agent's answer gets back to the sender, becomes: through the channel's tool.
-- **Composio's Connect Links** reach the person through the same channel ([Composio access](../done/composio-access.md#still-to-build)).
+- **Composio's Connect Links** reach the person through the same channel ([Composio access](../done/1-composio-access.md#follow-ups)).
 
 ## To decide
 

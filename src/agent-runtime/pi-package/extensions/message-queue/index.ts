@@ -140,6 +140,12 @@ export default function (pi: ExtensionAPI) {
 			if (!oneShot(ctx)) refuse(ctx);
 			return;
 		}
+	});
+
+	// The session takes messages only once every extension has started: Pi sends this right after all `session_start` handlers have finished,
+	// so one that awaits work there, such as registering an MCP server after a network call, is done before the first run. It adds no resources.
+	pi.on("resources_discover", (_event, ctx) => {
+		if (!queue || timer) return;
 		timer = setInterval(tick, tickMs, ctx);
 		// The timer must not keep a finished one-shot run alive.
 		timer.unref();

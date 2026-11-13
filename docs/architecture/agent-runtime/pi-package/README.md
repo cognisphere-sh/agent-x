@@ -71,8 +71,8 @@ The same handler removes skills under `~/.agents/skills` from `event.systemPromp
 ### D42. The package's manifest lists its extensions in the order they load
 
 - **Decision.** `package.json` has `"pi": { "extensions": [...] }`: Composio, message queue, system prompt.
-- **Why.** The rule is that the message queue extension must not start a run before every extension that prepares the session in an awaited `session_start` has done so. Pi calls handlers in load order, and the queue's timer starts in its `session_start`. So the Composio extension, which registers its MCP server there, comes before it ([Composio](composio/README.md#the-extension)). Without a manifest Pi loads folders in the order the file system lists them, which is alphabetical on macOS but not on Linux.
-- **Consequence.** A new extension, skill or prompt of the package must be listed in the manifest, and one that prepares the session before the first run goes before the message queue. The order covers only agentx's package: Pi loads the agent's own extensions after it, so one of those that awaits work in `session_start` can still lose the race with the queue.
+- **Why.** Pi calls handlers in load order. Without a manifest it loads folders in the order the file system lists them, which is alphabetical on macOS but not on Linux, so the package would behave differently by machine. Start-up work no longer depends on the order: the message queue takes messages only once every extension has started ([D44](message-queue/README.md#d44)).
+- **Consequence.** A new extension, skill or prompt of the package must be listed in the manifest.
 
 <a id="d16"></a>
 ### D16. Whoever starts Pi passes agentx's part of the config

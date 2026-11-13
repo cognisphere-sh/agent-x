@@ -92,8 +92,8 @@ export default function (pi: ExtensionAPI) {
 		return undefined;
 	};
 
-	// Awaited, so the server is registered before the message queue extension, which the package's manifest loads after this one, starts a run:
-	// Pi waits for direct servers only when a run starts.
+	// Awaited: the message queue extension starts runs only after every session_start handler has finished, and Pi waits for direct servers
+	// only when the first run starts, so the server must be registered by then.
 	pi.on("session_start", async (_event, ctx) => {
 		unavailable = await connect(ctx).catch((error: unknown) => `Composio could not be reached: ${error instanceof Error ? error.message : String(error)}.`);
 	});

@@ -66,7 +66,8 @@ Two processes writing one Pi session split the conversation, and Pi has no lock 
 
 | When | What it does |
 |---|---|
-| `session_start` | Reads the agent's time zone. Opens the queue, takes the thread's lease, starts a one-second timer. |
+| `session_start` | Reads the agent's time zone. Opens the queue, takes the thread's lease. |
+| `resources_discover` (after every extension's `session_start`) | Starts a one-second timer, so messages are taken only once every extension has started ([D44](#d44)). Adds no resources. |
 | every second | Checks the lease. If Pi is idle, claims the queued messages and sends them as one user message, which starts a run. A worker with no work ends the session instead. |
 | `context` (before every model call) | Checks the lease. For each new user message entry with metadata blocks, writes the entry's id to the messages named in the opening tags. |
 | `turn_end` | Checks the lease. After a completed turn, claims the messages that may be steered and sends them as a steer, which Pi adds before the next model call. Skipped while the run is being aborted. |
@@ -216,3 +217,10 @@ sqlite3 storage/message_queue.db 'SELECT id, thread_id, status, attempts, error 
 - **Decision.** The file's version is SQLite's `PRAGMA user_version`; opening an older file runs the missing migrations from `queue.ts` in one transaction under the write lock, and a newer file is refused. A shipped migration is never changed.
 - **Why.** Only one of the processes that open the file after an upgrade may migrate it, and a stale build must not write to tables it does not know.
 - **Consequence.** An older agentx refuses a migrated file.
+
+<a id="d44"></a>
+### D44. The session takes queued messages only once every extension has started
+
+- **Decision.** The extension takes the thread's lease in `session_start`, but starts the timer that delivers messages in `resources_discover`, which Pi sends right after every extension's `session_start` handler has finished.
+- **Why.** An extension that awaits work in `session_start`, such as one that registers an MCP server after a network call, must be done before the first run: Pi's MCP support waits for direct servers only at the first run's start, and only for those registered by then. Pi loads the agent's own extensions after agentx's package, so no order of extensions could ensure it.
+- **Consequence.** `resources_discover` is meant for adding skill and prompt folders; the extension uses it as the one event that follows start-up, and returns none.

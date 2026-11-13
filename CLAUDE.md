@@ -64,7 +64,7 @@ After creating a module or sub-module:
 2. Add it to the tables in `docs/README.md`, and to the components table and diagram in `docs/high_level_design.md`.
 3. Update the status table in `docs/high_level_design.md`, this file's mental model if it changed, and the repository layout in `README.md`.
 
-After any other change: update the docs it affects and delete what it made obsolete. The docs describe the design as it is. Do not leave history ("previously", "was removed", "superseded") anywhere in them, decisions included; git keeps how the design got there.
+After any other change: update the docs it affects and delete what it made obsolete. The docs describe the design as it is. Do not leave history ("previously", "was removed", "superseded") anywhere in them, decisions included; git keeps how the design got there. The one exception is `docs/tasks/done/`: a finished task keeps its original plan and notes on how it was built, as `docs/tasks/README.md` describes.
 
 Decisions: one short entry per choice of the current design, in the "Decisions" section of the affected module's README, as `<a id="dN"></a>` + `### DN. Title` + bullets **Problem**, **Decision**, **Why**, and **Rejected** or **Consequence** where they apply. **Rejected** lists only alternatives that were never the design. Numbers are global; take the next free number from `docs/README.md` and add the entry to its table. When a choice changes, rewrite its entry, or delete the entry and its row; a deleted number is not used again.
 

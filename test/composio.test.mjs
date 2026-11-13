@@ -170,3 +170,27 @@ test("the project's agent-x/.env gives every agent its keys, and a variable alre
 	assert.equal(unavailable(before), "Composio tools are unavailable in this session: Composio could not be reached: fetch failed.");
 	assert.equal(composio.created.length, 1);
 });
+
+test("an agent's own extension that registers an MCP server after awaiting in session_start still has its tools in the first queued message", async (t) => {
+	// No Composio key: only the agent's own server is in play.
+	const project = setup(false);
+	writeFileSync(
+		join(project.agent, "storage", "knowledge", "extensions", "slow-server.ts"),
+		`export default function (pi) {
+	pi.on("session_start", async () => {
+		await new Promise((resolve) => setTimeout(resolve, 2000));
+		pi.registerMcpServer("slow", { url: "${composio.url}/slow/mcp", exposure: "direct" });
+	});
+}
+`,
+	);
+	const queue = new Queue(project.agent);
+	t.after(() => queue.close());
+	const id = queue.enqueue({ threadId: "main", content: "hello" });
+	const server = runner(project);
+	t.after(() => server.stop());
+	const before = model.tools.length;
+	await until(() => messages(project.agent).find((message) => message.id === id).status === "done");
+
+	assert.ok(model.tools[before].includes("mcp__slow__COMPOSIO_SEARCH_TOOLS"), String(model.tools[before]));
+});

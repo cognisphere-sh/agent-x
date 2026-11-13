@@ -79,6 +79,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
 - Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's own extensions, then its built-in ones such as MCP support.
 - Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
+- Every session start (start-up, `/new`, `/resume`, `/fork`, `/reload`) emits `session_start`, then, once all its handlers have finished, `resources_discover`, if any extension handles it. Nothing follows at start-up: the mode then waits for input (RPC, terminal) or sends its prompt (print) (`bindExtensions` in `src/core/agent-session.ts`). `session_start` fires whether or not a message comes.
 - `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
 
 ## MCP servers
