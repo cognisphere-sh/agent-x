@@ -13,10 +13,10 @@ A task that is dropped is deleted, together with its row below.
 |---|---|---|---|
 | [Queue the messages typed into a terminal session](backlog/queue-terminal-input.md) | feature | none | idea |
 | [Connect agents to people through message channels](backlog/message-channels.md) | feature | none | idea |
-| [Start an agent's runner with `agentx work`](backlog/agent-runner-command.md) | feature | none | planned |
+| [Run an agent with `agentx run`, its event router and its workflows](backlog/agentx-run.md) | feature | none | planned |
 | [Run every agent of a project with `agentx serve`](backlog/coordinator.md) | feature | none | planned |
-| [Put Composio trigger events on agents' queues](backlog/coordinator-webhooks.md) | feature | none | planned |
-| [Set up each agent's Composio triggers from its settings](backlog/composio-triggers.md) | feature | none | idea |
+| [Bring Composio trigger events to agents](backlog/coordinator-webhooks.md) | feature | none | idea |
+| [Make each agent's Composio triggers](backlog/composio-triggers.md) | feature | none | idea |
 
 ## Done
 

@@ -1,7 +1,7 @@
 ---
 name: composio-triggers
-title: Set up each agent's Composio triggers from its settings
-description: An agent's settings declare the Composio triggers it reacts to and the thread of their events; the coordinator makes Composio match them for the agent's user id, with a key of its own that is never passed to Pi.
+title: Make each agent's Composio triggers
+description: The coordinator makes the Composio triggers declared for an agent, by its developer in its settings or by the agent in its knowledge, always for the agent's own user id and with a key of its own that is never passed to the agent.
 type: feature
 priority: none
 status: idea
@@ -10,75 +10,81 @@ created: 2026-11-13
 updated: 2026-11-13
 ---
 
-# Set up each agent's Composio triggers from its settings
+# Make each agent's Composio triggers
 
-A Composio trigger makes Composio send an event when something happens in a service, such as a new email in a mailbox. [Webhooks](coordinator-webhooks.md), which this plan needs first, bring each event to the agent whose Composio user id the trigger was made for. This task is about making the triggers.
+A Composio trigger makes Composio send an event when something happens in a service, such as a new email in a mailbox. [Webhooks](coordinator-webhooks.md), which this plan needs first, bring each event to the agent whose Composio user id the trigger was made for, and the agent's [router](agentx-run.md) decides what it becomes. This task makes the triggers.
 
-## Who sets up an agent's triggers
+## How triggers are made
 
-"Agents configure triggers" can mean:
+Through Composio's trigger API, with a key that has the **Triggers** permission, or by hand with Composio's CLI (`composio dev triggers create`); the dashboard turns triggers on and off. A session gives the model no way. In a check on 2026-11-13, agentx's default session had no trigger tool. With Composio's own `composio` toolkit turned on, the session's search found `COMPOSIO_ENABLE_TRIGGER`, but running it was refused: "Cannot execute meta tool COMPOSIO_ENABLE_TRIGGER directly".
 
-1. **The agent's developer**, in the agent's `.pi/settings.json`, checked in. The coordinator makes Composio match it.
-2. **The agent itself, while it runs**, for example when a person asks it to watch for something.
+The same check, with a full project key and Gmail's `GMAIL_NEW_GMAIL_MESSAGE`:
 
-Pick 1 first. The agent's definition stays in its directory, every environment gets the same triggers, and no model can run up event costs. 2 can follow on the same machinery ([below](#later-triggers-the-agent-sets-up-itself)).
+- `POST /api/v3.1/trigger_instances/{slug}/upsert` with `user_id` and `trigger_config` makes the trigger on the user id's connected account for the toolkit, and answers 201 with `trigger_id`, `type` and `fallback_reason`. The same config again answers 200 with the same id, and turns the trigger back on if it was off. Another config makes a second trigger and leaves the first running. A user id with no account for the toolkit gets 404, code 1810.
+- `GET /api/v3.1/trigger_instances/active` lists triggers, each with its `user_id`, `connected_account_id` and config, the config's defaults filled in. `PATCH /api/v3.1/trigger_instances/manage/{id}` with `{"status": "disable"}` turns one off, and `DELETE` on the same path deletes it.
 
 ## Where the key lives
 
-Making a trigger needs a Composio key with the **Triggers** permission. No Composio key can be limited to one user id, so such a key can change the triggers of every agent of the project. A Composio session gives the model no tools for triggers: "Triggers don't work with sessions yet", say Composio's docs. (From the docs and the source of `@composio/core` 0.29.0, read on 2026-11-13.)
+A Composio key belongs to the whole Composio project, and no key can be limited to one user id. A trigger call names any user id, or only a trigger id, and the key accepts it. All agents of a project share one Composio project, each with its own user id. So a key that can make triggers can make, change or delete any agent's triggers, or send their events elsewhere with `egress_url`.
 
-- Pick: **the coordinator holds the key**, `COMPOSIO_COORDINATOR_API_KEY`, a scoped key with Triggers read and write, and always sends the agent's own user id. It reads the key as it reads the webhook secret, and `piEnv` leaves it out of Pi's environment.
-- Rejected: tools in agentx's Pi package that call Composio with a key that has Triggers. The key would be in the agent's process by design, so even sandboxes could not keep it from the agent, and with it any agent could change every agent's triggers or send their events elsewhere with `egress_url`. agentx would also own tools over Composio's REST API, which [D40](../../architecture/agent-runtime/pi-package/composio/README.md#d40) avoids.
-- Rejected for now: Composio's own `composio` toolkit has `COMPOSIO_LIST_TRIGGERS` and `COMPOSIO_ENABLE_TRIGGER`. agentx's default toolkits leave it out, nothing documents it inside a session or says which user id it acts for, and none of its tools turns a trigger off.
-- Rejected: a command the developer runs to set up triggers. The key would move to laptops, and nothing would turn triggers back on after a person reconnects an account.
+- The agents' key, `COMPOSIO_API_KEY`, is a scoped key for sessions only ([Composio](../../architecture/agent-runtime/pi-package/composio/README.md)), so it cannot touch triggers. It must stay that way: a full project key there would give every agent every trigger and the webhook's secret, and a sandbox would not help.
+- Pick: **the coordinator holds a key with Triggers**, `COMPOSIO_COORDINATOR_API_KEY`, and always sends the agent's own user id. It reads the key as it reads the webhook secret. The `AgentManager` leaves it out of the agent's process, and `piEnv` leaves it out of what Pi, the router and workflows get from `agent-x/.env`.
+- Rejected: tools in agentx's Pi package that call the trigger API with that key. The key would be in the agent's process by design, so even sandboxes could not keep it from the agent. agentx would also own tools over Composio's REST API, which [D40](../../architecture/agent-runtime/pi-package/composio/README.md#d40) avoids.
+- Rejected: a command the developer runs to make triggers. The key would move to laptops, and nothing would turn triggers back on after a person reconnects an account.
+
+## Who declares an agent's triggers
+
+The coordinator makes Composio match a list of triggers for each agent. The list can come from:
+
+1. **The developer**, under `agentx.composio.triggers` in the agent's `.pi/settings.json`, checked in. Every environment gets the same triggers, and no model can add event costs.
+2. **The agent**, in `storage/knowledge/composio_triggers.json`, its own ([D35](../../architecture/agent-runtime/agent/README.md#d35)), in the same format. The agent can start watching something when a person asks, as it keeps its own router and workflows. The coordinator still sends only the agent's user id, a slug and a config, so the agent reaches nothing beyond its own triggers. The agent finds trigger types and their configs in the toolkit pages of Composio's docs.
+3. **Both** (pick), the way workflows come from `.pi/workflows/` and from the agent's knowledge. A name in both: the developer's wins.
 
 ## Plan
 
-1. **Settings.** `agentx.composio.triggers` in the agent's `.pi/settings.json`, keyed by a name the developer picks:
+1. **Declarations**, keyed by a name the developer or the agent picks:
 
    ```json
    "triggers": {
-   	"support-email": {
-   		"slug": "GMAIL_NEW_GMAIL_MESSAGE",
-   		"upsert": { "trigger_config": { "labelIds": "INBOX" } },
-   		"threadId": "support"
-   	}
+   	"support-email": { "slug": "GMAIL_NEW_GMAIL_MESSAGE", "config": { "labelIds": "INBOX" } }
    }
    ```
 
-   `slug` is Composio's trigger type. `upsert` goes into the body of Composio's request that makes the trigger, in Composio's names, as `session` does for sessions ([Composio](../../architecture/agent-runtime/pi-package/composio/README.md#settings)); agentx adds `user_id`. `threadId` defaults to `trigger-<name>`. What the agent does with a trigger's events goes in its system prompt, under the trigger's name, which each of its messages carries (`trigger-name: support-email`). The Composio extension then compares only `userId` and `session` when it checks whether a thread's Composio session still fits the settings, so a change of triggers makes no new sessions.
-2. **The coordinator makes Composio match** the settings of each agent that has `triggers`, when `serve` starts and before it takes events, and again for every such agent on each `composio.connected_account.activated` event, which names no user id that Composio still supports:
-   - Each declared trigger is upserted (`POST /api/v3.1/trigger_instances/{slug}/upsert`) with the agent's `user_id`. Composio uses the user id's first active account for the toolkit. Without one the call fails, the coordinator logs it, and the next match tries again. An upsert also turns a matching trigger back on after Composio turned it off. Two names of one agent with the same `slug` and `upsert` would get one trigger; the coordinator logs the second and skips it.
-   - Every other active trigger of the user id (`GET /api/v3.1/trigger_instances/active?user_ids=…`) is turned off with `PATCH /api/v3.1/trigger_instances/manage/{id}` and `{"status": "disable"}`, not deleted, so a mistake can be undone in Composio's dashboard. If any upsert of the agent failed, this match turns off nothing: a failed upsert returns no id, and a declared trigger would look undeclared. The user id `<agent>@<project>` is agentx's ([D38](../../architecture/agent-runtime/pi-package/composio/README.md#d38)), so an agent that declares triggers declares all of them. An agent without `triggers` keeps the triggers its user id has.
-   - The coordinator keeps each trigger id it got back, with its agent and name, in memory. An event whose trigger id it does not know is queued as [webhooks](coordinator-webhooks.md) queue any event, without waiting; after the answer, the coordinator matches that agent once more, once per unknown id.
-   - `"triggers": {}` turns off every trigger of the agent; no `triggers` key leaves them alone. A name or `threadId` that the rule for thread ids does not allow is logged and skipped.
+   `config` is the trigger's config in Composio's names, as `GET /api/v3.1/triggers_types/{slug}` describes it. agentx adds `user_id` and sends nothing else, so no declaration can set `egress_url`. Composio puts the trigger on the user id's first active account for the toolkit.
+2. **The Composio extension compares only `userId` and `session`** when it checks whether a thread's Composio session still fits the settings. Today it compares all of `agentx.composio`, so a change of triggers would make a new session for every thread.
+3. **The coordinator makes Composio match** the declarations of each agent that has any: when `serve` starts, before it takes events; for every such agent on each `composio.connected_account.activated` event, which names no user id that Composio still supports; and when the agent's file changes, which it checks every few seconds.
+   - Each declared trigger is upserted with the agent's `user_id`. Without an account for the toolkit, the call fails, the coordinator logs it, and the next match tries again. Two names that get the same trigger id are one trigger, because Composio fills in a config's defaults, so the coordinator logs the second name and skips it. An answer with `type: "poll"` is logged with its `fallback_reason`.
+   - The agent's other active triggers are turned off, not deleted, so a mistake can be undone in Composio's dashboard, and declaring the old config again turns it back on. The coordinator lists them with `user_ids` set to the agent's, follows `next_cursor`, and turns off only those whose own `user_id` is the agent's. A changed config makes a new trigger, so this is how the old one stops. If any upsert of the agent failed, this match turns off nothing: a failed upsert returns no id, and a declared trigger would look undeclared.
+   - An agent with no declarations keeps the triggers its user id has. An empty list turns them all off.
+   - When Composio refuses one of the agent's own declarations, the coordinator adds an event for the agent with the name and Composio's answer, so the agent learns of it.
+   - The coordinator keeps each trigger id it got back, with its agent, name and connected account, in memory. An event whose trigger id it does not know is added as [webhooks](coordinator-webhooks.md) add any event, without waiting. After the answer, the coordinator matches that agent once more, once per unknown id.
    - Without `COMPOSIO_COORDINATOR_API_KEY`, or with Composio out of reach, `serve` logs it and starts anyway. Events are still delivered, and the next match tries again.
-3. **Routing.** An event of a declared trigger goes to the trigger's `threadId`, with `trigger-name` in its metadata. Other events go as in [webhooks](coordinator-webhooks.md). The trigger id also finds the agent when an event's `user_id` is null.
-4. **Composio's lifecycle events.** The webhook subscription also sends `composio.trigger.disabled` (Composio turned a trigger off, for example because the account's login expired) and `composio.connected_account.activated`. The first is logged. The second starts a match, which turns the triggers back on once a person has reconnected the account.
-5. **Tests.** The fake Composio gets the trigger routes. For an agent that declares a trigger: `serve` upserts it with the agent's user id; another active trigger of that user id is turned off, but not when an upsert fails; an event of the declared trigger arrives on its thread with its name; an `activated` event upserts again. An agent without `triggers` keeps its triggers.
-6. **Check against Composio by hand:** a Gmail trigger from an agent's settings, and an email that reaches its thread. It settles what the docs leave open: whether an upsert with another config makes a second trigger or changes the first; what an upsert answers when the user id has no account; whether reconnecting an account keeps its id; whether the upsert of a Gmail trigger answers `type: webhook`; whether an agent's session offers `COMPOSIO_ENABLE_TRIGGER`; and whether Composio's dashboard can choose the subscription's events.
-7. **Docs.** The agent's settings table and [customize an agent](../../user_guides/customize_an_agent.md); a triggers section and decisions in the Composio doc; the coordinator's doc; the server guide. The guide says to create the key in Composio's dashboard (Settings, API Keys; the docs give no other way) and to add the two events to the webhook subscription. If the dashboard cannot choose events, that takes one `PATCH /api/v3.1/webhook_subscriptions/{id}` with all three in `enabled_events`, made by hand with a key that has Webhooks write.
+4. **Events of declared triggers** carry `trigger-name: <name>` in their metadata, so a router can tell them apart. The trigger id also finds the agent when an event's `user_id` is null.
+5. **Composio's other events.** The subscription also sends `composio.trigger.disabled` (Composio turned a trigger off, for example because the account's login expired), `composio.connected_account.expired` and `composio.connected_account.activated`, all V3 only. Their `data` names a trigger or an account by `data.id`, and the user id in the two account events is one Composio marks as going away. So the coordinator finds the agent by the trigger ids and connected accounts it knows from matches and from earlier events, and adds the first two as events for that agent, so its router can tell a person. The third starts a match, which turns triggers back on once a person has reconnected the account: Composio does not.
+6. **Tests.** The fake Composio gets the trigger routes. For an agent that declares a trigger: `serve` upserts it with the agent's user id; another active trigger of that user id is turned off, but not when an upsert fails, and a trigger of another user id is left alone; a changed config turns the old trigger off; a declaration the agent adds to its file is upserted; an event of the declared trigger carries its name; an `expired` event for its account reaches the agent; an `activated` event upserts again. An agent without declarations keeps its triggers. A change of triggers keeps each thread's Composio session.
+7. **Check against Composio by hand**, through `serve`, with a scoped key that has only Triggers read and write: a Gmail trigger declared in an agent's settings and one in its knowledge, and an email that reaches its router. It settles what the 2026-11-13 check left open: whether such a key can upsert, list, turn off and delete; whether `user_ids` filters the list (two user ids, each with triggers); whether reconnecting an account keeps its id; what the three lifecycle events carry; and whether Composio's dashboard can choose the subscription's events.
+8. **Docs.** The agent's settings table and [customize an agent](../../user_guides/customize_an_agent.md); a triggers section and decisions in the Composio doc; the coordinator's doc; the harness prompt (the agent's own declarations); the server guide. The guide says:
+   - Create the coordinator's key in Composio's dashboard (Settings, API Keys, with Triggers read and write; the docs give no other way), and keep `COMPOSIO_API_KEY` the scoped session key.
+   - Add the three events to the webhook subscription. If the dashboard cannot choose events, that takes one `PATCH /api/v3.1/webhook_subscriptions/{id}` with all four in `enabled_events`, made by hand with a key that has Webhooks write.
+   - A trigger the coordinator logs as `poll` keeps polling until it is deleted by hand once; the next match then makes it again, realtime where Composio can.
 
 ## To decide
 
-- **Who sets up triggers**: above.
-- **The other triggers of an agent with `triggers`.** Turned off (pick), so the settings are the whole truth and a removed declaration stops its trigger, or left alone.
-- **Instructions.** In the agent's system prompt, per trigger name (pick): written once, read again on every message ([D5](../../architecture/agent-runtime/agent/README.md#d5)). Or an `instructions` field put before each event, which adds the text to the thread for every event.
-
-## Later: triggers the agent sets up itself
-
-The same match can take a second list, which the agent writes into its knowledge, `storage/knowledge/composio_triggers.json`, in the format of the settings ([D35](../../architecture/agent-runtime/agent/README.md#d35)). The coordinator reads both lists with the same user id, matches the agent again when the file changes (it checks the file's time every few seconds), and puts a message on the agent's queue when Composio refuses one of the agent's own. The agent finds trigger types and their config in the toolkit pages of Composio's docs; Composio's API gives them only to a key with Triggers.
+- **Who declares triggers**: above.
+- **The other triggers of an agent with declarations.** Turned off (pick), so the declarations are the whole truth and a changed or removed declaration stops its old trigger. Left alone, every change of config would leave a trigger running.
 
 ## Costs
 
 - From Composio's pricing page (composio.dev/pricing/platform, 2026-11-13), for accounts made since 2026-08-15; older accounts keep their plan until 2026-12-31. Composio bills each trigger event it delivers to the webhook. Its Hobby plan includes 50,000 a month, at most 10,000 of them from Composio-managed apps, and then pauses. On Pro, a polling event costs twice a realtime one.
-- Gmail and most Google Calendar triggers are realtime since 2026-11-12 with Composio-managed auth. A trigger made before that keeps polling until it is deleted and made again; an upsert keeps an existing trigger and its type. Polling triggers check every 2 minutes by default.
+- Gmail triggers are realtime since 2026-11-12 with Composio's own Gmail app: in the check, a new trigger answered `type: webhook` and its event came 23 s after the email, though the trigger type still says `poll`. A trigger made before that keeps polling until it is deleted and made again, because an upsert keeps an existing trigger and its type. Polling triggers check every 2 minutes by default.
+- Every trigger event of an agent goes through its router, and a message costs a model run, so a broad trigger such as every email of a mailbox is cheaper with a router or a workflow that drops what the agent does not need.
 
 ## Known limits
 
 - Until sandboxes, an agent can read the coordinator's key the way it reads any file or process of its OS user, such as `agent-x/.env`.
+- A declaration cannot choose among an agent's accounts for one toolkit: the trigger goes on the first active one, which may not be the one its session uses.
 
 ## Decisions to record when built
 
-- An agent's triggers are declared in its settings, and the coordinator makes Composio match them.
-- The coordinator's Composio key, with Triggers, is never passed to Pi.
+- An agent's triggers are declared, by its developer in its settings and by the agent in its knowledge, and the coordinator makes Composio match them for the agent's user id.
+- The coordinator's Composio key, with Triggers, is never passed to the agent's process.
