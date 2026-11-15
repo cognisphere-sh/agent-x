@@ -2,6 +2,8 @@
 // refusals, restarts and stopping. Real `agentx serve` processes in a scratch project, with the fake model for the Pi threads that events reach.
 
 import assert from "node:assert/strict";
+import { createHmac } from "node:crypto";
+import { createServer } from "node:http";
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -74,9 +76,9 @@ async function request(address, method, path, { body, token } = {}) {
 	return { status: response.status, body: await response.text() };
 }
 
-/** Starts `agentx serve` in the project's root on a free port, with an API token; killed when the test ends. */
-async function serve(t, project) {
-	writeFileSync(join(projectRoot(project), "agent-x", ".env.services"), "AGENTX_API_TOKEN=the-token\n");
+/** Starts `agentx serve` in the project's root on a free port, with an API token and the lines `secrets` of agent-x/.env.services; killed when the test ends. */
+async function serve(t, project, secrets = "") {
+	writeFileSync(join(projectRoot(project), "agent-x", ".env.services"), `AGENTX_API_TOKEN=the-token\n${secrets}`);
 	const server = background(projectRoot(project), project.env, ["serve", "--port", "0"]);
 	t.after(() => {
 		try {
@@ -174,6 +176,9 @@ test("agentx serve runs every agent agentx.json lists, says how each is, fires s
 	const server = await serve(t, project);
 	assert.match(server.output(), /Serving agents b, main of project on http:\/\/127\.0\.0\.1:\d+ /);
 	assert.match(server.output(), /agents\/stray is not listed in \S+agentx\.json; it is not run\./);
+	// Without its secret, Composio's service is off, and its webhook is not served.
+	assert.match(server.output(), /Service "composio" is off: COMPOSIO_WEBHOOK_SECRET is not set/);
+	assert.equal((await fetch(`${server.address}/services/composio/webhook`, { method: "POST" })).status, 404);
 	const tick = await until(() => events(project.agent).find((found) => found.metadata["agentX-Schedule"] === "tick"));
 	assert.deepEqual([tick.threadId, tick.content, tick.metadata.source], ["ticks", "tick", "schedule"]);
 	assert.deepEqual(await server.get("/health"), { status: 200, body: { ok: true } });
@@ -494,4 +499,134 @@ test("the host follows no link in an agent's storage to a mailbox: an inbox that
 	symlinkSync(mainInbox, bOutbox);
 	assert.throws(() => deliverOutbox(b), /is a link, which the host does not follow/);
 	assert.ok(inboxEvents(main).some((mail) => mail.id === refusal.id));
+});
+
+/** The headers Composio signs `body` with: `secret` as it is, the key of a base64 HMAC-SHA256 of `<id>.<seconds>.<body>`. */
+function composioHeaders(secret, id, body, seconds = Math.floor(Date.now() / 1000)) {
+	const signature = createHmac("sha256", secret).update(`${id}.${seconds}.${body}`).digest("base64");
+	return { "webhook-id": id, "webhook-timestamp": String(seconds), "webhook-signature": `v1,${signature}` };
+}
+
+test("Composio's webhook delivers a signed trigger event to the agent whose Composio user id it names, once per webhook-id, with its data in data.json; a request not signed with the secret, or old, gets 401, and one for no agent 200 and no event", async (t) => {
+	const project = createAgent(model.port);
+	const b = addAgent(project, "b");
+	const userId = JSON.parse(readFileSync(join(b, ".pi", "settings.json"), "utf8")).agentx.composio.userId;
+	const secret = "0f".repeat(32);
+	const server = await serve(t, project, `COMPOSIO_WEBHOOK_SECRET=${secret}\n`);
+	const webhook = async (body, headers) => (await fetch(`${server.address}/services/composio/webhook`, { method: "POST", body, headers })).status;
+	const composioEvent = (id, user, type = "composio.trigger.message") =>
+		JSON.stringify({
+			id,
+			timestamp: "2026-11-15T10:00:00.000Z",
+			type,
+			metadata: { trigger_slug: "GMAIL_NEW_GMAIL_MESSAGE", toolkit_slug: "gmail", trigger_id: "ti_1", connected_account_id: "ca_1", auth_config_id: "ac_1", user_id: user, log_id: "log_1" },
+			data: { subject: "hello" },
+		});
+
+	const body = composioEvent("msg_1", userId);
+	const signed = composioHeaders(secret, "msg_1", body);
+	// Composio sends it again, as after an answer it did not get: one event. Another signature beside the right one is allowed.
+	assert.equal(await webhook(body, signed), 200);
+	assert.equal(await webhook(body, { ...signed, "webhook-signature": `v1,${Buffer.alloc(32).toString("base64")} ${signed["webhook-signature"]}` }), 200);
+	const got = await until(() => events(b).find((found) => found.metadata.source === "composio"));
+	assert.equal(got.threadId, "main");
+	assert.equal(got.content, "Composio trigger GMAIL_NEW_GMAIL_MESSAGE fired. Its event's data is in data.json.\n\nFiles: `data.json`");
+	const { trigger, "trigger-id": triggerId, account, "event-time": eventTime, "agentX-Service": service } = got.metadata;
+	assert.deepEqual([trigger, triggerId, account, eventTime, service], ["GMAIL_NEW_GMAIL_MESSAGE", "ti_1", "ca_1", "2026-11-15T10:00:00.000Z", "composio"]);
+	assert.deepEqual(JSON.parse(readFileSync(join(b, "storage", "workspace", "inbox", got.id, "data.json"), "utf8")), { subject: "hello" });
+
+	// Not signed with the secret, a signature of another length, none, a changed body, or older than 300 s: 401.
+	assert.equal(await webhook(body, composioHeaders("1e".repeat(32), "msg_1", body)), 401);
+	assert.equal(await webhook(body, { ...signed, "webhook-signature": "v1,c2hvcnQ=" }), 401);
+	assert.equal(await webhook(body, {}), 401);
+	assert.equal(await webhook(body.replace("hello", "hullo"), signed), 401);
+	assert.equal(await webhook(body, composioHeaders(secret, "msg_1", body, Math.floor(Date.now() / 1000) - 301)), 401);
+	// For no agent of the project, or of another type: 200, so Composio does not send it again, and no event.
+	for (const [id, ignored] of [["msg_2", composioEvent("msg_2", "someone@else")], ["msg_3", composioEvent("msg_3", null)], ["msg_4", composioEvent("msg_4", userId, "composio.trigger.disabled")]]) {
+		assert.equal(await webhook(ignored, composioHeaders(secret, id, ignored)), 200);
+	}
+	assert.match(server.output(), /composio: event msg_2 is ignored: no agent has Composio user id "someone@else"\./);
+	assert.deepEqual(readdirSync(join(b, "storage", "workspace", "inbox")).filter((name) => !name.startsWith(".")), [got.id]);
+	assert.equal(events(project.agent).filter((found) => found.metadata.source === "composio").length, 0);
+	assert.equal(events(b).filter((found) => found.metadata.source === "composio").length, 1);
+});
+
+/** A fake Telegram Bot API on a free port: it records each call, refuses a token it does not know, and serves one small file and one too big. */
+async function fakeTelegram(t, tokens) {
+	const calls = [];
+	const server = createServer(async (request, response) => {
+		const chunks = [];
+		for await (const chunk of request) chunks.push(chunk);
+		const [, kind, token, ...rest] = /^\/(file\/)?bot([^/]+)\/(.*)$/.exec(request.url) ?? [];
+		const answer = (status, body) => response.writeHead(status, { "content-type": "application/json" }).end(JSON.stringify(body));
+		if (!tokens.includes(token)) return answer(401, { ok: false, description: "Unauthorized" });
+		if (kind) return response.end(`the bytes of ${rest.join("/")}`);
+		const params = JSON.parse(Buffer.concat(chunks).toString() || "{}");
+		calls.push({ token, method: rest[0], params });
+		if (rest[0] === "getFile") return params.file_id === "big" ? answer(400, { ok: false, description: "Bad Request: file is too big" }) : answer(200, { ok: true, result: { file_path: `photos/${params.file_id}.jpg` } });
+		answer(200, { ok: true, result: true });
+	});
+	await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+	t.after(() => server.close());
+	return { url: `http://127.0.0.1:${server.address().port}`, calls };
+}
+
+test("Telegram: each listed agent's bot gets its webhook at start, and a message from a chat the agent lists goes into its inbox once, with its files; a request without the bot's secret token gets 401, a message from another chat 200 and no event", async (t) => {
+	const project = createAgent(model.port);
+	const telegram = await fakeTelegram(t, ["1:main-token"]);
+	editConfig(project, (config) => ({ ...config, publicUrl: "https://agents.example.com/", services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [111] } } } } }));
+	const server = await serve(t, project, "TELEGRAM_BOT_TOKEN_MAIN=1:main-token\n");
+	assert.match(server.output(), /with services relay, scheduler, telegram/);
+	const [webhook] = telegram.calls;
+	assert.deepEqual([webhook.method, webhook.params.url, webhook.params.allowed_updates], ["setWebhook", "https://agents.example.com/services/telegram/main", ["message"]]);
+	const secret = webhook.params.secret_token;
+	const post = async (path, update, token = secret) =>
+		(await fetch(`${server.address}/services/telegram/${path}`, { method: "POST", body: JSON.stringify(update), headers: { "x-telegram-bot-api-secret-token": token } })).status;
+	const message = (chat, extra) => ({ message_id: 7, date: 1, chat: { id: chat, type: "private" }, from: { id: 5, username: "ana" }, ...extra });
+
+	// A photo, in two sizes, with a caption: the largest is downloaded. Telegram sends it again: one event.
+	const update = { update_id: 1, message: message(111, { caption: "look", photo: [{ file_id: "small" }, { file_id: "large" }] }) };
+	assert.equal(await post("main", update), 200);
+	assert.equal(await post("main", update), 200);
+	const got = await until(() => events(project.agent).find((found) => found.metadata.source === "telegram"));
+	assert.equal(got.content, "look\n\nFiles: `large.jpg`");
+	const { chat, "chat-type": chatType, from, "from-id": fromId, "message-id": messageId, "agentX-Service": service } = got.metadata;
+	assert.deepEqual([chat, chatType, from, fromId, messageId, service], [111, "private", "@ana", 5, 7, "telegram"]);
+	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "inbox", got.id, "large.jpg"), "utf8"), "the bytes of photos/large.jpg");
+
+	// A file too big for the Bot API: the message arrives, and says so.
+	assert.equal(await post("main", { update_id: 2, message: message(111, { text: "a big one", document: { file_id: "big" } }) }), 200);
+	const big = await until(() => events(project.agent).find((found) => found.content.startsWith("a big one")));
+	assert.equal(big.content, "a big one\n\nA file of this message could not be downloaded: Telegram's getFile: Bad Request: file is too big");
+
+	// Without the bot's secret token: 401. From a chat main does not list: 200, and no event. An agent without a bot: 404.
+	assert.equal(await post("main", { update_id: 3, message: message(111, { text: "forged" }) }, "a-guess"), 401);
+	assert.equal(await post("main", { update_id: 4, message: message(222, { text: "a stranger" }) }), 200);
+	assert.equal(await post("b", { update_id: 5, message: message(111, { text: "to b" }) }), 404);
+	// A message with no text and no file, such as a pin: 200, and no event.
+	assert.equal(await post("main", { update_id: 6, message: message(111, { pinned_message: { message_id: 7 } }) }), 200);
+	assert.match(server.output(), /telegram: a message to agent main from chat 222, which it does not list, is dropped\./);
+	await sleep(1500);
+	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one"]);
+});
+
+test("Telegram is off without publicUrl, or without an agent's bot token, or when Telegram refuses the token", async (t) => {
+	const errors = t.mock.method(console, "error", () => {}).mock;
+	const telegram = await fakeTelegram(t, ["1:good"]);
+	const project = createAgent(model.port);
+	const agentX = join(projectRoot(project), "agent-x");
+	const cases = [
+		[{}, "", 'it needs "publicUrl" in agentx.json'],
+		[{ publicUrl: "https://agents.example.com" }, "", "TELEGRAM_BOT_TOKEN_MAIN, the bot token of agent \"main\", is not set"],
+		[{ publicUrl: "https://agents.example.com" }, "TELEGRAM_BOT_TOKEN_MAIN=1:bad\n", "Telegram's setWebhook: Unauthorized"],
+	];
+	for (const [config, secrets, why] of cases) {
+		editConfig(project, (old) => ({ agents: old.agents, ...config, services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [1] } } } } }));
+		writeFileSync(join(agentX, ".env.services"), secrets);
+		const coordinator = new Coordinator(agentX);
+		await coordinator.start("127.0.0.1", 0);
+		await coordinator.stop(true);
+		assert.ok(!coordinator.servicesOn().includes("telegram"));
+		assert.ok(errors.calls.some((call) => String(call.arguments[0]).startsWith(`Service "telegram" is off: ${why}`)), why);
+	}
 });

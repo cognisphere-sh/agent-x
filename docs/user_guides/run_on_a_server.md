@@ -48,3 +48,33 @@ Every agent's state, its sessions, queue, mailboxes and what it learned, is in `
 The agents get the environment `agentx serve` was started with, plus `agent-x/.env`; a variable in the environment wins. On a server, set keys such as `COMPOSIO_API_KEY` in the service's environment.
 
 The coordinator's own services, such as a webhook, take their secrets from that environment or `agent-x/.env.services`, which no agent reads. Until agents run in sandboxes, a secret set in the environment reaches the agents' processes too, so prefer `agent-x/.env.services` for them. Set `publicUrl` in `agent-x/agentx.json` to the address the API server is reached at from outside, for services that register webhooks.
+
+## Composio's events
+
+An agent can get an event each time one of its Composio triggers fires, such as a new email in its Gmail. Composio sends every trigger event of a Composio project to one webhook, and `agentx serve` delivers each to the agent whose Composio user id the trigger was made for ([Composio service](../architecture/coordinator-runtime/services/composio/README.md)).
+
+1. In Composio's dashboard, set the project's webhook to `https://<host>/services/composio/webhook`, version V3, with the event `composio.trigger.message`. Forward that path from the internet to `agentx serve`.
+2. Copy the webhook's signing secret into `agent-x/.env.services`: `COMPOSIO_WEBHOOK_SECRET=...`, and start `agentx serve` again. Without it, `agentx serve` logs `Service "composio" is off`.
+3. Make triggers for the agent's user id, `agentx.composio.userId` in its `.pi/settings.json`, with Composio's CLI (`composio dev triggers create`) or API, on an account the agent has connected.
+
+Each event reaches the agent's routers with `source: composio`, the trigger's slug in `trigger`, and the event's data in the file `data.json`; route it as any event ([send events](send_events.md)). An event Composio sends again is added once.
+
+Use one Composio project per environment: a project has one webhook URL. On a laptop, forward events with Composio's CLI, logged in to the agents' Composio project: `COMPOSIO_WEBHOOK_SECRET=<its value> composio dev triggers listen --forward http://localhost:3100/services/composio/webhook`; or use a tunnel, such as cloudflared or ngrok, with a Composio project of your own.
+
+## Telegram
+
+An agent can have a Telegram bot: people in the chats you list write to it, and it answers there ([Telegram service](../architecture/coordinator-runtime/services/telegram/README.md)).
+
+1. Make a bot with [@BotFather](https://t.me/BotFather), and put its token in `agent-x/.env.services` as `TELEGRAM_BOT_TOKEN_<AGENT>`, such as `TELEGRAM_BOT_TOKEN_MAIN` for `main`.
+2. In `agent-x/agentx.json`, set `publicUrl` and list the agent with its chats:
+
+   ```json
+   "publicUrl": "https://agents.example.com",
+   "services": { "telegram": { "agents": { "main": { "chats": [123456789] } } } }
+   ```
+
+   A private chat's id is the person's Telegram user id; a group's is negative. In a group, the bot gets only commands and replies to it, unless you turn its privacy mode off with @BotFather's `/setprivacy`. A message from a chat not listed is dropped, and its id is in `agentx serve`'s log, so to find a chat's id, write to the bot and read the log.
+3. Forward `/services/telegram/` from the internet to `agentx serve`, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
+4. So the agent can answer, connect the same bot in Composio for the agent: ask it in `agentx chat`, such as "connect my Telegram bot", and give the bot token on Composio's page. This needs `COMPOSIO_API_KEY` ([External services](customize_an_agent.md#external-services-composio)).
+
+Each message reaches the agent's routers with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder.

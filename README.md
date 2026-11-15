@@ -27,7 +27,7 @@ src/
     functions/            Calls a router or workflow in a child process; their types.
     pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent.
   coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services.
-    services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules).
+    services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots).
 test/                     The queue, and end to end agentx run, agentx serve and Composio, against a fake model and a fake Composio.
 templates/                project/ for init-project, agent/ for init-agent.
 ```

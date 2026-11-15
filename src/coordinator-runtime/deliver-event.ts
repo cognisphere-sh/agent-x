@@ -1,5 +1,5 @@
 // Delivers an event: puts it into an agent's inbox, where its router takes it into the queue. The only code that writes an inbox, and the coordinator runtime's:
-// the coordinator delivers what agents leave in their outboxes, the events of schedules and its refusals, and later webhooks and polling; a person delivers
+// the coordinator delivers what agents leave in their outboxes, the events of schedules and webhooks, and its refusals; a person delivers
 // with `agentx event deliver`, which calls it. It reaches the agent's state in the project's central storage, as a sandbox's host does.
 
 import { basename } from "node:path";

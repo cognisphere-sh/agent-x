@@ -23,7 +23,7 @@ The coordinator's [API server](../../architecture/coordinator-runtime/README.md#
 
 ## To decide
 
-- **How answers get back to the web app.** The agent's text is not seen by anyone under `agentx run`. Either the agent sends its answer to a service through its outbox, which the relay hands to the service (a `receive` hook), and the web app reads it, such as through a stream; or the web app reads the agent's sessions. The same question comes up for [Telegram](telegram.md).
+- **How answers get back to the web app.** The agent's text is not seen by anyone under `agentx run`. Either the agent sends its answer to a service through its outbox, which the relay hands to the service (a `receive` hook), and the web app reads it, such as through a stream; or the web app reads the agent's sessions.
 - **Who may do what.** Whether every signed-in person may control every agent, or the web app keeps roles.
 - **Where the web app finds the coordinator** in a deployment: its address in the web app's environment.
 

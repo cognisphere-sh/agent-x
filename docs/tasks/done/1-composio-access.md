@@ -43,7 +43,7 @@ Built on 2026-11-13. This record holds what stands at release. The design: [Comp
 
 ## Follow-ups
 
-- Connect Links through a channel to a person, such as [Telegram](../backlog/telegram.md). Until then, connect an unattended agent's accounts ahead of time in `agentx chat`.
+- Connect Links through a channel to a person, such as [Telegram](6-telegram.md). Until then, connect an unattended agent's accounts ahead of time in `agentx chat`.
 - [Webhooks and Composio triggers](../backlog/composio-service.md).
 - Keeping the key from the agent, with sandboxes.
 - Several accounts of one toolkit (`multi_account`): not looked at.

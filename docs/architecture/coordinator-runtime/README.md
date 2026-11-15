@@ -1,6 +1,6 @@
 # Coordinator runtime
 
-The coordinator is the one always-running process of a project. `agentx serve`, in the project root or `agent-x/`, starts it. It runs every agent as a process of its own, and its services: the [relay](services/relay/README.md), which delivers the events agents send, the [scheduler](services/scheduler/README.md), which fires their schedules, and the optional services a project turns on. It owns the API server: its own routes report and control the agents, and each service's routes are served under `/services/<name>/`. With a person's `agentx event deliver`, it is the only way into an agent from outside.
+The coordinator is the one always-running process of a project. `agentx serve`, in the project root or `agent-x/`, starts it. It runs every agent as a process of its own, and its services: the [relay](services/relay/README.md), which delivers the events agents send, the [scheduler](services/scheduler/README.md), which fires their schedules, [Composio](services/composio/README.md)'s webhook, which brings them their triggers' events, and the optional services a project turns on, such as [Telegram](services/telegram/README.md). It owns the API server: its own routes report and control the agents, and each service's routes are served under `/services/<name>/`. With a person's `agentx event deliver`, it is the only way into an agent from outside.
 
 It reaches an agent only by starting and stopping its process, by reading `agentx.json` and the agent's checked-in files, and through plain files: its inbox, outbox, heartbeat and schedule state, in the agent's central folder, `agent-x/storage/<agent>/`, not through its `storage` link, which a sandbox's host will not have ([D65](../agent-runtime/agent/README.md#d65)).
 
@@ -16,19 +16,23 @@ src/coordinator-runtime/
     services.ts      the core services, in the order they start, and the optional ones, by name
     relay/           core: deliverOutbox, an agent's outbox into the inboxes it names
     scheduler/       core: class Scheduler, one agent's schedules
+    composio/        core: Composio's webhook, each trigger event into its agent's inbox
+    telegram/        optional: each listed agent's Telegram bot, its chats' messages into the agent's inbox
 ```
 
 ```mermaid
 flowchart LR
   subgraph SERVE["agentx serve (one process)"]
     C["Coordinator"] --> M["AgentManager per agent"] & H["API server: /health, /agents, /routes, /services/&lt;name&gt;/"]
-    C --> D["relay service, each second"] & S["scheduler service, each second"]
+    C --> D["relay service, each second"] & S["scheduler service, each second"] & CW["composio service: POST /services/composio/webhook"]
   end
   M -- "starts, signals, IPC lifeline" --> A["agent a's process"]
   A -- "writes" --> HB["storage/a/heartbeat"] -- "read by" --> M
   OA["storage/a/workspace/outbox"] --> D -- "event, files, agentX-FromAgent" --> IB["storage/b/workspace/inbox"]
   D -. "refused: event on the sending thread" .-> IA["storage/a/workspace/inbox"]
   S -- "due: event" --> IA
+  CO["Composio"] -- "signed trigger event" --> CW -- "event, data.json" --> IA
+  TGM["Telegram"] -- "message, with the bot's secret token" --> TW["telegram service (optional): POST /services/telegram/&lt;agent&gt;"] -- "event, files" --> IA
 ```
 
 The coordinator finds the agents when it starts: those `agent-x/agentx.json` lists that have a folder in `agent-x/agents/` ([D63](#d63)). It logs a listed agent without a folder and a folder that is not listed, and runs neither. It makes an agent's storage when it is missing, and skips an agent whose `storage` is a folder of its own. Adding or removing an agent means starting `agentx serve` again.
@@ -70,10 +74,12 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 |---|---|---|
 | [relay](services/relay/README.md) | core | Each second, and once more when the agents have stopped, delivers every agent's outbox. |
 | [scheduler](services/scheduler/README.md) | core | Each second, fires every agent's schedules that are due; not while the coordinator stops. |
+| [composio](services/composio/README.md) | core | Composio's webhook: each signed trigger event into the inbox of the agent with its Composio user id. On when `COMPOSIO_WEBHOOK_SECRET` is set. |
+| [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start; each message from a chat the agent lists, with its files, into its inbox. |
 
 - **Core and optional.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). A name agentx has no service for is logged and skipped.
 - **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.
-- **Secrets.** A service names the environment variables it needs in `secrets`. It gets their values from the coordinator's environment, which wins, or `agent-x/.env.services`, which only the coordinator reads; agents read `agent-x/.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
+- **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it. It gets their values from the coordinator's environment, which wins, or `agent-x/.env.services`, which only the coordinator reads; agents read `agent-x/.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
 - **A service that fails to start** is off, says why, and stays off until `agentx serve` starts again; the agents and the other services start all the same.
 - **Polling.** `every` never starts a run while the last one goes on, and logs a failure, so no service can end the coordinator.
 
@@ -175,7 +181,7 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 <a id="d68"></a>
 ### D68. A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services`
 
-- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service to turn it on. A service names its secrets, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
+- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service to turn it on. A service names its secrets, or a prefix of them with `*` when they are one per agent, such as `TELEGRAM_BOT_TOKEN_*`, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
 - **Why.** The project's config is already read once by `agentx serve` and checked in. Agents read only `agent-x/.env`, so a file of the services' own keeps their secrets out of what Pi, the routers and the workflows get, with no list of names to leave out.
 - **Rejected.** A `services.json` of its own; the services' secrets in `agent-x/.env`, which every agent's process reads; `--public-url` on `agentx serve`, which every deployment would have to pass.
 - **Consequence.** A secret the host sets in the coordinator's environment is inherited by the agents' processes. Sandboxes, which start agents apart from it, end that.

@@ -37,7 +37,7 @@ In the commit that moves this task to `done/`.
 - **`publicUrl` is in `agentx.json`**, not `--public-url` on `serve`.
 - **Schedules do not fire while the coordinator stops.**
 - **`deliver` takes file paths**, as `deliverEvent` does.
-- **The Composio webhook moved** to [Composio](../backlog/composio-service.md), with its triggers; the web app and Telegram are tasks of their own, [web app](../backlog/web-app-api.md) and [Telegram](../backlog/telegram.md).
+- **The Composio webhook moved** to [Composio](../backlog/composio-service.md), with its triggers; the web app and Telegram are tasks of their own, [web app](../backlog/web-app-api.md) and [Telegram](6-telegram.md).
 
 ## Migration
 
@@ -54,7 +54,7 @@ In the commit that moves this task to `done/`.
 
 - [Composio](../backlog/composio-service.md): the webhook, then the triggers.
 - [The web app](../backlog/web-app-api.md): the token in the web app, its pages, and events from people.
-- [Telegram](../backlog/telegram.md), the first optional service.
+- [Telegram](6-telegram.md), the first optional service.
 - How agents' answers get back to the web app and Telegram, settled in those tasks.
 
 ## Original plan

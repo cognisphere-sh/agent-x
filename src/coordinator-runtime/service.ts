@@ -37,7 +37,7 @@ export interface ServiceContext {
 
 /** A part of the coordinator, in a folder of its own under services/. Each hook may be left out. */
 export abstract class Service {
-	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env.services`, which no agent reads. */
+	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env.services`, which no agent reads. A name that ends with `*` takes every variable that starts with it. */
 	readonly secrets: string[] = [];
 
 	/** Its API contract: each route, with its path below `/services/<name>/`, who may call it, and its handler. Served only while the service is on. */

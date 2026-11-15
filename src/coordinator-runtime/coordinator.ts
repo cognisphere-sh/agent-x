@@ -60,7 +60,7 @@ export class Coordinator {
 		// One at a time, in order: the relay first, so that it stops last.
 		for (const runner of this.services) {
 			const secrets: Record<string, string> = {};
-			for (const key of runner.service.secrets) if (available[key] !== undefined) secrets[key] = available[key];
+			for (const [key, value] of Object.entries(available)) if (value !== undefined && runner.service.secrets.some((name) => isSecret(name, key))) secrets[key] = value;
 			const config = this.serviceConfig[runner.name] ?? {};
 			await runner.start({
 				config,
@@ -131,6 +131,9 @@ export class Coordinator {
 		return { status: 202, body: agent.status() };
 	}
 }
+
+// Whether the variable `key` is the secret `name`, or starts with it when `name` ends with `*`.
+const isSecret = (name: string, key: string) => (name.endsWith("*") ? key.startsWith(name.slice(0, -1)) : key === name);
 
 // A route as `GET /routes` lists it.
 const describe = ({ method, path, access = "private", summary }: Route) => ({ method, path: `/${path}`, access, summary });

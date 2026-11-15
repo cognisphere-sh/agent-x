@@ -29,6 +29,8 @@ New here: [quick start](user_guides/quick_start.md).
 | [coordinator-runtime](architecture/coordinator-runtime/README.md) | `agentx serve`: runs every agent and the services, reports health, serves the services' requests |
 | [coordinator-runtime/services/relay](architecture/coordinator-runtime/services/relay/README.md) | Core service: delivers the events agents send, from outboxes into inboxes |
 | [coordinator-runtime/services/scheduler](architecture/coordinator-runtime/services/scheduler/README.md) | Core service: fires each agent's schedules |
+| [coordinator-runtime/services/composio](architecture/coordinator-runtime/services/composio/README.md) | Core service: Composio's webhook, each trigger event to its agent |
+| [coordinator-runtime/services/telegram](architecture/coordinator-runtime/services/telegram/README.md) | Optional service: each agent's Telegram bot, its chats' messages to the agent |
 
 ## Decisions
 
@@ -94,6 +96,8 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D68](architecture/coordinator-runtime/README.md#d68) | A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services` | coordinator-runtime |
 | [D69](architecture/coordinator-runtime/README.md#d69) | The coordinator and every service declare their API as routes | coordinator-runtime |
 | [D70](architecture/coordinator-runtime/README.md#d70) | Private routes need the API token; a public route checks its caller itself; people sign in to the web app | coordinator-runtime |
+| [D71](architecture/coordinator-runtime/services/composio/README.md#d71) | One Composio webhook for the project, which finds the agent by its Composio user id | coordinator-runtime/services/composio |
+| [D72](architecture/coordinator-runtime/services/telegram/README.md#d72) | Telegram messages come in through a service; the agent answers with Composio's Telegram tools | coordinator-runtime/services/telegram |
 
 ## User guides
 
@@ -102,7 +106,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [quick_start.md](user_guides/quick_start.md) | From nothing to a running app and agent |
 | [chat_with_an_agent.md](user_guides/chat_with_an_agent.md) | Threads, sessions, one-shot runs |
 | [send_events.md](user_guides/send_events.md) | Run an agent, give it events and files, route them, write workflows |
-| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state |
+| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram |
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
 | [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
 

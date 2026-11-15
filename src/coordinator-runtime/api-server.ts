@@ -98,8 +98,8 @@ function match(pattern: string, segments: string[]): Record<string, string> | un
 	return params;
 }
 
-// Compares in constant time, so the answer's timing tells nothing of the token.
-function sameText(a: string, b: string): boolean {
+/** Whether `a` and `b` are the same text, compared in constant time, so the answer's timing tells nothing of a token. */
+export function sameText(a: string, b: string): boolean {
 	const digest = (text: string) => createHash("sha256").update(text).digest();
 	return timingSafeEqual(digest(a), digest(b));
 }
