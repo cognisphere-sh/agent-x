@@ -71,7 +71,7 @@ Built from 2026-11-13 to 2026-11-15, on top of [`agentx run`](2-agentx-run.md). 
 ## Follow-ups
 
 - Sandboxes: mount `agent-x/storage/<agent>/` at the agent's `storage/`.
-- [Webhooks](../backlog/coordinator-webhooks.md) and [Composio triggers](../backlog/composio-triggers.md), delivered into the inbox like other events.
+- [Webhooks and Composio triggers](../backlog/composio-service.md), delivered into the inbox like other events.
 - Pruning the mailboxes' folders and the logs.
 - An agent can guess a harness key, such as `schedule:<name>:<time>`, and send it to another agent first.
 

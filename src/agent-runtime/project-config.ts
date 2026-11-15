@@ -17,6 +17,10 @@ export interface AgentEntry {
 /** The project's agentx config. */
 export interface ProjectConfig {
 	agents: Record<string, AgentEntry>;
+	/** Each coordinator service's config, by its name; an optional service is on when it is listed. */
+	services?: Record<string, unknown>;
+	/** Where the coordinator's API server is reached from outside, such as https://agents.example.com, for services that register webhooks. */
+	publicUrl?: string;
 }
 
 /** The config file of the project whose `agent-x/` directory is `agentX`. */

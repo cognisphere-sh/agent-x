@@ -3,7 +3,7 @@
 // with `agentx event deliver`, which calls it. It reaches the agent's state in the project's central storage, as a sandbox's host does.
 
 import { basename } from "node:path";
-import { inbox, type Mail, newMail, put, withFilesLine } from "../agent-runtime/events/mailbox.js";
+import { hostBox, inbox, type Mail, newMail, put, withFilesLine } from "../agent-runtime/events/mailbox.js";
 import type { NewEvent } from "../agent-runtime/events/queue.js";
 import { agentIn } from "../agent-runtime/project-config.js";
 import { centralStorage, storageProblem } from "../agent-runtime/storage.js";
@@ -42,7 +42,7 @@ export function deliverEvent(agentRoot: string, event: NewEvent, options: Delive
 
 /**
  * Checks `event` and makes it ready for the inbox of the agent in `agentRoot`, as `deliverEvent` does, writing nothing; throws why it is refused.
- * Delivery uses it apart from `deliverEvent`, to refuse an event from an outbox that it cannot deliver, but to try again one it could not write.
+ * The relay uses it apart from `deliverEvent`, to refuse an event from an outbox that it cannot deliver, but to try again one it could not write.
  */
 export function prepareDelivery(agentRoot: string, event: NewEvent, options: DeliverOptions = {}): Prepared {
 	const { facts, files = [], sentAt } = options;
@@ -53,5 +53,5 @@ export function prepareDelivery(agentRoot: string, event: NewEvent, options: Del
 	if (problem !== undefined) throw new Error(problem);
 	const workflow = missingWorkflow(agentRoot, event.threadId);
 	if (workflow !== undefined) throw new Error(`Agent "${name}" has no workflow "${workflow}".`);
-	return { box: inbox(centralStorage(agentRoot)), mail, files };
+	return { box: hostBox(inbox, centralStorage(agentRoot)), mail, files };
 }

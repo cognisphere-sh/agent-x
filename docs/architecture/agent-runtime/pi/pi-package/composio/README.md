@@ -70,7 +70,7 @@ Composio's tool descriptions already say how to use them. The harness prompt's "
 ## Known limits
 
 - **The agent can read the key.** It is in the Pi process's environment. With it, the agent could create a session for any user id of the project. The prompt's rule is the only barrier until sandboxes.
-- **Connect Links reach only a person at the terminal.** A session `agentx run` started has nobody to show a link to, until [message channels](../../../../../tasks/backlog/message-channels.md) exist. Connect an unattended agent's accounts ahead of time, in `agentx chat`.
+- **Connect Links reach only a person at the terminal.** A session `agentx run` started has nobody to show a link to, until a channel to a person, such as [Telegram](../../../../../tasks/backlog/telegram.md), exists. Connect an unattended agent's accounts ahead of time, in `agentx chat`.
 - **A key refused after the session started** shows in `/mcp` as a server that needs sign-in.
 - **Slower starts.** Every Pi process start makes one or two calls to Composio, and its first prompt waits up to 10 seconds for the MCP connection.
 - The automated tests use a fake Composio.

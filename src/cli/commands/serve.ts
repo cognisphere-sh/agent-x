@@ -1,4 +1,4 @@
-// `agentx serve`: runs every agent of the project with the coordinator until it is stopped, and serves their health over HTTP.
+// `agentx serve`: runs every agent of the project and the coordinator's services until it is stopped, and serves their health and the services over HTTP.
 
 import { basename, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -21,7 +21,7 @@ export async function serve(cwd: string, args: string[]): Promise<void> {
 	const address = await coordinator.start(values.host, port);
 	const names = coordinator.agents.map((agent) => agent.agent);
 	console.log(
-		`Serving ${names.length === 0 ? "no agents" : `agents ${names.join(", ")}`} of ${basename(join(agentX, ".."))} on ${address} (/health, /agents). Ctrl-C lets running work finish; a second Ctrl-C stops it.`,
+		`Serving ${names.length === 0 ? "no agents" : `agents ${names.join(", ")}`} of ${basename(join(agentX, ".."))} on ${address} (GET /routes lists the API), with services ${coordinator.servicesOn().join(", ")}. Ctrl-C lets running work finish; a second Ctrl-C stops it.`,
 	);
 	await done;
 }

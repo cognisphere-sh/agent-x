@@ -4,7 +4,7 @@
 
 import { createHash } from "node:crypto";
 import { constants, copyFileSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, relative, sep } from "node:path";
 import { checkEvent, isEventId, type NewEvent, newId } from "./queue.js";
 
 /** An event in a mailbox, as its `event.json` holds it. */
@@ -27,6 +27,19 @@ export const inbox = (storage: string) => join(storage, "workspace", "inbox");
 
 /** The agent's outbox folder, from its storage folder. */
 export const outbox = (storage: string) => join(storage, "workspace", "outbox");
+
+/**
+ * The mailbox `box` (`inbox` or `outbox`) of the agent's central storage folder `storage`, as the host reaches it. Throws when a folder on the way is a
+ * link: the agent owns its storage, and could point its mailbox at another folder of the host, such as another agent's inbox.
+ */
+export function hostBox(box: (storage: string) => string, storage: string): string {
+	let path = storage;
+	for (const name of ["", ...relative(storage, box(storage)).split(sep)]) {
+		path = join(path, name);
+		if (lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink()) throw new Error(`${path} is a link, which the host does not follow in an agent's storage.`);
+	}
+	return path;
+}
 
 // The harness's file in an event's folder; every other file there is the event's, by its name.
 const eventFile = "event.json";

@@ -1,15 +1,19 @@
-// Tests of the coordinator: the AgentManager with stand-in processes, and `agentx serve` end to end, with two agents, delivery between them,
+// Tests of the coordinator: its services with test services, the AgentManager with stand-in processes, and `agentx serve` end to end, with two agents, delivery between them,
 // refusals, restarts and stopping. Real `agentx serve` processes in a scratch project, with the fake model for the Pi threads that events reach.
 
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { setTimeout as sleep } from "node:timers/promises";
+import { read } from "../dist/agent-runtime/events/mailbox.js";
 import { sendEvent } from "../dist/agent-runtime/events/send-event.js";
 import { AgentManager } from "../dist/coordinator-runtime/agent-manager.js";
-import { deliverOutbox } from "../dist/coordinator-runtime/delivery.js";
-import { Scheduler } from "../dist/coordinator-runtime/scheduler.js";
+import { Coordinator } from "../dist/coordinator-runtime/coordinator.js";
+import { Service } from "../dist/coordinator-runtime/service.js";
+import { deliverOutbox } from "../dist/coordinator-runtime/services/relay/relay.js";
+import { Scheduler, SchedulerService } from "../dist/coordinator-runtime/services/scheduler/scheduler.js";
 import { startFakeModel } from "./fake-model.mjs";
 import { addAgent, agentSend, agentx, alive, background, cli, createAgent, editConfig, editSettings, events, inboxEvents, projectRoot, send, until } from "./project.mjs";
 
@@ -64,8 +68,15 @@ test("a process that never writes a heartbeat is hung too", async (t) => {
 	assert.match(managed.status().lastExit, /^was hung/);
 });
 
-/** Starts `agentx serve` in the project's root on a free port; killed when the test ends. */
+/** Calls the API at `address`, with the API token when given; the body of the answer as text. */
+async function request(address, method, path, { body, token } = {}) {
+	const response = await fetch(`${address}${path}`, { method, body, headers: token ? { authorization: `Bearer ${token}` } : {} });
+	return { status: response.status, body: await response.text() };
+}
+
+/** Starts `agentx serve` in the project's root on a free port, with an API token; killed when the test ends. */
 async function serve(t, project) {
+	writeFileSync(join(projectRoot(project), "agent-x", ".env.services"), "AGENTX_API_TOKEN=the-token\n");
 	const server = background(projectRoot(project), project.env, ["serve", "--port", "0"]);
 	t.after(() => {
 		try {
@@ -75,11 +86,11 @@ async function serve(t, project) {
 		}
 	});
 	const address = await until(() => / on (http:\/\/\S+) /.exec(server.output())?.[1], 10_000);
-	const get = async (path) => {
-		const response = await fetch(`${address}${path}`);
-		return { status: response.status, body: await response.json() };
+	const call = (method) => async (path) => {
+		const { status, body } = await request(address, method, path, { token: "the-token" });
+		return { status, body: JSON.parse(body) };
 	};
-	return { ...server, get };
+	return { ...server, address, get: call("GET"), post: call("POST") };
 }
 
 /** Writes an event into the outbox of the agent in `root` by hand, as a sender that does not go through agentx could: `event` is the text of its event.json. */
@@ -293,7 +304,23 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 	assert.deepEqual(fired("late").map((mail) => mail.sentAt), [Date.UTC(2026, 0, 1, 1)]);
 });
 
-test("a killed agent process is started again; Ctrl-C lets running work finish and agentx serve exits 0; a failing agent makes /agents 503", async (t) => {
+test("the scheduler fires nothing while the coordinator stops", () => {
+	const project = createAgent(model.port);
+	const main = project.agent;
+	writeFileSync(join(main, ".pi", "schedules.json"), JSON.stringify({ tick: { cron: "* * * * * *", content: "tick" } }));
+	let stopping = true;
+	let work;
+	const agents = [{ name: "main", root: main, storage: join(main, "storage") }];
+	new SchedulerService().onStart({ name: "scheduler", config: {}, secrets: {}, agents, stopping: () => stopping, every: (_ms, run) => (work = run) });
+	// The first look at a schedule writes what was seen; while stopping there is none.
+	work();
+	assert.ok(!existsSync(join(main, "storage", "schedule-state.json")));
+	stopping = false;
+	work();
+	assert.ok(existsSync(join(main, "storage", "schedule-state.json")));
+});
+
+test("a killed agent process is started again; the API stops and starts an agent; Ctrl-C lets running work finish and agentx serve exits 0; a failing agent makes /agents 503", async (t) => {
 	const project = createAgent(model.port);
 	// An agent whose agentx run stops at once: its settings are wrong.
 	addAgent(project, "broken", { runner: { maxThreads: -1 } });
@@ -309,13 +336,23 @@ test("a killed agent process is started again; Ctrl-C lets running work finish a
 	assert.equal(restarted.restarts, 1);
 	assert.match(restarted.lastExit, /stopped by SIGKILL/);
 
+	// The API stops and starts an agent, with the API token only. A stopped agent is no fault, so /agents is 503 still only for the broken one.
+	assert.equal((await fetch(`${server.address}/agents/main/stop`, { method: "POST" })).status, 401);
+	assert.equal((await server.post("/agents/nobody/stop")).status, 404);
+	assert.equal((await server.post("/agents/main/stop")).status, 202);
+	await until(async () => (await server.get("/agents")).body.agents.find((agent) => agent.agent === "main").state === "stopped");
+	assert.equal(alive(restarted.pid), false);
+	assert.equal((await server.post("/agents/main/start")).status, 202);
+	const again = await until(async () => (await server.get("/agents")).body.agents.find((agent) => agent.agent === "main" && agent.state === "running"));
+	assert.equal(again.restarts, 0);
+
 	const id = await send(project, "--thread-id", "main", "[sleep 2] finish me");
 	await until(() => events(project.agent).find((found) => found.id === id)?.entryId);
 	// To the whole process group, as a terminal sends it.
 	process.kill(-server.child.pid, "SIGINT");
 	assert.equal(await server.exited, 0);
 	assert.equal(events(project.agent).find((found) => found.id === id).status, "done");
-	assert.equal(alive(restarted.pid), false);
+	assert.equal(alive(again.pid), false);
 });
 
 test("killing agentx serve ends the agents' processes", async (t) => {
@@ -324,4 +361,137 @@ test("killing agentx serve ends the agents' processes", async (t) => {
 	const pid = await until(async () => (await server.get("/agents")).body.agents[0]?.pid);
 	server.child.kill("SIGKILL");
 	await until(() => !alive(pid), 10_000);
+});
+
+test("services start with their config, the public URL and only their own secrets, poll without overlap, serve their routes under /services/<name>/, private with the API token or public, and stop last; one that fails to start is off", async (t) => {
+	const errors = t.mock.method(console, "error", () => {}).mock;
+	const agentX = mkdtempSync(join(tmpdir(), "agentx-services-"));
+	writeFileSync(join(agentX, "agentx.json"), JSON.stringify({ agents: {}, publicUrl: "https://agents.example.com", services: { probe: { greeting: "hi" }, broken: {}, missing: {} } }));
+	writeFileSync(join(agentX, ".env.services"), "PROBE_KEY=from-file\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
+	process.env.PROBE_ENV = "from-env";
+	const log = [];
+	let running = 0;
+	let runs = 0;
+	class Probe extends Service {
+		secrets = ["PROBE_KEY", "PROBE_ENV", "PROBE_MISSING"];
+		onStart(context) {
+			log.push(["start", context.config, context.secrets, context.publicUrl, context.stopping()]);
+			// A run slower than its interval, which must never overlap itself, and one that always throws.
+			context.every(5, async () => {
+				running += 1;
+				runs += 1;
+				if (running > 1) log.push("overlapped");
+				await sleep(20);
+				running -= 1;
+			});
+			context.every(5, () => {
+				throw new Error("a failing run");
+			});
+		}
+		routes = [
+			{ method: "POST", path: "hook/:id", access: "public", summary: "A webhook.", handle: ({ params, body }) => ({ status: 200, body: { params, body: body.toString() } }) },
+			{ method: "GET", path: "mine", summary: "Needs the API token.", handle: () => ({ status: 200, body: { ok: true } }) },
+			{ method: "POST", path: "throws", access: "public", summary: "Fails.", handle: () => { throw new Error("a failing request"); } },
+			{ method: "POST", path: "nothing", access: "public", summary: "Answers nothing.", handle: () => undefined },
+		];
+		onStop() {
+			log.push(["stop", running]);
+		}
+	}
+	class Broken extends Service {
+		routes = [{ method: "POST", path: "hook", access: "public", summary: "Never served.", handle: () => ({ status: 200 }) }];
+		onStart(context) {
+			context.every(5, () => log.push("broken ran"));
+			throw new Error("no token");
+		}
+	}
+	// `unlisted` is not in agentx.json, so it is not started.
+	const coordinator = new Coordinator(agentX, { probe: Probe, broken: Broken, unlisted: Probe });
+	const address = await coordinator.start("127.0.0.1", 0);
+	t.after(() => coordinator.stop(true));
+	assert.deepEqual(coordinator.servicesOn(), ["relay", "scheduler", "probe"]);
+	assert.deepEqual(log[0], ["start", { greeting: "hi" }, { PROBE_KEY: "from-file", PROBE_ENV: "from-env" }, "https://agents.example.com", false]);
+
+	const call = (method, path, options) => request(address, method, path, options);
+	const post = (path, body) => call("POST", path, { body });
+	assert.deepEqual(await post("/services/probe/hook/a?x=1", "payload"), { status: 200, body: JSON.stringify({ params: { id: "a" }, body: "payload" }) });
+	assert.equal((await call("GET", "/services/probe/hook/a")).status, 405);
+	// A private route needs the API token.
+	assert.equal((await call("GET", "/services/probe/mine")).status, 401);
+	assert.equal((await call("GET", "/services/probe/mine", { token: "a-wrong-token" })).status, 401);
+	assert.deepEqual(await call("GET", "/services/probe/mine", { token: "the-token" }), { status: 200, body: '{"ok":true}' });
+	const { routes } = JSON.parse((await call("GET", "/routes", { token: "the-token" })).body);
+	assert.deepEqual(routes.find((route) => route.path === "/services/probe/hook/:id"), { method: "POST", path: "/services/probe/hook/:id", access: "public", summary: "A webhook." });
+	assert.deepEqual(routes.find((route) => route.path === "/agents/:agent/stop").access, "private");
+	assert.equal(routes.find((route) => route.path === "/health").access, "public");
+	assert.equal((await post("/services/probe/hook/a", Buffer.alloc(1024 * 1024 + 1))).status, 413);
+	assert.equal((await post("/services/broken/hook", "")).status, 404);
+	assert.equal((await post("/services/unlisted/hook", "")).status, 404);
+	assert.equal((await post("/health", "")).status, 405);
+	// A request the service fails on answers 500, and the coordinator goes on.
+	assert.equal((await post("/services/probe/throws", "")).status, 500);
+	assert.equal((await post("/services/probe/nothing", "")).status, 500);
+	assert.equal((await fetch(`${address}/health`)).status, 200);
+
+	await until(() => runs >= 3, 5000);
+	await coordinator.stop();
+	// The run in progress ended before onStop, and none runs after it.
+	assert.deepEqual(log.at(-1), ["stop", 0]);
+	const ran = runs;
+	await sleep(30);
+	assert.equal(runs, ran);
+	assert.ok(!log.includes("overlapped") && !log.includes("broken ran"));
+	const said = errors.calls.map((call) => call.arguments[0]);
+	assert.ok(said.includes('Service "broken" is off: no token'));
+	assert.ok(said.some((line) => /names service "missing", which agentx does not have; it is skipped\.$/.test(line)));
+	assert.ok(said.includes("probe: a failing run"));
+});
+
+test("a service delivers into an agent's inbox with agentX-Service, once per key, and not to an agent the project does not have", async (t) => {
+	const project = createAgent(model.port);
+	editConfig(project, (config) => ({ ...config, services: { courier: {} } }));
+	const outcomes = [];
+	class Courier extends Service {
+		onStart(context) {
+			// Services start before the agents, so the event waits in the inbox.
+			const event = { content: "from a webhook", key: "delivery-1", metadata: { source: "courier" } };
+			const first = context.deliver("main", event);
+			outcomes.push(first, context.deliver("main", event) === first);
+			try {
+				context.deliver("nobody", event);
+			} catch (error) {
+				outcomes.push(error.message);
+			}
+		}
+	}
+	const coordinator = new Coordinator(join(projectRoot(project), "agent-x"), { courier: Courier });
+	t.after(() => coordinator.stop(true));
+	await coordinator.start("127.0.0.1", 0);
+	await coordinator.stop(true);
+	const [id, same, refused] = outcomes;
+	assert.deepEqual([same, refused], [true, 'This project has no agent "nobody".']);
+	const mail = read(join(project.agent, "storage", "workspace", "inbox"), id);
+	assert.deepEqual([mail.event.content, mail.event.metadata, mail.facts], ["from a webhook", { source: "courier" }, { "agentX-Service": "courier" }]);
+});
+
+test("the host follows no link in an agent's storage to a mailbox: an inbox that is a link gets no event, and an outbox that is a link is not read", () => {
+	const project = createAgent(model.port);
+	const main = project.agent;
+	const b = addAgent(project, "b");
+	const mainInbox = join(main, "storage", "workspace", "inbox");
+	// b points its inbox at main's: an event for b must not land there.
+	const bInbox = join(b, "storage", "workspace", "inbox");
+	rmSync(bInbox, { recursive: true, force: true });
+	symlinkSync(mainInbox, bInbox);
+	const toB = sendEvent(main, { content: "for b" }, { to: "b" });
+	deliverOutbox(main);
+	assert.ok(!inboxEvents(main).some((mail) => mail.id === toB));
+	const refusal = inboxEvents(main).find((mail) => mail.event.key === `undeliverable:${toB}`);
+	assert.match(refusal.event.content, /is a link, which the host does not follow in an agent's storage/);
+	// b points its outbox at main's inbox: the relay does not read it, so it neither takes main's events nor quotes them back to b.
+	const bOutbox = join(b, "storage", "workspace", "outbox");
+	rmSync(bOutbox, { recursive: true, force: true });
+	symlinkSync(mainInbox, bOutbox);
+	assert.throws(() => deliverOutbox(b), /is a link, which the host does not follow/);
+	assert.ok(inboxEvents(main).some((mail) => mail.id === refusal.id));
 });

@@ -12,13 +12,16 @@ import { parseEnv } from "node:util";
  */
 export function agentEnv(agentRoot: string): NodeJS.ProcessEnv {
 	const agentX = join(agentRoot, "..", "..");
-	const envFile = join(agentX, ".env");
-	const fromFile = existsSync(envFile) ? parseEnv(readFileSync(envFile, "utf8")) : {};
-	const env = { ...fromFile, ...process.env };
+	const env = withEnvFile(join(agentX, ".env"));
 	return {
 		...env,
 		PATH: [join(agentX, "node_modules", ".bin"), env.PATH].filter(Boolean).join(delimiter),
 		PI_CODING_AGENT_DIR: join(agentX, ".pi"),
 		AGENTX_AGENT: basename(agentRoot),
 	};
+}
+
+/** This process's environment, with the variables of the env file `file` that it does not set: a variable already in the environment wins, as a deployment sets it. */
+export function withEnvFile(file: string): NodeJS.ProcessEnv {
+	return { ...(existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {}), ...process.env };
 }

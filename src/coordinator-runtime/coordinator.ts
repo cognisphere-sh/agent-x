@@ -1,61 +1,95 @@
-// Coordinator: the one always-running process of a project, which `agentx serve` starts. It runs every agent with an AgentManager, delivers events
-// between agents from their outboxes, fires the agents' schedules, and answers the host's health checks over HTTP. With a person's `agentx event deliver`, which delivers as it does, it is the only way into an agent from outside it.
+// Coordinator: the one always-running process of a project, which `agentx serve` starts. It runs every agent with an AgentManager, and the services:
+// the core ones, the relay that delivers between agents and the scheduler, and the optional ones agentx.json turns on (services/). It owns the API server:
+// its own routes, which control the agents, and each service's routes under /services/<name>/. With a person's `agentx event deliver`, it is the only
+// way into an agent from outside it.
 
 import { existsSync, readdirSync } from "node:fs";
-import { createServer, type Server } from "node:http";
 import { join } from "node:path";
+import { withEnvFile } from "../agent-runtime/agent-env.js";
 import { agentIn, configFile, isAgentFolder, projectConfig } from "../agent-runtime/project-config.js";
 import { centralStorage, ensureStorage, storageProblem } from "../agent-runtime/storage.js";
 import { AgentManager } from "./agent-manager.js";
-import { deliverOutbox } from "./delivery.js";
-import { Scheduler } from "./scheduler.js";
+import { deliverTo } from "./deliver-event.js";
+import { type ApiResponse, ApiServer, type Route } from "./api-server.js";
+import { ServiceRunner } from "./service-runner.js";
+import { coreServices, optionalServices, type ServiceClass } from "./services/services.js";
 
-// How often the agents' outboxes are taken and their schedules looked at.
-const roundMs = 1000;
-
-/** Runs the agents of the project's `agent-x/` directory and serves their health on `host`:`port`. */
+/** Runs the agents and the services of the project's `agent-x/` directory, and serves on `host`:`port`. */
 export class Coordinator {
 	readonly agents: AgentManager[];
-	private readonly schedulers: Scheduler[];
-	private readonly server: Server;
-	private timer: NodeJS.Timeout | undefined;
+	private readonly services: ServiceRunner[];
+	private readonly serviceConfig: Record<string, unknown>;
+	private readonly publicUrl: string | undefined;
+	private readonly api = new ApiServer();
+	// Every route of the API, the coordinator's and the services', set at start.
+	private routes: Route[] = [];
 	private stopping: Promise<void> | undefined;
 
-	constructor(agentX: string) {
+	/** `optional` is the optional services there are; a test gives its own. */
+	constructor(
+		private readonly agentX: string,
+		optional: Record<string, ServiceClass> = optionalServices,
+	) {
+		const config = projectConfig(agentX);
 		// The agents agentx.json lists, found once, so adding one means starting agentx serve again. A folder it does not list is not run.
-		const listed = Object.keys(projectConfig(agentX).agents).sort();
+		const listed = Object.keys(config.agents).sort();
 		const agentsDir = join(agentX, "agents");
 		const folders = existsSync(agentsDir) ? readdirSync(agentsDir).filter((name) => isAgentFolder(join(agentsDir, name))) : [];
 		for (const name of listed) if (!folders.includes(name)) console.error(`${configFile(agentX)} lists agent "${name}", which has no folder in agents/; it is not run.`);
 		for (const name of folders) if (!listed.includes(name)) console.error(`agents/${name} is not listed in ${configFile(agentX)}; it is not run.`);
 		const roots = listed.flatMap((name) => agentIn(agentX, name) ?? []).filter((root) => usesCentralStorage(root));
 		this.agents = roots.map((root) => new AgentManager(root, centralStorage(root)));
-		this.schedulers = roots.map((root) => new Scheduler(root, centralStorage(root)));
-		this.server = createServer((request, response) => {
-			const [status, body] = this.answer(request.method, request.url);
-			response.writeHead(status, { "content-type": "application/json" });
-			response.end(JSON.stringify(body));
-		});
+
+		// The core services, then the optional ones agentx.json lists, each with its config there.
+		const { services = {} } = config;
+		this.serviceConfig = typeof services === "object" && services !== null && !Array.isArray(services) ? services : {};
+		if (this.serviceConfig !== services) console.error(`${configFile(agentX)}: "services" must be an object; no optional service is on.`);
+		for (const name of Object.keys(this.serviceConfig)) {
+			if (!Object.hasOwn(coreServices, name) && !Object.hasOwn(optional, name)) console.error(`${configFile(agentX)} names service "${name}", which agentx does not have; it is skipped.`);
+		}
+		const chosen = [...Object.entries(coreServices), ...Object.entries(optional).filter(([name]) => Object.hasOwn(this.serviceConfig, name))];
+		this.services = chosen.map(([name, Class]) => new ServiceRunner(name, new Class()));
+		this.publicUrl = typeof config.publicUrl === "string" ? config.publicUrl : undefined;
+		if (config.publicUrl !== undefined && this.publicUrl === undefined) console.error(`${configFile(agentX)}: "publicUrl" must be a URL, as text; it is left out.`);
 	}
 
-	/** Starts the agents, delivery and the server; resolves to the address the server listens on. */
+	/** Starts the services, then the agents and the API server; resolves to the address it listens on. */
 	async start(host: string, port: number): Promise<string> {
+		const available = withEnvFile(join(this.agentX, ".env.services"));
+		const agents = this.agents.map(({ agent, root }) => ({ name: agent, root, storage: centralStorage(root) }));
+		// One at a time, in order: the relay first, so that it stops last.
+		for (const runner of this.services) {
+			const secrets: Record<string, string> = {};
+			for (const key of runner.service.secrets) if (available[key] !== undefined) secrets[key] = available[key];
+			const config = this.serviceConfig[runner.name] ?? {};
+			await runner.start({
+				config,
+				secrets,
+				agents,
+				publicUrl: this.publicUrl,
+				stopping: () => this.stopping !== undefined,
+				deliver: (agent, event, files = []) => deliverTo(this.agentX, agent, event, { facts: { "agentX-Service": runner.name }, files }),
+			});
+		}
 		for (const agent of this.agents) agent.start();
-		this.timer = setInterval(() => {
-			this.fireSchedules();
-			this.deliver();
-		}, roundMs);
-		await new Promise<void>((resolve, reject) => {
-			this.server.once("error", reject);
-			this.server.listen(port, host, resolve);
-		});
-		const address = this.server.address();
-		return typeof address === "object" && address !== null ? `http://${host}:${address.port}` : String(address);
+		const serviceRoutes = this.services
+			.filter((running) => running.on)
+			.flatMap(({ name, service }) => service.routes.map((route) => ({ ...route, path: `services/${name}/${route.path}` })));
+		this.routes = [...this.ownRoutes(), ...serviceRoutes];
+		const token = available.AGENTX_API_TOKEN || undefined;
+		if (token === undefined) console.error("AGENTX_API_TOKEN is not set, in the environment or agent-x/.env.services: private routes answer 503.");
+		return this.api.listen(host, port, this.routes, token);
+	}
+
+	/** The names of the services that started. */
+	servicesOn(): string[] {
+		return this.services.filter((running) => running.on).map((running) => running.name);
 	}
 
 	/**
-	 * First call: every agent finishes its running work and stops. With `force`: they stop running work now. Resolves when all have stopped,
-	 * their last events are delivered, and the server is closed; events that arrive meanwhile wait in the agents' inboxes.
+	 * First call: every agent finishes its running work and stops, while the services go on. With `force`: they stop running work now. Then the
+	 * services stop, the last started first, so the relay delivers what the agents sent on their way out; then the API server closes. Events that
+	 * arrive meanwhile wait in the agents' inboxes.
 	 */
 	stop(force = false): Promise<void> {
 		if (this.stopping !== undefined) {
@@ -64,34 +98,42 @@ export class Coordinator {
 		}
 		this.stopping = (async () => {
 			await Promise.all(this.agents.map((agent) => agent.stop(force)));
-			clearInterval(this.timer);
-			this.deliver();
-			await new Promise((resolve) => this.server.close(resolve));
+			for (const runner of [...this.services].reverse()) await runner.stop();
+			await this.api.close();
 		})();
 		return this.stopping;
 	}
 
-	// Puts the events of the schedules that are due into their agents' inboxes. Not while the agents stop: they would wait for the next start.
-	private fireSchedules(): void {
-		for (const scheduler of this.schedulers) attempt(scheduler.agent, "its schedules could not be fired, and are tried again", () => scheduler.tick());
+	// The coordinator's own routes: its health, open to the host's health check; the agents, which a person controls through the web app; and the list of every route.
+	private ownRoutes(): Route[] {
+		return [
+			{ method: "GET", path: "health", access: "public", summary: "200 while agentx serve runs.", handle: () => ({ status: 200, body: { ok: true } }) },
+			{ method: "GET", path: "agents", summary: "Each agent's state; 503 unless every agent is running or stopped.", handle: () => this.agentStates() },
+			{ method: "POST", path: "agents/:agent/start", summary: "Starts a stopped or failed agent.", handle: ({ params }) => this.control(params.agent, (agent) => agent.start()) },
+			{ method: "POST", path: "agents/:agent/stop", summary: "Stops an agent once its running work is done.", handle: ({ params }) => this.control(params.agent, (agent) => void agent.stop()) },
+			{ method: "POST", path: "agents/:agent/restart", summary: "Stops an agent once its running work is done, then starts it.", handle: ({ params }) => this.control(params.agent, (agent) => agent.restart()) },
+			{ method: "GET", path: "routes", summary: "Every route of the API.", handle: () => ({ status: 200, body: { routes: this.routes.map(describe) } }) },
+		];
 	}
 
-	// One round of delivery. Delivery goes on while the agents drain, so what they send on the way out still arrives.
-	private deliver(): void {
-		for (const agent of this.agents) attempt(agent.agent, "its outbox could not be delivered, and is tried again", () => deliverOutbox(agent.root));
+	// For a monitor that alerts a person: an agent stopped on purpose is not a fault.
+	private agentStates(): ApiResponse {
+		const agents = this.agents.map((agent) => agent.status());
+		return { status: agents.every((agent) => agent.state === "running" || agent.state === "stopped") ? 200 : 503, body: { agents } };
 	}
 
-	// `/health` says the coordinator runs; `/agents` says how each agent is, and is 503 unless every one runs, for a monitor that alerts a person.
-	private answer(method: string | undefined, url: string | undefined): [number, unknown] {
-		if (method !== "GET") return [405, { error: "Only GET." }];
-		if (url === "/health") return [200, { ok: true }];
-		if (url === "/agents") {
-			const agents = this.agents.map((agent) => agent.status());
-			return [agents.every((agent) => agent.state === "running") ? 200 : 503, { agents }];
-		}
-		return [404, { error: "Not found." }];
+	// Acts on the agent `name`, and answers with its state, at once: a stop goes on in the background, as the agent drains.
+	private control(name: string, act: (agent: AgentManager) => void): ApiResponse {
+		const agent = this.agents.find((manager) => manager.agent === name);
+		if (agent === undefined) return { status: 404, body: { error: `This project runs no agent "${name}".` } };
+		if (this.stopping !== undefined) return { status: 409, body: { error: "agentx serve is stopping." } };
+		act(agent);
+		return { status: 202, body: agent.status() };
 	}
 }
+
+// A route as `GET /routes` lists it.
+const describe = ({ method, path, access = "private", summary }: Route) => ({ method, path: `/${path}`, access, summary });
 
 // Makes the agent's storage when it is missing, and whether its storage/ is the central folder the coordinator reads. One that is a folder of its own
 // is not run: the coordinator would never see its heartbeat or its outbox.
@@ -100,13 +142,4 @@ function usesCentralStorage(root: string): boolean {
 	const problem = storageProblem(root);
 	if (problem !== undefined) console.error(`${problem} The agent is not run.`);
 	return problem === undefined;
-}
-
-// One agent's part of a round. A failure is said, and the next round, a second later, tries again.
-function attempt(agent: string, failed: string, work: () => void): void {
-	try {
-		work();
-	} catch (error) {
-		console.error(`${agent}: ${failed}: ${(error as Error).message}`);
-	}
 }

@@ -11,16 +11,20 @@ On a server, the app and the agents run side by side as two services:
 
 Start the pinned agentx directly, as above, so no package manager sits in between and `agentx serve` gets the stop signal itself.
 
-## Health
+## Health and control
+
+Set `AGENTX_API_TOKEN` in `agent-x/.env.services`, and give it to the web app's server. Every route but `/health` needs it, as `Authorization: Bearer <token>`.
 
 | Route | Answers |
 |---|---|
-| `GET /health` | 200 while `agentx serve` runs. Point the host's health check here. |
-| `GET /agents` | Each agent's state (`starting`, `running`, `restarting`, `failed`, `stopping`, `stopped`), its restarts and how its last process ended. 200 when every agent is `running`, 503 otherwise. Point a monitor that alerts a person here. |
+| `GET /health` | 200 while `agentx serve` runs; no token. Point the host's health check here. |
+| `GET /agents` | Each agent's state (`starting`, `running`, `restarting`, `failed`, `stopping`, `stopped`), its restarts and how its last process ended. 200 when every agent is `running` or `stopped`, 503 otherwise. Point a monitor that alerts a person here, with the token. |
+| `POST /agents/<agent>/stop`, `/start`, `/restart` | Stops an agent once its running work is done, starts it, or both. For the web app's controls. |
+| `GET /routes` | Every route, the services' too. |
 
-An agent whose process stops is started again after 1 s, then 2, 4, up to a minute. One that stops 5 times without running 10 minutes in between is `failed` until `agentx serve` starts again. One that stops writing its heartbeat for a minute is killed and started again.
+An agent whose process stops is started again after 1 s, then 2, 4, up to a minute. One that stops 5 times without running 10 minutes in between is `failed` until it is started again with `POST /agents/<agent>/start`, or `agentx serve` starts again. One that stops writing its heartbeat for a minute is killed and started again.
 
-`agentx serve` listens on `127.0.0.1:3100` (`--host`, `--port`), in plain HTTP. It needs no public address: keep `/health` and `/agents` for the host, and put a reverse proxy such as Caddy or nginx in front of the app for TLS.
+`agentx serve` listens on `127.0.0.1:3100` (`--host`, `--port`), in plain HTTP. It needs no public address: keep it for the host and the web app, and put a reverse proxy such as Caddy or nginx in front of the app for TLS. When a service takes webhooks, forward only its webhook paths, `/services/<name>/...`, from the internet.
 
 The host keeps both services running, with systemd's `Restart=` or Docker's restart policy.
 
@@ -42,3 +46,5 @@ Every agent's state, its sessions, queue, mailboxes and what it learned, is in `
 ## Keys
 
 The agents get the environment `agentx serve` was started with, plus `agent-x/.env`; a variable in the environment wins. On a server, set keys such as `COMPOSIO_API_KEY` in the service's environment.
+
+The coordinator's own services, such as a webhook, take their secrets from that environment or `agent-x/.env.services`, which no agent reads. Until agents run in sandboxes, a secret set in the environment reaches the agents' processes too, so prefer `agent-x/.env.services` for them. Set `publicUrl` in `agent-x/agentx.json` to the address the API server is reached at from outside, for services that register webhooks.

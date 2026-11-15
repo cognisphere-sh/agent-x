@@ -1,22 +1,28 @@
 # Coordinator runtime
 
-The coordinator is the one always-running process of a project. `agentx serve`, in the project root or `agent-x/`, starts it. It runs every agent as a process of its own, delivers the events they send, fires their schedules, and reports their health over HTTP. With a person's `agentx event deliver`, it is the only way into an agent from outside.
+The coordinator is the one always-running process of a project. `agentx serve`, in the project root or `agent-x/`, starts it. It runs every agent as a process of its own, and its services: the [relay](services/relay/README.md), which delivers the events agents send, the [scheduler](services/scheduler/README.md), which fires their schedules, and the optional services a project turns on. It owns the API server: its own routes report and control the agents, and each service's routes are served under `/services/<name>/`. With a person's `agentx event deliver`, it is the only way into an agent from outside.
 
 It reaches an agent only by starting and stopping its process, by reading `agentx.json` and the agent's checked-in files, and through plain files: its inbox, outbox, heartbeat and schedule state, in the agent's central folder, `agent-x/storage/<agent>/`, not through its `storage` link, which a sandbox's host will not have ([D65](../agent-runtime/agent/README.md#d65)).
 
 ```
 src/coordinator-runtime/
-  coordinator.ts     class Coordinator: finds the agents, starts them, delivers, serves HTTP, stops
+  coordinator.ts     class Coordinator: finds the agents and the services, starts them, its own routes, stops
+  api-server.ts      class ApiServer: routes and the API token; Route, the API contract of the coordinator and every service
   agent-manager.ts   class AgentManager: one agent's process, its restarts and its heartbeat
-  delivery.ts        deliverOutbox: an agent's outbox into the inboxes it names
   deliver-event.ts   deliverEvent, deliverTo: put an event into an inbox, the only code that does
-  scheduler.ts       class Scheduler: one agent's schedules
+  service.ts         class Service, the contract of every service, and its context
+  service-runner.ts  class ServiceRunner: starts a service, runs its polling, stops it
+  services/
+    services.ts      the core services, in the order they start, and the optional ones, by name
+    relay/           core: deliverOutbox, an agent's outbox into the inboxes it names
+    scheduler/       core: class Scheduler, one agent's schedules
 ```
 
 ```mermaid
 flowchart LR
   subgraph SERVE["agentx serve (one process)"]
-    C["Coordinator"] --> M["AgentManager per agent"] & D["delivery, each second"] & S["Scheduler per agent, each second"] & H["HTTP: /health, /agents"]
+    C["Coordinator"] --> M["AgentManager per agent"] & H["API server: /health, /agents, /routes, /services/&lt;name&gt;/"]
+    C --> D["relay service, each second"] & S["scheduler service, each second"]
   end
   M -- "starts, signals, IPC lifeline" --> A["agent a's process"]
   A -- "writes" --> HB["storage/a/heartbeat"] -- "read by" --> M
@@ -33,7 +39,7 @@ The `AgentManager` runs one agent ([D56](#d56)). It is where the agent's sandbox
 
 - **Start.** It starts the agent's process (`dist/agent-runtime/supervisor/agent-process.js`), which runs it as `agentx run` does ([supervisor](../agent-runtime/supervisor/README.md)), in the agent directory, with the coordinator's own Node and environment, in a process group of its own. It prefixes each line the process prints with the agent's name.
 - **Lifeline.** The process exits when its IPC channel to the coordinator closes ([D59](#d59)).
-- **Restarts.** A process that exits by itself is started again, with a backoff. After 5 restarts with no long run, the agent is `failed`, and its events wait in its inbox until `agentx serve` starts again.
+- **Restarts.** A process that exits by itself is started again, with a backoff. After 5 restarts with no long run, the agent is `failed`, and its events wait in its inbox until it is started again, through the API or by starting `agentx serve` again.
 - **Heartbeat.** The process writes `storage/heartbeat` every 10 seconds while its loops work. A process with no new heartbeat for 60 seconds is hung, and the manager kills it ([D57](#d57)).
 - **Stop.** The first stop sends `SIGTERM`, which lets running work finish; a second stops it now.
 
@@ -41,64 +47,70 @@ An agent's state is `starting`, `running`, `restarting`, `failed`, `stopping` or
 
 ## Delivering
 
-`deliverEvent` (`deliver-event.ts`) puts an event into an agent's inbox ([D48](../agent-runtime/events/README.md#d48)). Delivery uses its two halves apart, `prepareDelivery` and the write, to refuse a bad event but retry a failed write; nothing else writes an inbox. The coordinator calls it for what agents send, refusals and schedules, and later webhooks. A person's `agentx event deliver` calls it in the CLI's process, needs no `agentx serve`, and is held to no `canSendTo`. `deliverTo` takes the agent by its name, which `agentx.json` must list.
+`deliverEvent` (`deliver-event.ts`) puts an event into an agent's inbox ([D48](../agent-runtime/events/README.md#d48)). The relay uses its two halves apart, `prepareDelivery` and the write, to refuse a bad event but retry a failed write; nothing else writes an inbox. The relay calls it for what agents send and its refusals, the scheduler for schedules, and every other service through `context.deliver`. A person's `agentx event deliver` calls it in the CLI's process, needs no `agentx serve`, and is held to no `canSendTo`. `deliverTo` takes the agent by its name, which `agentx.json` must list.
 
-- It writes the inbox in the agent's central folder, and refuses an agent whose `storage` is a folder of its own.
+- It writes the inbox in the agent's central folder, and refuses an agent whose `storage` is a folder of its own, or whose inbox is reached through a link inside that folder: the agent owns its storage, and could point its inbox at another folder of the host, such as another agent's inbox.
 - It checks the event as the queue would, and refuses a `workflow.<name>` thread the agent does not have.
 - It adds the `agentX-` facts its caller gives, copies the files into the event's folder, and adds the content's last line, which names them.
 
-## Delivery
+## Services
 
-Each second, and once more after the agents have stopped, the coordinator takes every agent's outbox, oldest first ([D60](#d60)). An outbox is the sender's own folder, so it names the sender. Everything in it is the sender's word, and is checked as input from outside.
+Everything the coordinator does besides running the agents is a service ([D66](#d66)): a class that extends `Service` (`service.ts`), in a folder of its own under `services/`, with a doc of its own under `services/` here. Each hook may be left out, and `routes`, its API contract, may be empty:
 
-1. An event that cannot be read, or whose folder is a link, is set aside in the outbox's `.rejected/`.
-2. It is refused when the agent it names does not exist, when the sender's `canSendTo` does not allow it ([D62](#d62)), when its id was not made from its key ([D50](../agent-runtime/events/README.md#d50)), or when its folder holds anything but plain files. An agent may always send to itself.
-3. Otherwise it is delivered as `deliverEvent` delivers, with the files of its folder. The coordinator drops any `agentX-` fact the sender wrote and sets its own: `agentX-FromAgent`, the agent whose outbox it was; `agentX-FromThread`; and `agentX-FromWorkflow` when a workflow sent it. The receiver answers with `agentx event send --agent <sender> --thread-id <thread>`, or without `--agent` when it sent to itself.
-4. A refused event comes back to the sending thread as an event that says why and quotes it, keyed `undeliverable:<id>` ([D61](#d61)). The sending thread is `main` when the outbox names none it has.
-5. The marker is deleted; the folder stays as a record of what the agent sent.
+| Hook | When | What it does |
+|---|---|---|
+| `onStart(context)` | once, before the agents start | Checks its config and secrets, and starts its polling with `context.every`. A throw leaves the service off. |
+| `onStop()` | after the agents have stopped and its polling has ended | Its last work. |
 
-A delivery repeated after a crash adds nothing, since the id is already there. A file that cannot be written leaves the marker, and the event is tried again a second later.
+A service declares its API in `routes`: each route's method, path below `/services/<name>/`, access and summary, and its handler ([the API server](#the-api-server)). They are served only while the service is on.
 
-## Schedules
+The context gives a service its `config`, its own `secrets`, the `agents` the coordinator runs (each one's name, directory and central storage folder), the project's `publicUrl`, `stopping()`, true once a stop has begun, `deliver(agent, event, files)`, which puts an event into an agent's inbox with `deliverEvent` and `agentX-Service: <name>`, keyed by the service's own id for it, and `every(ms, work)`, which runs `work` every `ms` until the service stops ([D67](#d67)).
 
-A schedule sends an agent an event at the times a cron pattern names. The developer lists schedules in `.pi/schedules.json`, the agent in `storage/knowledge/schedules.json`; on a name in both, the developer's wins. A new agent has both, empty.
+| Service | Kind | What it does |
+|---|---|---|
+| [relay](services/relay/README.md) | core | Each second, and once more when the agents have stopped, delivers every agent's outbox. |
+| [scheduler](services/scheduler/README.md) | core | Each second, fires every agent's schedules that are due; not while the coordinator stops. |
 
-```json
-{
-	"daily-report": { "cron": "0 9 * * 1-5", "content": "Write the daily report.", "threadId": "reports", "catchUp": true }
-}
+- **Core and optional.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). A name agentx has no service for is logged and skipped.
+- **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.
+- **Secrets.** A service names the environment variables it needs in `secrets`. It gets their values from the coordinator's environment, which wins, or `agent-x/.env.services`, which only the coordinator reads; agents read `agent-x/.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
+- **A service that fails to start** is off, says why, and stays off until `agentx serve` starts again; the agents and the other services start all the same.
+- **Polling.** `every` never starts a run while the last one goes on, and logs a failure, so no service can end the coordinator.
+
+## The API server
+
+The coordinator owns the one API server (`api-server.ts`); a service has no server of its own. `node:http`, on `--host` (default `127.0.0.1`) and `--port` (default 3100). Plain HTTP: TLS comes from a reverse proxy.
+
+Every route, the coordinator's and each service's, is a `Route` ([D69](#d69)):
+
+```ts
+{ method: "POST", path: "agents/:agent/stop", access: "private", summary: "Stops an agent once its running work is done.", handle: ({ params, headers, body }) => ({ status: 202, body: … }) }
 ```
 
-| Key | Required | Meaning |
+A segment that starts with `:` is a parameter. The handler gets the parameters, the headers and the body, up to 1 MB (413 over it), and answers a status and a JSON body; a throw answers 500. A path no route has is 404, and one with another method 405.
+
+**Who may call** ([D70](#d70)):
+
+- **`private`**, the default: the project's own systems, such as the web app's server, with `Authorization: Bearer <AGENTX_API_TOKEN>`. Without it, or with another, 401. The token comes from the coordinator's environment or `agent-x/.env.services`; when it is not set, private routes answer 503, and `agentx serve` says so.
+- **`public`**: anyone. A route that must know its caller, such as a webhook, checks it itself, by the signature or the token of the external service that calls it, before it does anything.
+
+People are never authenticated here. The web app signs them in, and calls the coordinator with the token.
+
+| Route | Access | Answers |
 |---|---|---|
-| `cron` | yes | Five fields, or six with seconds first, in the agent's `timezone` ([croner](https://github.com/hexagon/croner) patterns). |
-| `content` | yes | The event's text. |
-| `threadId` | no | A thread, or `workflow.<name>`. Without it, the routers pick. |
-| `metadata`, `isSilent` | no | As for any event; `source: schedule` is added. |
-| `isActive` | no | Default `true`; `false` pauses it. |
-| `fireOnce` | no | Fires at the next match, then never again until the entry changes. |
-| `catchUp` | no | Fires missed while `agentx serve` was down become one late fire. Otherwise they are skipped. |
+| `GET /health` | public | 200 `{ "ok": true }` while the coordinator runs, for the host's health check ([D58](#d58)). |
+| `GET /agents` | private | `{ "agents": [{ agent, state, since, restarts, lastExit, pid }] }`: 200 when every agent is `running` or `stopped`, 503 otherwise. |
+| `POST /agents/:agent/start` | private | Starts a stopped or failed agent, with its count of restarts at 0. 202 with its state. |
+| `POST /agents/:agent/stop` | private | Stops an agent once its running work is done, as at a stop of `agentx serve`. 202 at once with its state; its events wait in its inbox. |
+| `POST /agents/:agent/restart` | private | Stops it, then starts it; a stop meanwhile cancels the start. 202. |
+| `GET /routes` | private | Every route, the coordinator's and the services', with its method, path, access and summary, so the web app can find them. |
+| `/services/<name>/...` | as the route says | The routes of the service `<name>`, while it is on. |
 
-A `Scheduler` per agent, each second ([D64](#d64)):
-
-1. It reads a file again only when it changed: the two lists, and the agent's settings for its time zone. A broken entry is reported once on the agent's `main` thread.
-2. A new or changed schedule counts from now.
-3. A fire due less than 60 s ago is on time; an older one was missed, and fires only with `catchUp`.
-4. A fire is delivered into the agent's inbox, sent at the time it was due, with `agentX-Schedule: <name>` and the key `schedule:<name>:<time>`, so a fire is added once. A fire the agent refuses, such as one for a workflow it does not have, is reported on `main`.
-5. What it fired is kept in `storage/schedule-state.json`, so a restart neither repeats nor forgets a fire.
-
-## The server
-
-`node:http`, on `--host` (default `127.0.0.1`) and `--port` (default 3100). Plain HTTP: TLS comes from a reverse proxy. The routes are for the host, not the public ([D58](#d58)):
-
-| Route | Answers |
-|---|---|
-| `GET /health` | 200 `{ "ok": true }` while the coordinator runs. |
-| `GET /agents` | `{ "agents": [{ agent, state, since, restarts, lastExit, pid }] }`: 200 when every agent is `running`, 503 otherwise. |
+An unknown agent is 404, and controlling one while `agentx serve` stops is 409.
 
 ## Stopping
 
-The first `SIGINT` or `SIGTERM` lets every agent finish its running work; the second stops them at once. When every agent has exited, the coordinator delivers what their outboxes still hold, closes the server, and `agentx serve` exits 0. Events that arrive meanwhile wait in the inboxes.
+The first `SIGINT` or `SIGTERM` lets every agent finish its running work; the second stops them at once. The services go on meanwhile, but the scheduler fires nothing: a fire due then is dealt with at the next start, as one due while `agentx serve` was down. When every agent has exited, the services stop, the last started first: each one's polling ends, a run in progress is awaited, and its `onStop` runs. The relay starts first, so it stops last, and delivers what the agents' outboxes still hold. Then the API server closes, and `agentx serve` exits 0. Events that arrive meanwhile wait in the inboxes.
 
 How to run it on a server: [Run a project on a server](../../user_guides/run_on_a_server.md).
 
@@ -128,7 +140,7 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 <a id="d58"></a>
 ### D58. `/health` says whether the coordinator runs; `/agents` says how each agent is
 
-- **Decision.** `GET /health` is 200 while the coordinator runs. `GET /agents` lists each agent's state and is 503 unless every agent is `running`.
+- **Decision.** `GET /health` is 200 while the coordinator runs, and needs no token. `GET /agents` lists each agent's state, needs the API token, and is 503 unless every agent is `running` or `stopped`: one stopped on purpose is not a fault.
 - **Why.** A load balancer that watched the agents would take the whole server out of service for one failed agent. A person's monitor wants to know about that agent.
 
 <a id="d59"></a>
@@ -138,28 +150,6 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - **Why.** A coordinator killed with `SIGKILL` runs no handler, so only something the operating system closes can end the agents. Otherwise the next coordinator would start a second process per agent.
 - **Consequence.** The channel exists only between Node processes on one machine; a sandbox will replace it with its own end.
 
-<a id="d60"></a>
-### D60. Every event an agent sends goes from its outbox, through the coordinator, into the receiver's inbox
-
-- **Decision.** An agent writes every event it sends, to another agent or to itself, into its own outbox. The coordinator takes every outbox each second, takes the sender from the folder, checks the event and the sender's `canSendTo`, and delivers it with `agentX-FromAgent` and `agentX-FromThread`.
-- **Why.** In a sandbox an agent can write only its own `storage/`, so its folder names it and no token is needed. Files travel as files. A send waits while the coordinator is down. One place decides who may send to whom, from settings the agent cannot change.
-- **Rejected.** `POST /agents/<agent>/events` with a token per process: it refuses at once, but needs a token, a way from the sandbox to the coordinator, the coordinator up at the moment of sending, and file bytes in the request.
-- **Consequence.** A refusal comes back later, as an event, not as an error of the send.
-
-<a id="d61"></a>
-### D61. A send that cannot be delivered is reported on the sending thread
-
-- **Decision.** Every outbox event names its sending thread: Pi's session when the model runs `agentx event send`, a workflow's babysitter thread, `main` otherwise. A refusal goes there as an event keyed `undeliverable:<id>`.
-- **Why.** The thread that sent knows what it meant, and can fix it or tell a person. A workflow's own thread would run the workflow with its refusal, so a workflow sends from the thread that looks after it.
-- **Rejected.** The sender's routers, which would have to guess which thread sent it.
-
-<a id="d62"></a>
-### D62. The sender's entry in `agentx.json` says which agents it may send to
-
-- **Decision.** An agent's `canSendTo` in `agentx.json` lists the agents it may send to; without it, every agent of the project. The coordinator refuses a send to any other. The agent's system prompt lists the same agents, with their descriptions.
-- **Why.** The list the agent is shown and the list it is held to are one list. It is outside the agent's directory, which is the only place the agent writes.
-- **Consequence.** A receiver cannot turn away an agent that lists it; its developer changes the sender's entry.
-
 <a id="d63"></a>
 ### D63. The project's `agentx.json` lists its agents
 
@@ -167,10 +157,40 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - **Why.** Who the agents are, what each does and who may reach whom are facts about the project, read by the coordinator and by every agent's prompt.
 - **Consequence.** A folder in `agents/` that the file does not list is not run by `agentx serve`; `agentx run` and `agentx chat` in it still work.
 
-<a id="d64"></a>
-### D64. Schedules are files the coordinator polls each second
+<a id="d66"></a>
+### D66. Everything the coordinator does besides running the agents is a service, in its process
 
-- **Decision.** Schedules are entries in `.pi/schedules.json` and `storage/knowledge/schedules.json`. The coordinator checks the files' times each second, reads one again when it changed, fires what is due into the agent's inbox, and keeps what it fired in `storage/schedule-state.json`.
-- **Why.** The coordinator already runs a loop each second, so a few `stat` calls cost nothing. File watching misses changes on mounted and linked folders, which central storage and sandboxes use. The agent writes its own schedules as it writes its workflows.
-- **Rejected.** File watching (`fs.watch`); asking the coordinator to register a schedule, which needs an answer the agent can only get later.
-- **Consequence.** An edit applies within a second. Fires missed while `agentx serve` is down are skipped unless the schedule sets `catchUp`.
+- **Decision.** The relay, the scheduler and every later part of the coordinator extend one class, `Service`, with `onStart`, `routes` and `onStop`. Core services are always on; optional ones are turned on in `agentx.json`. They run in the coordinator's process. One whose `onStart` throws is off, and nothing else is.
+- **Why.** Webhooks, Composio's triggers, Telegram and polling each need start-up work, polling, routes and a clean stop. One contract wires each in the same way, instead of by hand in the coordinator. Services ship with agentx, so they are trusted as the coordinator is, and mostly wait on files and the network.
+- **Rejected.** A process per service: it would isolate a service's crashes and secrets, but needs requests forwarded to it, a way to deliver, and restarts like an agent's. A service that needs it can start its own child in `onStart`.
+- **Consequence.** Running the agents stays the coordinator's own, not a service: every service waits for it at stop, and the agents will run apart from the coordinator, in sandboxes.
+
+<a id="d67"></a>
+### D67. A service polls with `context.every`
+
+- **Decision.** A service asks the coordinator to run its work every so many milliseconds. A run never overlaps the last one, a failure is logged, and when the service stops its runs end and the one in progress is awaited.
+- **Why.** Each service keeps its own interval, as with a timer of its own, but the coordinator stops every one of them, and an unhandled rejection in a service's timer would end the coordinator and every agent with it.
+- **Rejected.** A timer of the service's own; a `tick` the coordinator calls each second, which makes every service count its own interval.
+
+<a id="d68"></a>
+### D68. A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services`
+
+- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service to turn it on. A service names its secrets, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
+- **Why.** The project's config is already read once by `agentx serve` and checked in. Agents read only `agent-x/.env`, so a file of the services' own keeps their secrets out of what Pi, the routers and the workflows get, with no list of names to leave out.
+- **Rejected.** A `services.json` of its own; the services' secrets in `agent-x/.env`, which every agent's process reads; `--public-url` on `agentx serve`, which every deployment would have to pass.
+- **Consequence.** A secret the host sets in the coordinator's environment is inherited by the agents' processes. Sandboxes, which start agents apart from it, end that.
+
+<a id="d69"></a>
+### D69. The coordinator and every service declare their API as routes
+
+- **Decision.** The coordinator's own routes and each service's are `Route`s: a method, a path with parameters, an access, a summary and a handler. A service's are served under `/services/<name>/`, while it is on. `GET /routes` lists them all.
+- **Why.** The contract is in one place, which the server matches, guards and lists, so the web app can find what each service offers. Under `/services/<name>/`, two services never claim one path.
+- **Rejected.** One `onRequest` per service that routes its requests itself: every service would parse paths and check the token, and nothing could list the API.
+
+<a id="d70"></a>
+### D70. Private routes need the API token; a public route checks its caller itself; people sign in to the web app
+
+- **Decision.** A route is `private` unless it says `public`. A private route needs `Authorization: Bearer` with `AGENTX_API_TOKEN`, compared in constant time. A public route is open: `/health`, and webhooks, whose handlers check the signature or token of the service that calls them. The coordinator never signs people in: the web app does, and calls it with the token.
+- **Why.** Three kinds of caller need three kinds of proof: the project's own systems hold a shared secret; an external service proves itself as that service does, such as Composio's signature; people already sign in to the web app, and a second sign-in would be a second auth system to keep in step. Private by default means nothing is open by mistake.
+- **Rejected.** Binding the server to localhost instead of a token, which fails once the web app runs on another machine; the coordinator checking people's sessions.
+- **Consequence.** The web app's server holds the token, never the browser. A reverse proxy should forward only webhook paths from the internet.

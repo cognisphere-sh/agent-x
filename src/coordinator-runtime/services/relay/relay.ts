@@ -1,18 +1,38 @@
-// Delivery between agents: the coordinator takes each agent's outbox and delivers every event into the inbox of the agent it is for, as it delivers
+// The relay, a core service: events between agents. Each second it takes each agent's outbox and delivers every event into the inbox of the agent it is for, as it delivers
 // every event, or tells the sending thread why it cannot. The outbox is the sender's own folder, so it names the sender; everything else in it is the sender's word,
 // and is checked as input from outside, as it will be from a sandbox. Mailboxes are reached in the project's central storage, as a sandbox's host has no link to them. Whom the sender may send to comes from the project's agentx.json, never from the outbox.
 
 import { basename } from "node:path";
-import { deliverEvent, type Prepared, prepareDelivery } from "./deliver-event.js";
-import { done, filesIn, type Mail, mailId, outbox, put, waiting } from "../agent-runtime/events/mailbox.js";
-import { isThreadId, nameRule, withoutBlockTag } from "../agent-runtime/events/queue.js";
-import { agentIn, agentXOf, canSendTo } from "../agent-runtime/project-config.js";
-import { centralStorage } from "../agent-runtime/storage.js";
-import { missingWorkflow } from "../agent-runtime/workflows/workflows.js";
+import { deliverEvent, type Prepared, prepareDelivery } from "../../deliver-event.js";
+import { forEachAgent, Service, type ServiceAgent, type ServiceContext } from "../../service.js";
+import { done, filesIn, hostBox, type Mail, mailId, outbox, put, waiting } from "../../../agent-runtime/events/mailbox.js";
+import { isThreadId, nameRule, withoutBlockTag } from "../../../agent-runtime/events/queue.js";
+import { agentIn, agentXOf, canSendTo } from "../../../agent-runtime/project-config.js";
+import { centralStorage } from "../../../agent-runtime/storage.js";
+import { missingWorkflow } from "../../../agent-runtime/workflows/workflows.js";
+
+/** The relay: delivers every agent's outbox each second, while the agents run and drain, and once more when they have stopped. */
+export class RelayService extends Service {
+	private agents: ServiceAgent[] = [];
+
+	override onStart(context: ServiceContext): void {
+		this.agents = context.agents;
+		context.every(1000, () => this.deliver());
+	}
+
+	// What the agents sent on their way out.
+	override onStop(): void {
+		this.deliver();
+	}
+
+	private deliver(): void {
+		forEachAgent(this.agents, "its outbox could not be delivered, and is tried again", (agent) => deliverOutbox(agent.root));
+	}
+}
 
 /** Delivers the waiting events in the outbox of the agent in `senderRoot`, oldest first. Throws on a file that cannot be written; the event then waits for the next call. */
 export function deliverOutbox(senderRoot: string): void {
-	const box = outbox(centralStorage(senderRoot));
+	const box = hostBox(outbox, centralStorage(senderRoot));
 	const rejected = (marker: string, why: string) => console.error(`outbox of ${senderRoot}: ${marker} cannot be read and is set aside in .rejected/: ${why}`);
 	for (const { marker, mail } of waiting(box, rejected)) {
 		// The thread that sent it, which hears of a refusal and gets the answers: main when the sender names none it has, so a refusal can always reach it.

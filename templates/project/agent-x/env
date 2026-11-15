@@ -1,0 +1,5 @@
+# Keys for every agent of the project. Gitignored; a variable already in the environment wins.
+# Uncomment a line and set its value.
+
+# Composio's scoped key for the agents' sessions (Composio's dashboard: Settings, API Keys).
+# COMPOSIO_API_KEY=your-composio-api-key

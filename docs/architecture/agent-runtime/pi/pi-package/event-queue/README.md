@@ -52,7 +52,7 @@ The event itself.
 - The opening tag carries the event's id, by which the extension finds delivered events.
 - `agentX-SentTime` is when the event was sent, `agentX-CurrentTime` when it is delivered, in the agent's time zone ([settings](../../../agent/README.md#pisettingsjson)).
 - `agentX-RetryAttempt` appears only on retries, `agentX-IsSilent: true` only on silent events.
-- The other lines are the event's metadata: the sender's facts, and the harness's own, which no sender can set: `agentX-RouterError`, `agentX-FromAgent`, `agentX-FromThread`, `agentX-FromWorkflow`, `agentX-Schedule`.
+- The other lines are the event's metadata: the sender's facts, and the harness's own, which no sender can set: `agentX-RouterError`, `agentX-FromAgent`, `agentX-FromThread`, `agentX-FromWorkflow`, `agentX-Schedule`, `agentX-Service`.
 
 A delivered event starts with `<`, so Pi never reads it as a slash command. The harness prompt explains the block to the agent.
 

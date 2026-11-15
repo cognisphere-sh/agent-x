@@ -4,20 +4,21 @@ What `agentx init-project [name]` creates from `templates/project/`.
 
 ```
 my-project/
-  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env, agent-x/storage/, and per agent its storage link, .pi/npm/, .pi/git/
+  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env, agent-x/.env.services, agent-x/storage/, and per agent its storage link, .pi/npm/, .pi/git/
   package.json          scripts only: install, dev, build, agentx
   web/                  Next.js (App Router); its own package
     app/api/health/route.ts   GET -> { ok: true }
   agent-x/              agentx's part of the project; its own package
     package.json        depends on agent-x, at an exact version
-    agentx.json         the project's agents: description and canSendTo (coordinator D63)
+    agentx.json         the project's agents: description and canSendTo (coordinator D63); the coordinator's services' config under `services`, and `publicUrl` (D68)
     .pi/                Pi's agent directory, shared by all agents; gitignored
-    .env                keys for all agents, such as COMPOSIO_API_KEY; gitignored
+    .env                keys for all agents, such as COMPOSIO_API_KEY; gitignored; starts with each key the agents use, commented out
+    .env.services       the coordinator's API token and its services' secrets, which no agent reads; gitignored; starts with each secret the services use, commented out
     agents/<name>/      one folder per agent
     storage/<name>/     each agent's runtime state; gitignored
 ```
 
-The template ships `gitignore`, which `init-project` renames, because npm drops `.gitignore` from published packages.
+The template ships `gitignore`, `agent-x/env` and `agent-x/env.services`, which `init-project` renames to their dotted names, because npm drops `.gitignore`, and may drop `.env` files, from published packages.
 
 ## Packages
 
@@ -29,7 +30,7 @@ The root has scripts only: `install` installs both packages, `dev` and `build` r
 
 ## Not decided yet
 
-How the app talks to agents. A person gives an agent an event with `agentx event deliver`, and [webhooks](../../../tasks/backlog/coordinator-webhooks.md) are planned. What the app calls, and how answers get back, is open.
+How the app talks to agents. The coordinator's [API](../../coordinator-runtime/README.md#the-api-server) reports and controls them with a token the web app's server holds; sending them events from the app, and how answers get back, are [planned](../../../tasks/backlog/web-app-api.md).
 
 ## Decisions
 

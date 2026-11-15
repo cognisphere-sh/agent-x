@@ -11,9 +11,9 @@ A task that is dropped is deleted, together with its row below.
 
 | Task | Type | Priority | Status |
 |---|---|---|---|
-| [Connect agents to people through message channels](backlog/message-channels.md) | feature | none | idea |
-| [Bring webhook events to agents through installable services](backlog/coordinator-webhooks.md) | feature | none | idea |
-| [Make each agent's Composio triggers](backlog/composio-triggers.md) | feature | none | idea |
+| [Bring Composio's events to agents, and make each agent's triggers](backlog/composio-service.md) | feature | none | idea |
+| [Let the web app control agents and talk to them through the coordinator's API](backlog/web-app-api.md) | feature | none | idea |
+| [Connect agents to Telegram through an optional coordinator service](backlog/telegram.md) | feature | none | idea |
 
 ## Done
 
@@ -22,6 +22,7 @@ A task that is dropped is deleted, together with its row below.
 | [Give each agent its own access to external services through Composio](done/1-composio-access.md) | feature | 2026-11-13 |
 | [Run an agent with `agentx run`, its event router and its workflows](done/2-agentx-run.md) | feature | 2026-11-14 |
 | [Coordinator, events, storage, router and workflows](done/3-coordinator-events-storage-router-workflows.md) | feature | 2026-11-15 |
+| [Build the coordinator out of services, core and optional](done/4-coordinator-services.md) | feature | 2026-11-15 |
 
 ## A task file
 

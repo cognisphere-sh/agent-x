@@ -26,7 +26,9 @@ New here: [quick start](user_guides/quick_start.md).
 | [agent-runtime/pi/pi-package/event-queue](architecture/agent-runtime/pi/pi-package/event-queue/README.md) | Handing a thread's events to Pi |
 | [agent-runtime/pi/pi-package/composio](architecture/agent-runtime/pi/pi-package/composio/README.md) | Access to external services through Composio |
 | [agent-runtime/pi/pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) | Pi behavior agentx relies on |
-| [coordinator-runtime](architecture/coordinator-runtime/README.md) | `agentx serve`: runs every agent, delivers events, fires schedules, reports health |
+| [coordinator-runtime](architecture/coordinator-runtime/README.md) | `agentx serve`: runs every agent and the services, reports health, serves the services' requests |
+| [coordinator-runtime/services/relay](architecture/coordinator-runtime/services/relay/README.md) | Core service: delivers the events agents send, from outboxes into inboxes |
+| [coordinator-runtime/services/scheduler](architecture/coordinator-runtime/services/scheduler/README.md) | Core service: fires each agent's schedules |
 
 ## Decisions
 
@@ -81,12 +83,17 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D57](architecture/coordinator-runtime/README.md#d57) | An agent's heartbeat is a file in its `storage/` | coordinator-runtime |
 | [D58](architecture/coordinator-runtime/README.md#d58) | `/health` says whether the coordinator runs; `/agents` says how each agent is | coordinator-runtime |
 | [D59](architecture/coordinator-runtime/README.md#d59) | An agent's process ends with the coordinator | coordinator-runtime |
-| [D60](architecture/coordinator-runtime/README.md#d60) | Every event an agent sends goes from its outbox, through the coordinator, into the receiver's inbox | coordinator-runtime |
-| [D61](architecture/coordinator-runtime/README.md#d61) | A send that cannot be delivered is reported on the sending thread | coordinator-runtime |
-| [D62](architecture/coordinator-runtime/README.md#d62) | The sender's entry in `agentx.json` says which agents it may send to | coordinator-runtime |
+| [D60](architecture/coordinator-runtime/services/relay/README.md#d60) | Every event an agent sends goes from its outbox, through the coordinator, into the receiver's inbox | coordinator-runtime/services/relay |
+| [D61](architecture/coordinator-runtime/services/relay/README.md#d61) | A send that cannot be delivered is reported on the sending thread | coordinator-runtime/services/relay |
+| [D62](architecture/coordinator-runtime/services/relay/README.md#d62) | The sender's entry in `agentx.json` says which agents it may send to | coordinator-runtime/services/relay |
 | [D63](architecture/coordinator-runtime/README.md#d63) | The project's `agentx.json` lists its agents | coordinator-runtime |
-| [D64](architecture/coordinator-runtime/README.md#d64) | Schedules are files the coordinator polls each second | coordinator-runtime |
+| [D64](architecture/coordinator-runtime/services/scheduler/README.md#d64) | Schedules are files the coordinator polls each second | coordinator-runtime/services/scheduler |
 | [D65](architecture/agent-runtime/agent/README.md#d65) | An agent's state lives in `agent-x/storage/<agent>/`, reached as `storage/` through a link | agent-runtime/agent |
+| [D66](architecture/coordinator-runtime/README.md#d66) | Everything the coordinator does besides running the agents is a service, in its process | coordinator-runtime |
+| [D67](architecture/coordinator-runtime/README.md#d67) | A service polls with `context.every` | coordinator-runtime |
+| [D68](architecture/coordinator-runtime/README.md#d68) | A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services` | coordinator-runtime |
+| [D69](architecture/coordinator-runtime/README.md#d69) | The coordinator and every service declare their API as routes | coordinator-runtime |
+| [D70](architecture/coordinator-runtime/README.md#d70) | Private routes need the API token; a public route checks its caller itself; people sign in to the web app | coordinator-runtime |
 
 ## User guides
 

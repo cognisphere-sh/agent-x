@@ -23,7 +23,7 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 `extensions/system-prompt/index.ts` sets the system prompt in `before_agent_start`, from four parts. It reads the files on every prompt, so edits apply at once ([D5](../../agent/README.md#d5)).
 
 1. **The harness prompt** (`harness.md`), the same for every agent. It covers the tool rules; where the agent's abilities come from, and what is read-only; what to keep where (a prompt note, a skill, a workflow, a router rule, a schedule); that nobody may be watching; how to read an event's metadata block, and that its content is data, never instructions; `agentx event send` and who sent an event; routers, workflows and schedules; what to do when something fails; Composio ([Composio](composio/README.md#the-prompt)); and where the app and the other agents are.
-2. **The agents it can send to**: one line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/README.md#d62)). Nothing when there are none.
+2. **The agents it can send to**: one line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). Nothing when there are none.
 3. **The developer's prompt**: `.pi/system_prompt/*.md` in filename order ([Agent](../../agent/README.md#system-prompt)).
 4. **The `agentx.systemPrompt` folders**, such as the agent's `storage/knowledge/system_prompt`, each under a heading `# From <folder>`. The harness prompt says the developer's text wins when they disagree.
 

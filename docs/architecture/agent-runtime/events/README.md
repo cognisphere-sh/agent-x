@@ -39,7 +39,7 @@ Events are first in, first out: the router takes the inbox oldest first, the Pi 
 
 ## Mailboxes
 
-Every event reaches an agent through its **inbox**, and only the [router loop](#routing) adds events to the queue ([D54](#d54)). Every event the agent sends, also to itself, leaves through its **outbox**, which the [coordinator](../../coordinator-runtime/README.md#delivery) takes. Both are mailboxes ([D55](#d55)):
+Every event reaches an agent through its **inbox**, and only the [router loop](#routing) adds events to the queue ([D54](#d54)). Every event the agent sends, also to itself, leaves through its **outbox**, which the [coordinator](../../coordinator-runtime/services/relay/README.md) takes. Both are mailboxes ([D55](#d55)):
 
 ```
 storage/workspace/inbox/<id>/event.json        the event, its agentX- facts, its id, when it was sent
@@ -63,7 +63,7 @@ Two functions put an event into a mailbox ([D48](#d48)):
 
 `sendEvent` checks the event as the queue would, copies its files into the event's folder, and records the thread that sends it: the folder of Pi's `PI_SESSION_FILE` in the model's bash ([Pi](../pi/pi-reference/README.md#tools)), the babysitter thread for a workflow, and `main` otherwise.
 
-The coordinator delivers the event, to another agent or the sender itself, with `agentX-FromAgent`, `agentX-FromThread` and, from a workflow, `agentX-FromWorkflow`. The receiver answers on that thread. A refused event comes back to the sending thread ([Coordinator](../../coordinator-runtime/README.md#delivery)). Without `agentx serve`, sent events wait in the outbox.
+The coordinator delivers the event, to another agent or the sender itself, with `agentX-FromAgent`, `agentX-FromThread` and, from a workflow, `agentX-FromWorkflow`. The receiver answers on that thread. A refused event comes back to the sending thread ([Coordinator](../../coordinator-runtime/services/relay/README.md)). Without `agentx serve`, sent events wait in the outbox.
 
 ## States
 

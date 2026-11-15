@@ -1,12 +1,13 @@
-// Schedules: events an agent gets at the times a cron pattern names. They are listed in the developer's .pi/schedules.json and in the agent's own
+// The scheduler, a core service: events an agent gets at the times a cron pattern names. They are listed in the developer's .pi/schedules.json and in the agent's own
 // storage/knowledge/schedules.json; on a name in both, the developer's wins. The coordinator looks at them each second and reads a file again only
 // when it changed, so an edit applies within a second. Polled, not watched: file watching misses changes on mounted and linked folders.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Cron } from "croner";
-import { checkEvent, nameRule, type NewEvent, withoutBlockTag } from "../agent-runtime/events/queue.js";
-import { deliverEvent } from "./deliver-event.js";
+import { checkEvent, nameRule, type NewEvent, withoutBlockTag } from "../../../agent-runtime/events/queue.js";
+import { deliverEvent } from "../../deliver-event.js";
+import { forEachAgent, Service, type ServiceContext } from "../../service.js";
 
 // A fire due longer ago than this was missed, as while agentx serve was down. Fires are looked for each second, so one on time is well within it.
 const lateMs = 60_000;
@@ -34,6 +35,16 @@ interface State {
 	until: number;
 	// A fireOnce schedule that fired, or whose one fire was missed.
 	done?: boolean;
+}
+
+/** The scheduler: fires every agent's schedules that are due, each second. Not while the coordinator stops: a fire due then is dealt with at the next start, as one due while it was down. */
+export class SchedulerService extends Service {
+	override onStart(context: ServiceContext): void {
+		const agents = context.agents.map((agent) => ({ name: agent.name, scheduler: new Scheduler(agent.root, agent.storage) }));
+		context.every(1000, () => {
+			if (!context.stopping()) forEachAgent(agents, "its schedules could not be fired, and are tried again", ({ scheduler }) => scheduler.tick());
+		});
+	}
 }
 
 /** The schedules of the agent in `agentRoot`, fired into its inbox. */

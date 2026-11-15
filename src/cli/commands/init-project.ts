@@ -17,8 +17,14 @@ export function initProject(name: string, cwd: string): void {
 		name: `${projectName}-agent-x`,
 		dependencies: { "agent-x": version },
 	});
-	// npm drops .gitignore files from published packages, so the template ships it as `gitignore`.
-	renameSync(join(root, "gitignore"), join(root, ".gitignore"));
+	// npm drops .gitignore files from published packages, and may drop .env files, so the template ships them without their dot.
+	for (const [from, to] of [
+		["gitignore", ".gitignore"],
+		["agent-x/env", "agent-x/.env"],
+		["agent-x/env.services", "agent-x/.env.services"],
+	]) {
+		renameSync(join(root, from), join(root, to));
+	}
 	// Pi loads `.agents/skills` from an agent and its parent directories up to the git root.
 	// The project's own git root keeps skills of directories above the project out.
 	const git = spawnSync("git", ["init", "-q"], { cwd: root, stdio: "inherit" });

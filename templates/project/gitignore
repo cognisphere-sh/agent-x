@@ -3,6 +3,7 @@ web/.next/
 web/next-env.d.ts
 agent-x/.pi/
 agent-x/.env
+agent-x/.env.services
 agent-x/storage/
 agent-x/agents/*/storage
 agent-x/agents/*/.pi/npm/

@@ -54,11 +54,13 @@ export class AgentManager {
 	private restarts = 0;
 	private lastExit: string | null = null;
 	private startedAt = 0;
+	// Whether to start the agent once it has stopped, for a restart; a stop in between clears it.
+	private startWhenStopped = false;
 	// Why the manager killed the process itself, when it did.
 	private killedFor: string | undefined;
 	private timer: NodeJS.Timeout | undefined;
-	private readonly watch: NodeJS.Timeout;
-	private readonly stopped: Promise<void>;
+	private watch: NodeJS.Timeout | undefined;
+	private stopped: Promise<void> = Promise.resolve();
 	private resolveStopped: () => void = () => {};
 
 	constructor(
@@ -70,12 +72,20 @@ export class AgentManager {
 		private readonly limits: ManagerLimits = managerLimits,
 	) {
 		this.agent = basename(root);
-		this.stopped = new Promise((resolve) => (this.resolveStopped = resolve));
-		this.watch = setInterval(() => this.checkHeartbeat(), limits.checkMs);
 	}
 
-	/** Starts the agent's process. */
+	/** Starts the agent's process and keeps it running. Starts a stopped or failed agent again, with its count of restarts at 0; does nothing otherwise. */
 	start(): void {
+		if (this.state !== "stopped" && this.state !== "failed") return;
+		this.restarts = 0;
+		this.stopped = new Promise((resolve) => (this.resolveStopped = resolve));
+		clearInterval(this.watch);
+		this.watch = setInterval(() => this.checkHeartbeat(), this.limits.checkMs);
+		this.launch();
+	}
+
+	// Starts the process, the first time or again after it exited.
+	private launch(): void {
 		this.startedAt = Date.now();
 		this.killedFor = undefined;
 		// A process group of its own, so a terminal's Ctrl-C reaches only the coordinator, which decides what it means.
@@ -91,6 +101,8 @@ export class AgentManager {
 
 	/** First call: the agent finishes its running work and stops. With `force`: it stops running work now. Resolves when its process has exited. */
 	stop(force = false): Promise<void> {
+		this.startWhenStopped = false;
+		if (this.state === "stopped") return this.stopped;
 		clearTimeout(this.timer);
 		if (this.child === undefined) {
 			this.finish();
@@ -101,6 +113,15 @@ export class AgentManager {
 		if (force) this.child.kill("SIGTERM");
 		this.set("stopping");
 		return this.stopped;
+	}
+
+	/** Stops the agent once its running work is done, then starts it. A stop meanwhile, as when agentx serve stops, cancels the start. */
+	restart(): void {
+		const stopped = this.stop();
+		this.startWhenStopped = true;
+		void stopped.then(() => {
+			if (this.startWhenStopped) this.start();
+		});
 	}
 
 	/** The agent's state, for `/agents`. */
@@ -120,14 +141,14 @@ export class AgentManager {
 		if (Date.now() - this.startedAt >= this.limits.goodRunMs) this.restarts = 0;
 		if (this.restarts >= this.limits.maxRestarts) {
 			this.set("failed");
-			console.error(`${this.agent}: failed after ${this.restarts} restarts; its last process ${this.lastExit}. Restart agentx serve to start it again.`);
+			console.error(`${this.agent}: failed after ${this.restarts} restarts; its last process ${this.lastExit}. Start it again with POST /agents/${this.agent}/start, or by starting agentx serve again.`);
 			return;
 		}
 		this.restarts += 1;
 		this.set("restarting");
 		const delay = Math.min(this.limits.firstDelayMs * 2 ** (this.restarts - 1), this.limits.lastDelayMs);
 		console.error(`${this.agent}: its process ${this.lastExit}; starting it again in ${delay / 1000} s`);
-		this.timer = setTimeout(() => this.start(), delay);
+		this.timer = setTimeout(() => this.launch(), delay);
 	}
 
 	private finish(): void {

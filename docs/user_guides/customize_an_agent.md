@@ -138,7 +138,7 @@ A schedule sends the agent an event at the times a cron pattern names. List your
 }
 ```
 
-`cron` is in the agent's time zone (below). Schedules fire only under `agentx serve`, and an edit applies within a second. All the keys, such as `catchUp` for fires missed while it was down: [coordinator](../architecture/coordinator-runtime/README.md#schedules).
+`cron` is in the agent's time zone (below). Schedules fire only under `agentx serve`, and an edit applies within a second. All the keys, such as `catchUp` for fires missed while it was down: [coordinator](../architecture/coordinator-runtime/services/scheduler/README.md).
 
 ## Removing an agent
 

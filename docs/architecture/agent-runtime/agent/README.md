@@ -76,7 +76,7 @@ The system prompt extension builds the prompt: the harness prompt, the agents th
 | `skills/<name>/SKILL.md` | when a session starts, through `skills` |
 | `event_router.mjs` | for every event without a thread ([routing](../events/README.md#routing)) |
 | `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
-| `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/README.md#schedules)) |
+| `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |
 | anything else | when the agent reads it |
 
 All threads of the agent share it.

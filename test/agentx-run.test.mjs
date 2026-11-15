@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { sendEvent } from "../dist/agent-runtime/events/send-event.js";
-import { deliverOutbox } from "../dist/coordinator-runtime/delivery.js";
+import { deliverOutbox } from "../dist/coordinator-runtime/services/relay/relay.js";
 import { startFakeModel } from "./fake-model.mjs";
 import { agentx, editSettings, events, inboxEvents, onQueueFile, scratch, until } from "./project.mjs";
 

@@ -215,7 +215,7 @@ export class Queue {
 	/**
 	 * Adds an event and returns its id. With a key or an id that is already on the queue, adds nothing and returns the id of the event that has it.
 	 * Every event on the queue has its thread: the router gives one to an event without. `facts` are `agentX-` lines from the harness itself, such as
-	 * agentX-Schedule, which no sender may name. `fromInbox` gives the event the id and the send time it got in the agent's inbox.
+	 * agentX-Schedule or agentX-Service, which no sender may name. `fromInbox` gives the event the id and the send time it got in the agent's inbox.
 	 */
 	enqueue(event: NewEvent & { threadId: string }, facts: Record<string, string> = {}, fromInbox?: { id: string; sentAt: number }): string {
 		checkEvent(event);
