@@ -26,7 +26,7 @@ function otherProcess(root, ...args) {
 	return { child, done, exited, firstLine };
 }
 
-test("enqueue checks the thread id, the metadata names and the text, and gives each event a random id", () => {
+test("enqueue checks the thread id, the fields' types, the metadata names and the text, and gives each event a random id", () => {
 	const queue = new Queue(agentRoot());
 	const first = queue.enqueue({ threadId: "main", content: "a" });
 	const second = queue.enqueue({ threadId: "support.ticket-42_x", content: "b", metadata: { from: "ops" } });
@@ -36,6 +36,10 @@ test("enqueue checks the thread id, the metadata names and the text, and gives e
 	assert.notEqual(first, second);
 	for (const threadId of ["", "-main", "main-", "a b", "a/b", "x".repeat(201), null]) assert.throws(() => queue.enqueue({ threadId, content: "c" }), /Invalid thread id/);
 	for (const name of ["agentX-MessageId", "AGENTX-foo", "a:b", "a\nb", "a\u2028b"]) assert.throws(() => queue.enqueue({ threadId: "main", content: "c", metadata: { [name]: 1 } }), /Invalid metadata name/);
+	// What a workflow's script or a hand-written inbox file can hold.
+	for (const fields of [{ content: undefined }, { content: { text: "c" } }, { content: "c", key: 7 }, { content: "c", doNotSteer: "yes" }, { content: "c", isSilent: 1 }]) {
+		assert.throws(() => queue.enqueue({ threadId: "main", ...fields }), /Invalid event/);
+	}
 	// The tag of the harness's block, which would let a sender fake one or end one early.
 	for (const message of [{ content: 'see <agentx-metadata id="x">' }, { content: "c", metadata: { note: "</AgentX-Metadata>" } }, { content: "c", metadata: { list: ["<agentx-metadata"] } }]) {
 		assert.throws(() => queue.enqueue({ threadId: "main", ...message }), /contains "<agentx-metadata"/);
@@ -251,22 +255,13 @@ test("taking events renews the lease, so a holder that was paused keeps its thre
 	queue.close();
 });
 
-test("an event with a key is added once, and an event without a thread waits for the router, which routes it once", () => {
+test("an event with a key is added once", () => {
 	const root = agentRoot();
 	const queue = new Queue(root);
-	const first = queue.enqueue({ content: "from a webhook", key: "delivery-1", metadata: { source: "composio" } });
-	assert.equal(queue.enqueue({ content: "the same delivery again", key: "delivery-1" }), first);
+	const first = queue.enqueue({ threadId: "support", content: "from a webhook", key: "delivery-1", metadata: { source: "composio" } });
+	assert.equal(queue.enqueue({ threadId: "support", content: "the same delivery again", key: "delivery-1" }), first);
 	assert.equal(events(root).length, 1);
-	assert.equal(queue.nextThread(), undefined, "no thread has work: the event has no thread yet");
-
-	assert.equal(queue.nextUnrouted().id, first);
-	assert.equal(queue.route(first, "support", { source: "composio", note: "routed" }), true);
-	assert.equal(queue.route(first, "main", {}), false, "an event is routed once");
-	assert.equal(queue.nextUnrouted(), undefined);
-	const [routed] = events(root);
-	assert.deepEqual([routed.threadId, routed.status, routed.metadata], ["support", "queued", { source: "composio", note: "routed" }]);
 	assert.equal(queue.nextThread(), "support");
-	assert.throws(() => queue.route(queue.enqueue({ content: "x" }), "no good", {}), /Invalid thread id/);
 	queue.close();
 });
 
@@ -299,14 +294,3 @@ test("workflow threads are offered apart from Pi threads, run one event at a tim
 	queue.close();
 });
 
-test("an audit finds events by id, by key and by a metadata value, newest first in a list", () => {
-	const queue = new Queue(agentRoot());
-	const run = queue.enqueue({ threadId: "workflow.w", content: "{}" });
-	const sent = queue.enqueue({ threadId: "main", content: "from the run", metadata: { source: "workflow.w" } }, { "agentX-WorkflowRun": run });
-	const report = queue.enqueue({ threadId: "main", content: "it failed", key: `failed:${run}` });
-	assert.deepEqual(queue.list(2).map((event) => event.id), [report, sent]);
-	assert.equal(queue.get(sent).content, "from the run");
-	assert.equal(queue.byKey(`failed:${run}`).id, report);
-	assert.deepEqual(queue.withMetadata("agentX-WorkflowRun", run).map((event) => event.id), [sent]);
-	queue.close();
-});

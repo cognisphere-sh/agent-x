@@ -30,5 +30,5 @@ Next:${name === "." ? "" : `
   pnpm install                             # installs agent-x/ and web/
   agentx init-agent main
   pnpm dev                                 # the app
-  cd agent-x/agents/main && agentx chat    # talk to the agent; agentx run runs it in the background`);
+  cd agent-x/agents/main && agentx chat    # talk to the agent; agentx run runs it on its own`);
 }

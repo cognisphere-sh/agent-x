@@ -1,17 +1,18 @@
-// `agentx init-agent <name>`: creates an agent in the project's agent-x/agents/ directory.
+// `agentx init-agent <name>`: creates an agent in the project's agent-x/agents/ directory and lists it in agent-x/agentx.json.
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { nameRule } from "../../agent-runtime/events/queue.js";
+import { configFile, type ProjectConfig, projectConfig, saveProjectConfig } from "../../agent-runtime/project-config.js";
+import { ensureStorage } from "../../agent-runtime/storage.js";
 import { copyTemplate } from "../copy-template.js";
-import { pinsAgentx } from "../pinned-cli.js";
+import { projectAgentX } from "../agent-root.js";
 
-/** Creates `agent-x/agents/<name>` from templates/agent. `cwd` is the project root or its agent-x/. */
+/** Creates `agent-x/agents/<name>` from templates/agent and lists it in agentx.json. `cwd` is the project root or its agent-x/. */
 export function initAgent(name: string, cwd: string): void {
 	// The name is a folder name, so it cannot point outside agents/.
 	if (!nameRule.test(name)) throw new Error(`"${name}" is not an agent name. Use letters, digits and dashes.`);
-	const agentX = [join(cwd, "agent-x"), cwd].find(pinsAgentx);
-	if (!agentX) throw new Error(`${cwd} is not a project's root or its agent-x/ directory. Run this in one of them.`);
+	const agentX = projectAgentX(cwd);
 	const root = join(agentX, "agents", name);
 	copyTemplate("agent", root);
 	// The agent's identity in Composio, under which its connected accounts are kept. Written once, so renaming the agent or the project keeps its accounts.
@@ -21,12 +22,15 @@ export function initAgent(name: string, cwd: string): void {
 	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 	settings.agentx.composio = { userId: `${name}@${project}` };
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
-	// storage/ is not checked in. These are the folders the agent writes to: its working files, and what it learns and keeps.
-	for (const dir of ["workspace", "knowledge/skills", "knowledge/extensions", "knowledge/system_prompt"]) {
-		mkdirSync(join(root, "storage", dir), { recursive: true });
-	}
+	// Its state, in agent-x/storage/<name>/, which storage/ links to; neither is checked in.
+	ensureStorage(root);
+	// Listed with an empty description, which the developer fills in: the agents that may send to it see it. An entry already there is kept.
+	const config: ProjectConfig = existsSync(configFile(agentX)) ? projectConfig(agentX) : { agents: {} };
+	config.agents[name] ??= { description: "" };
+	saveProjectConfig(agentX, config);
 	console.log(`Created ${root}
 
 Next:
-  cd ${root} && agentx chat    # talk to the agent; agentx run runs it in the background`);
+  describe it in ${configFile(agentX)}, for the other agents
+  cd ${root} && agentx chat    # talk to the agent; agentx run runs it on its own`);
 }

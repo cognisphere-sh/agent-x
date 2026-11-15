@@ -2,32 +2,27 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { fileURLToPath } from "node:url";
+import { markerId, pending, read } from "../dist/agent-runtime/events/mailbox.js";
 
 /** The CLI under test. Tests run after `tsc`, so dist/ is current. */
 export const cli = fileURLToPath(new URL("../dist/cli/agentx.js", import.meta.url));
 
-/** Creates a project with one agent, `main`, set up to use the fake model on `port`. Returns the agent directory. */
+/** Creates a project with one agent, `main`, set up to use the fake model on `port`. Returns `{ agent, env }`: its directory and the environment to run agentx in. */
 export function createAgent(port) {
 	// On macOS the temp directory is reached through a symlink, which is the case Pi's session lookup is sensitive to.
 	const root = mkdtempSync(join(tmpdir(), "agentx-test-"));
 	const home = join(root, "home");
 	mkdirSync(home);
 	const env = { PATH: process.env.PATH, HOME: home, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" };
-	const run = (args, cwd) => {
-		const result = spawnSync(process.execPath, [cli, ...args], { cwd, env, encoding: "utf8" });
-		if (result.status !== 0) throw new Error(`agentx ${args.join(" ")} failed: ${result.stderr}`);
-	};
-	run(["init-project", "project"], root);
+	setUp(["init-project", "project"], root, env);
 	// The project's agentx is this checkout, linked as `pnpm link` does: without an installed agentx, commands in a project stop.
 	mkdirSync(join(root, "project", "agent-x", "node_modules"));
 	symlinkSync(fileURLToPath(new URL("..", import.meta.url)), join(root, "project", "agent-x", "node_modules", "agent-x"));
-	run(["init-agent", "main"], join(root, "project"));
-	const agent = join(root, "project", "agent-x", "agents", "main");
 	// Pi's agent directory of the project: a provider that needs no login.
 	mkdirSync(join(root, "project", "agent-x", ".pi"));
 	writeFileSync(
@@ -43,11 +38,39 @@ export function createAgent(port) {
 			},
 		}),
 	);
-	const settingsPath = join(agent, ".pi", "settings.json");
-	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
+	const project = { agent: join(root, "project", "agent-x", "agents", "main"), env };
+	addAgent(project, "main");
+	return project;
+}
+
+/** The root of the project. */
+export const projectRoot = ({ agent }) => join(agent, "..", "..", "..");
+
+/** Adds the agent `name` to the project, set up for the fake model, with `agentx` merged into its agentx settings. Returns its directory. */
+export function addAgent(project, name, agentx = {}) {
+	setUp(["init-agent", name], projectRoot(project), project.env);
+	const dir = join(project.agent, "..", name);
 	// No retries inside Pi, so a failing model call fails the run at once.
-	writeFileSync(settingsPath, JSON.stringify({ ...settings, defaultProvider: "fake", defaultModel: "fake-model", retry: { enabled: false } }));
-	return { agent, env };
+	editSettings(dir, (settings) => ({ ...settings, defaultProvider: "fake", defaultModel: "fake-model", retry: { enabled: false }, agentx: { ...settings.agentx, ...agentx } }));
+	return dir;
+}
+
+// Runs `agentx <args>` in `cwd` to the end and throws when it fails. Only for commands that need no answer from the fake model, which this process gives.
+function setUp(args, cwd, env) {
+	const result = spawnSync(process.execPath, [cli, ...args], { cwd, env, encoding: "utf8" });
+	if (result.status !== 0) throw new Error(`agentx ${args.join(" ")} failed: ${result.stderr}`);
+}
+
+/** Changes the project's agent-x/agentx.json: `change` gets it and returns the new one. */
+export function editConfig(project, change) {
+	const file = join(projectRoot(project), "agent-x", "agentx.json");
+	writeFileSync(file, JSON.stringify(change(JSON.parse(readFileSync(file, "utf8")))));
+}
+
+/** Changes the checked-in settings of the agent in `dir`: `change` gets them and returns the new ones. */
+export function editSettings(dir, change) {
+	const file = join(dir, ".pi", "settings.json");
+	writeFileSync(file, JSON.stringify(change(JSON.parse(readFileSync(file, "utf8")))));
 }
 
 /** Runs `agentx <args>` in the agent directory to the end; resolves to its exit status and output. Not spawnSync: the fake model answers from this process. */
@@ -67,47 +90,84 @@ export function open({ agent, env }, args, t) {
 	return child;
 }
 
+/** The project as the agent's own processes, such as the model's bash, run agentx in it: `agentx event send` then sends from inside the agent. */
+export const asAgent = (project) => ({ ...project, env: { ...project.env, AGENTX_AGENT: basename(project.agent) } });
+
+/** Gives the agent an event as a person does, with `agentx event deliver` in the agent directory, and returns the event's id. */
+export async function send(project, ...args) {
+	const delivered = await agentx(project, ["event", "deliver", ...args]);
+	assert.equal(delivered.status, 0, delivered.stderr);
+	return /^Delivered event ([\w-]{12})/.exec(delivered.stdout)[1];
+}
+
+/** Sends an event as the agent does, with `agentx event send` from its own processes, into its outbox, and returns the event's id. */
+export async function agentSend(project, ...args) {
+	const sent = await agentx(asAgent(project), ["event", "send", ...args]);
+	assert.equal(sent.status, 0, sent.stderr);
+	return /^Sent event ([\w-]{12})/.exec(sent.stdout)[1];
+}
+
+/** Starts `agentx <args>` in `cwd`, in a process group of its own, so a test can signal it as a terminal does, the whole group at once. */
+export function background(cwd, env, args) {
+	const child = spawn(process.execPath, [cli, ...args], { cwd, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
+	let output = "";
+	child.stdout.on("data", (chunk) => (output += chunk));
+	child.stderr.on("data", (chunk) => (output += chunk));
+	return { child, exited: new Promise((resolve) => child.on("exit", resolve)), output: () => output };
+}
+
 /**
  * Starts `agentx run` for the agent, with `agentx.runner` in its settings: `maxThreads` Pi threads at a time, and a stall time unless the default.
  * `end()` asks it to finish and resolves to its exit status; `stop()` kills it; `exited` resolves to its exit status.
  */
 export function runner({ agent, env }, maxThreads = 4, stallSeconds) {
-	const settingsPath = join(agent, ".pi", "settings.json");
-	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-	writeFileSync(settingsPath, JSON.stringify({ ...settings, agentx: { ...settings.agentx, runner: { ...settings.agentx?.runner, maxThreads, ...(stallSeconds === undefined ? {} : { stallSeconds }) } } }));
-	// A process group of its own, so a test can signal it as a terminal does, the whole group at once.
-	const child = spawn(process.execPath, [cli, "run"], { cwd: agent, env, stdio: ["ignore", "pipe", "pipe"], detached: true });
-	let output = "";
-	child.stdout.on("data", (chunk) => (output += chunk));
-	child.stderr.on("data", (chunk) => (output += chunk));
-	const exited = new Promise((resolve) => child.on("exit", resolve));
+	editSettings(agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, runner: { ...settings.agentx?.runner, maxThreads, ...(stallSeconds === undefined ? {} : { stallSeconds }) } } }));
+	const started = background(agent, env, ["run"]);
 	return {
-		child,
-		exited,
-		output: () => output,
+		...started,
 		end: () => {
-			child.kill("SIGINT");
-			return exited;
+			started.child.kill("SIGINT");
+			return started.exited;
 		},
 		stop: () => {
-			child.kill("SIGKILL");
-			return exited;
+			started.child.kill("SIGKILL");
+			return started.exited;
 		},
 	};
 }
 
-/** The agent's sessions as { id, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. `contents` is what was typed or queued: each user message without its metadata block. */
+/**
+ * A fresh project for the test `t`: `event(id)` is the event on the agent's queue, `send(...args)` runs `agentx event send`, `start(...)` starts `agentx run`,
+ * which is stopped when the test ends, and `reach(status, ...ids)` resolves when the events are all in that status.
+ */
+export function scratch(t, port) {
+	const project = createAgent(port);
+	const started = [];
+	t.after(async () => {
+		for (const server of started) await server.stop();
+	});
+	const event = (id) => events(project.agent).find((found) => found.id === id);
+	return {
+		project,
+		event,
+		send: (...args) => send(project, ...args),
+		start: (...args) => started[started.push(runner(project, ...args)) - 1],
+		reach: (status, ...ids) => until(() => ids.every((id) => event(id)?.status === status)),
+	};
+}
+
+/** The agent's sessions as { thread, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. `contents` is what was typed or queued: each user message without its metadata block. */
 export function sessions({ agent }) {
 	// One folder per thread, storage/sessions/<thread>/, with the thread's session files.
 	const directory = join(agent, "storage", "sessions");
 	return readdirSync(directory)
-		.flatMap((thread) => readdirSync(join(directory, thread)).filter((file) => file.endsWith(".jsonl")).map((file) => join(directory, thread, file)))
-		.map((file) => {
+		.flatMap((thread) => readdirSync(join(directory, thread)).filter((file) => file.endsWith(".jsonl")).map((file) => ({ thread, file: join(directory, thread, file) })))
+		.map(({ thread, file }) => {
 			const entries = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
 			const text = (content) => (typeof content === "string" ? content : content.map((part) => part.text ?? "").join("\n"));
 			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: text(entry.message.content) }));
 			return {
-				id: entries[0].id,
+				thread,
 				entries,
 				users,
 				contents: users.map((user) => user.text.split("\n").at(-1)),
@@ -136,7 +196,10 @@ export async function until(check, ms = 20_000) {
 
 /** The events on the queue of the agent in `agentRoot`, oldest first, read straight from the file as an operator would. */
 export function events(agentRoot) {
-	return onQueueFile(agentRoot, (db) => db.prepare("SELECT * FROM events ORDER BY seq").all()).map((row) => ({
+	// No queue yet: only the router adds events to it, and creates it.
+	if (!existsSync(join(agentRoot, "storage", "event_queue.db"))) return [];
+	const rows = onQueueFile(agentRoot, (db) => (db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'events'").get() ? db.prepare("SELECT * FROM events ORDER BY seq").all() : []));
+	return rows.map((row) => ({
 		id: row.id,
 		threadId: row.thread_id,
 		content: row.content,
@@ -150,6 +213,12 @@ export function events(agentRoot) {
 		key: row.key,
 		updatedAt: row.updated_at,
 	}));
+}
+
+/** The events that wait in the agent's inbox, oldest first, as their event.json holds them: { id, sentAt, event, facts, to, from }. */
+export function inboxEvents(agentRoot, box = "inbox") {
+	const dir = join(agentRoot, "storage", "workspace", box);
+	return pending(dir).map((marker) => read(dir, markerId(marker)));
 }
 
 /** The id of the process that holds the thread's lease: the Pi process that runs the thread, or `agentx run` for a workflow's thread. */

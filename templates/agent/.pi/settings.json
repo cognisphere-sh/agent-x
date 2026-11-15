@@ -1,5 +1,5 @@
 {
-	"extensions": ["../storage/knowledge/extensions"],
+	"extensions": [],
 	"skills": ["../storage/knowledge/skills"],
 	"prompts": [],
 	"packages": [],

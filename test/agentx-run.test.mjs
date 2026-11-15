@@ -1,12 +1,14 @@
-// End-to-end tests of `agentx run` beyond Pi threads: the event router, workflows and their failure reports, the supervisor, and `agentx event` for audits.
+// End-to-end tests of `agentx run` beyond Pi threads: the event router, workflows and their failure reports, and the supervisor.
 // Real `agentx run` processes in a scratch project, with the fake model for the Pi threads that events reach.
 
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
+import { sendEvent } from "../dist/agent-runtime/events/send-event.js";
+import { deliverOutbox } from "../dist/coordinator-runtime/delivery.js";
 import { startFakeModel } from "./fake-model.mjs";
-import { agentx, createAgent, events, onQueueFile, runner, until } from "./project.mjs";
+import { agentx, editSettings, events, inboxEvents, onQueueFile, scratch, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -14,57 +16,79 @@ before(async () => {
 });
 after(() => model.close());
 
-/** A fresh project; `send` runs `agentx event send` and returns the event's id; `start` starts `agentx run`, which is stopped when the test ends. */
+/**
+ * A fresh project (see `scratch`); `file` writes a file in its agent directory. What the agent sends itself, as its workflows' events and failure reports,
+ * goes through its outbox, so the test delivers it as agentx serve does, a few times a second.
+ */
 function setup(t) {
-	const project = createAgent(model.port);
-	const servers = [];
-	t.after(async () => {
-		for (const server of servers) await server.stop();
-	});
-	const event = (id, agent = project.agent) => events(agent).find((found) => found.id === id);
+	const base = scratch(t, model.port);
+	const courier = setInterval(() => deliverOutbox(base.project.agent), 100);
+	t.after(() => clearInterval(courier));
 	return {
-		project,
-		event,
-		send: async (...args) => {
-			const sent = await agentx(project, ["event", "send", ...args]);
-			assert.equal(sent.status, 0, sent.stderr);
-			return /^Queued event ([\w-]{12})/.exec(sent.stdout)[1];
-		},
-		start: (...args) => servers[servers.push(runner(project, ...args)) - 1],
-		// Resolves when the event is in the given status.
-		reach: (status, id) => until(() => event(id)?.status === status),
+		...base,
 		file: (path, text) => {
-			mkdirSync(join(project.agent, path, ".."), { recursive: true });
-			writeFileSync(join(project.agent, path), text);
+			mkdirSync(join(base.project.agent, path, ".."), { recursive: true });
+			writeFileSync(join(base.project.agent, path), text);
 		},
 	};
 }
 
-/** A router that answers `{ thread }` from a line of the event's content, `route: <thread>`; "throw" and "hang" make it fail. */
+/** A router that answers `{ thread }` from a line of the event's content, `route: <thread>`; "throw" and "hang" make it fail, and "pass" returns nothing. */
 const testRouter = `
 export default async function route(event, ctx) {
 	const wanted = /route: (\\S+)/.exec(event.content)?.[1] ?? "main";
 	if (wanted === "throw") { console.log("printed before throwing"); throw new Error("the router broke"); }
 	if (wanted === "hang") for (;;);
+	if (wanted === "pass") return;
 	if (wanted === "workflows") return { thread: ctx.workflows.map((workflow) => workflow.name).join("-") || "none" };
 	return { thread: wanted };
 }
 `;
 
-test("an event without a thread goes through the starter router to main, and a deleted router is written again", async (t) => {
+test("a new agent's router, the developer's, sends an event without a thread to main, and agentx writes no router of the agent's own", async (t) => {
 	const { project, event, send, start, reach } = setup(t);
-	const router = join(project.agent, "storage", "knowledge", "event_router.mjs");
+	assert.match(readFileSync(join(project.agent, ".pi", "event_router.mjs"), "utf8"), /return \{ thread: "main" \};/);
 	const first = await send("hello");
-	assert.equal(event(first).threadId, null);
+	// It waits in the inbox, and only the router loop adds it to the queue.
+	assert.equal(event(first), undefined);
+	assert.deepEqual(inboxEvents(project.agent).map((mail) => mail.id), [first]);
 	start();
 	await reach("done", first);
 	assert.equal(event(first).threadId, "main");
-	assert.match(readFileSync(router, "utf8"), /return \{ thread: "main" \}/);
+	assert.equal(event(first).metadata["agentX-RouterError"], undefined);
+	assert.ok(!existsSync(join(project.agent, "storage", "knowledge", "event_router.mjs")));
+});
 
-	rmSync(router);
-	const second = await send("hello again");
-	await reach("done", second);
-	assert.ok(existsSync(router));
+test("the agent's router is asked first, then the developer's; one that fails or picks no thread leaves the event to the next, and then to main", async (t) => {
+	const { event, send, start, reach, file } = setup(t);
+	file("storage/knowledge/event_router.mjs", testRouter);
+	// The developer's router answers `dev: <thread>`, nothing without it, and throws on `dev: throw`.
+	file(
+		".pi/event_router.mjs",
+		`export default async function route(event) {
+			const wanted = /dev: (\\S+)/.exec(event.content)?.[1];
+			if (wanted === "throw") throw new Error("the developer's router broke");
+			return wanted === undefined ? undefined : { thread: wanted };
+		}`,
+	);
+	start();
+	const agents = await send("route: support\ndev: throw");
+	const developers = await send("route: pass\ndev: billing");
+	const neither = await send("route: pass");
+	const agentFailed = await send("route: throw\ndev: billing");
+	const bothFailed = await send("route: throw\ndev: throw");
+	const all = [agents, developers, neither, agentFailed, bothFailed];
+	for (const id of all) await reach("done", id);
+	assert.deepEqual(
+		all.map((id) => [event(id).threadId, event(id).metadata["agentX-RouterError"]?.match(/(\S+event_router\.mjs): failed/g)]),
+		[
+			["support", undefined],
+			["billing", undefined],
+			["main", undefined],
+			["billing", ["storage/knowledge/event_router.mjs: failed"]],
+			["main", ["storage/knowledge/event_router.mjs: failed", ".pi/event_router.mjs: failed"]],
+		],
+	);
 });
 
 test("the router's answer puts the event on its thread, the router can import the project's packages, and an event that names a thread skips the router", async (t) => {
@@ -91,13 +115,12 @@ test("the router's answer puts the event on its thread, the router can import th
 test("a router that throws, hangs or names a missing workflow sends the event to main with agentX-RouterError, and the event keeps why", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	file("storage/knowledge/event_router.mjs", testRouter);
-	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
-	writeFileSync(join(project.agent, ".pi", "settings.json"), JSON.stringify({ ...settings, agentx: { ...settings.agentx, runner: { routerSeconds: 2 } } }));
+	editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, runner: { routerSeconds: 2 } } }));
 	const [threw, hung, missing, bad] = [await send("route: throw"), await send("route: hang"), await send("route: workflow.nope"), await send("route: no/good")];
 	start();
 	for (const id of [threw, hung, missing, bad]) await reach("done", id);
 	assert.deepEqual(
-		[threw, hung, missing, bad].map((id) => [event(id).threadId, event(id).metadata["agentX-RouterError"].split(":")[0]]),
+		[threw, hung, missing, bad].map((id) => [event(id).threadId, event(id).metadata["agentX-RouterError"].split(": ")[1]]),
 		[
 			["main", "failed"],
 			["main", "timeout"],
@@ -106,25 +129,21 @@ test("a router that throws, hangs or names a missing workflow sends the event to
 		],
 	);
 	// Why, in one line the model sees with the event, and what the router printed, in a log.
-	assert.equal(event(threw).metadata["agentX-RouterError"], `failed: the router broke What it printed: storage/workspace/router-logs/${threw}.log`);
-	assert.match(readFileSync(join(project.agent, "storage", "workspace", "router-logs", `${threw}.log`), "utf8"), /^printed before throwing\n/);
-	assert.match(event(hung).metadata["agentX-RouterError"], /^timeout: it took longer than 2 s/);
+	assert.equal(event(threw).metadata["agentX-RouterError"], `storage/knowledge/event_router.mjs: failed: the router broke What it printed: storage/workspace/router-logs/${threw}.agent.log`);
+	assert.match(readFileSync(join(project.agent, "storage", "workspace", "router-logs", `${threw}.agent.log`), "utf8"), /^printed before throwing\n/);
+	assert.match(event(hung).metadata["agentX-RouterError"], /^storage\/knowledge\/event_router\.mjs: timeout: it took longer than 2 s/);
 
-	const shown = await agentx(project, ["event", "show", threw]);
-	assert.equal(shown.status, 0, shown.stderr);
-	assert.match(shown.stdout, /Thread: main, because the router failed\n/);
-	assert.match(shown.stdout, /agentX-RouterError: failed: the router broke/);
 	// No sender can name it, so a router failure cannot be faked.
-	assert.match((await agentx(project, ["event", "send", "--meta", "agentX-RouterError=fake", "hello"])).stderr, /Invalid metadata name "agentX-RouterError"/);
+	assert.match((await agentx(project, ["event", "deliver", "--meta", "agentX-RouterError=fake", "hello"])).stderr, /Invalid metadata name "agentX-RouterError"/);
 });
 
 /** Workflows for the tests: `ok` prints, changes directory, sends an event to main, and returns what JSON cannot carry; `broken` throws; `slow` outlives its 1 s; `timed` notes when it ran. */
-function workflows(file, failureReportTo) {
+function workflows(file, babysitterThread) {
 	file(
 		".pi/workflows.json",
 		JSON.stringify({
 			ok: { description: "Sends a note to main.", script: "workflows/ok.mjs" },
-			broken: { description: "Always fails.", script: "workflows/broken.mjs", ...(failureReportTo ? { failureReportTo } : {}) },
+			broken: { description: "Always fails.", script: "workflows/broken.mjs", ...(babysitterThread ? { babysitterThread } : {}) },
 			slow: { description: "Takes too long.", script: "workflows/slow.mjs", timeoutSeconds: 1 },
 			timed: { description: "Notes when it ran.", script: "workflows/timed.mjs" },
 		}),
@@ -142,27 +161,21 @@ function workflows(file, failureReportTo) {
 	);
 }
 
-test("a workflow gets its event, logs its output, and is done without a report; what it sent shows in its audit", async (t) => {
+test("a workflow gets its event, logs its output, and is done without a report", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	workflows(file);
 	const id = await send("--thread-id", "workflow.ok", '{"invoice": "4411"}');
 	start();
 	await reach("done", id);
 	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "ok", `${id}.log`), "utf8"), 'params {"invoice": "4411"}\n');
-	const [note] = events(project.agent).filter((found) => found.content === "note from ok");
-	assert.deepEqual(note.metadata, { source: "workflow.ok", "agentX-WorkflowRun": id });
+	const note = await until(() => events(project.agent).find((found) => found.content === "note from ok"));
+	// Delivered from the agent's outbox, as sent by the workflow from its babysitter thread, main, which the receiving thread would answer.
+	assert.deepEqual(note.metadata, { source: "workflow.ok", "agentX-FromAgent": "main", "agentX-FromThread": "main", "agentX-FromWorkflow": "ok" });
 	await reach("done", note.id);
 	assert.equal(events(project.agent).length, 2, "no report");
-
-	const shown = await agentx(project, ["event", "show", id]);
-	assert.match(shown.stdout, new RegExp(`Log: storage/workspace/workflow-logs/ok/${id}\\.log\n`));
-	assert.match(shown.stdout, new RegExp(`Events it sent: ${note.id} to main \\(done\\)\n`));
-	assert.match(shown.stdout, /Failure report: none/);
-	const listed = await agentx(project, ["event", "list"]);
-	assert.match(listed.stdout, new RegExp(`${note.id}  done +main  workflow\\.ok\n`));
 });
 
-test("a failed run is failed once and reported to main with its log, a run past its time is killed, and the report's fate shows in the audit", async (t) => {
+test("a failed run is failed once and reported to main with its log, and a run past its time is killed", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	workflows(file);
 	const broken = await send("--thread-id", "workflow.broken", "{}");
@@ -175,29 +188,57 @@ test("a failed run is failed once and reported to main with its log, a run past 
 	const report = events(project.agent).find((found) => found.key === `failed:${broken}`);
 	assert.equal(report.threadId, "main");
 	assert.equal(report.metadata.source, "workflow.broken");
-	assert.match(report.content, new RegExp(`^Workflow \`broken\` of agent \`main\` failed on event \`${broken}\`: broken on purpose\n\nIts log: \`storage/workspace/workflow-logs/broken/${broken}\\.log\``));
+	assert.match(report.content, new RegExp(`^Workflow \`broken\` failed on event \`${broken}\`: broken on purpose\n\nIts log: \`storage/workspace/workflow-logs/broken/${broken}\\.log\``));
 	assert.match(readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "broken", `${broken}.log`), "utf8"), /about to fail\n[^]*broken on purpose/);
-	assert.ok(events(project.agent).some((found) => found.key === `failed:${slow}`));
+	await until(() => events(project.agent).some((found) => found.key === `failed:${slow}`));
 	await reach("done", report.id);
-
-	const shown = await agentx(project, ["event", "show", broken]);
-	assert.match(shown.stdout, new RegExp(`Failure report: ${report.id} on main\\.main, done, session entry \\S+`));
 });
 
-test("a failure report goes to the agent and thread the workflow names", async (t) => {
+test("a failure report goes to the thread the workflow names, which is a thread of its own agent", async (t) => {
 	const { project, send, start, reach, file } = setup(t);
-	const root = join(project.agent, "..", "..", "..");
-	assert.equal((await agentx({ agent: root, env: project.env }, ["init-agent", "ops"])).status, 0);
-	workflows(file, "ops.alerts");
+	workflows(file, "alerts");
 	const broken = await send("--thread-id", "workflow.broken", "{}");
 	start();
 	await reach("failed", broken);
-	const ops = join(project.agent, "..", "ops");
-	const report = await until(() => events(ops).find((found) => found.key === `failed:${broken}`));
+	const report = await until(() => events(project.agent).find((found) => found.key === `failed:${broken}`));
 	assert.equal(report.threadId, "alerts");
-	assert.match(report.content, new RegExp(`See the run with \`agentx event show ${broken} --agent main\``));
-	const shown = await agentx(project, ["event", "show", broken]);
-	assert.match(shown.stdout, new RegExp(`Failure report: ${report.id} on ops\\.alerts, queued`));
+});
+
+test("the router adds an event sent again with its key once, asks no router for the copy, and keeps its folder", async (t) => {
+	const { project, send, start, reach, file } = setup(t);
+	// Notes each event it is asked about, and leaves it to main.
+	file("storage/knowledge/event_router.mjs", `import { appendFileSync } from "node:fs";\nexport default async function route(event) { appendFileSync("storage/workspace/asked", event.id + "\\n"); }`);
+	const first = await send("--key", "k", "1");
+	start();
+	await reach("done", first);
+	assert.equal(await send("--key", "k", "2"), first);
+	await until(() => inboxEvents(project.agent).length === 0);
+	assert.equal(events(project.agent).filter((found) => found.key === "k").length, 1);
+	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "asked"), "utf8"), `${first}\n`);
+	assert.ok(existsSync(join(project.agent, "storage", "workspace", "inbox", first, "event.json")), "the event's folder is kept");
+});
+
+test("events that one process sends in a row reach the queue in that order, also within one millisecond", async (t) => {
+	const { project, start } = setup(t);
+	// Straight from this process, several in each millisecond; silent, so that no Pi starts.
+	const sent = Array.from({ length: 20 }, (_, n) => sendEvent(project.agent, { threadId: "main", content: String(n), isSilent: true }));
+	start();
+	await until(() => events(project.agent).length === sent.length);
+	assert.deepEqual(events(project.agent).map((found) => found.id), sent);
+});
+
+test("an event the queue cannot hold is refused when it is sent, and one written into the inbox by hand is set aside without holding up the next", async (t) => {
+	const { project, event, send, start, reach, file } = setup(t);
+	// As a workflow's ctx.send could pass it.
+	assert.throws(() => sendEvent(project.agent, { threadId: "main", content: { text: "not text" } }), /Invalid event: its content must be text/);
+	// First in the inbox, with no content.
+	file("storage/workspace/inbox/badbadbadbad/event.json", JSON.stringify({ id: "badbadbadbad", sentAt: 1, event: { threadId: "main", key: "bad" }, facts: {} }));
+	file("storage/workspace/inbox/.pending/000000000000001-badbadbadbad", "");
+	const next = await send("--thread-id", "main", "after it");
+	start();
+	await reach("done", next);
+	assert.equal(event("badbadbadbad"), undefined);
+	assert.ok(existsSync(join(project.agent, "storage", "workspace", "inbox", ".rejected", "000000000000001-badbadbadbad")));
 });
 
 test("a workflow runs one event at a time, and of two workflows with one name the developer's runs", async (t) => {
@@ -222,7 +263,7 @@ test("after agentx run is killed during a run, the next one fails the event once
 	// The run is long enough to be cut off.
 	file(".pi/workflows.json", JSON.stringify({ slow: { description: "Takes long.", script: "workflows/slow.mjs", timeoutSeconds: 60 } }));
 	const first = start();
-	await until(() => event(id).status === "in_flight");
+	await until(() => event(id)?.status === "in_flight");
 	await first.stop();
 	// As two minutes later: the dead process's lease on the workflow's thread has run out.
 	onQueueFile(project.agent);
@@ -241,7 +282,7 @@ test("a terminal's Ctrl-C lets a running thread finish, also with a SIGTERM righ
 	const { project, event, send, start, reach } = setup(t);
 	const id = await send("--thread-id", "main", "[sleep 2] finish me");
 	const server = start();
-	await until(() => event(id).entryId);
+	await until(() => event(id)?.entryId);
 	assert.ok(Date.now() - Number(readFileSync(join(project.agent, "storage", "heartbeat"), "utf8")) < 15_000, "the heartbeat is fresh");
 	// To the whole process group, as a terminal sends it: Pi has a group of its own, so only agentx run gets it.
 	process.kill(-server.child.pid, "SIGINT");
@@ -251,15 +292,15 @@ test("a terminal's Ctrl-C lets a running thread finish, also with a SIGTERM righ
 });
 
 test("a loop that crashes is started again, and its work goes on", async (t) => {
-	const { project, event, send, start, reach } = setup(t);
-	// The router cannot be written while storage/knowledge is a file, so the router's loop crashes.
-	rmSync(join(project.agent, "storage", "knowledge"), { recursive: true });
-	writeFileSync(join(project.agent, "storage", "knowledge"), "");
-	const id = await send("hello");
+	const { project, event, send, start, reach, file } = setup(t);
+	// A router that prints and fails has its output logged, which cannot be done while router-logs is a file, so the router's loop crashes.
+	file("storage/knowledge/event_router.mjs", testRouter);
+	file("storage/workspace/router-logs", "");
+	const id = await send("route: throw");
 	const server = start();
 	await until(() => /router: the loop crashed/.test(server.output()));
 	assert.match(server.output(), /router: starting the loop again in 1 s/);
-	rmSync(join(project.agent, "storage", "knowledge"));
+	rmSync(join(project.agent, "storage", "workspace", "router-logs"));
 	await reach("done", id);
 	assert.equal(event(id).threadId, "main");
 });

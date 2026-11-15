@@ -21,7 +21,7 @@ Steps the agent follows...
 
 ## Extensions
 
-Add a `.ts` file to `.pi/extensions/`. Pi loads it with no build step.
+Add a `.ts` file to `.pi/extensions/`. Pi loads it with no build step. Extensions are yours alone: the agent writes skills, prompt text, a router and workflows for itself, but no extensions.
 
 ```ts
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -97,7 +97,7 @@ Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (
 
 ## Workflows
 
-A workflow handles events with a script instead of the model, such as filing every invoice email. Your workflows go in `.pi/workflows.json`, checked in and read-only to the agent; the agent can add its own in `storage/knowledge/workflows.json`, and on a name in both, yours is used:
+A workflow handles events with a script instead of the model, such as filing every invoice email. Your workflows go in `.pi/workflows.json`, checked in and read-only to the agent; the agent can add its own in `storage/knowledge/workflows.json`. A new agent has both, empty, each with an empty `workflows/` folder next to it for the scripts, and on a name in both, yours is used:
 
 ```json
 {
@@ -109,7 +109,7 @@ A workflow handles events with a script instead of the model, such as filing eve
 }
 ```
 
-`script` is a path from `.pi/`, to a module whose default export takes the event: [send events](send_events.md#workflows) shows one. The agent's router decides which events go to a workflow; tell the agent in its system prompt when to use yours. A failed run is not retried, and `failureReportTo` (`<agent>.<thread>`, this agent's `main` unless set) hears about it.
+`script` is a path from `.pi/` to a module whose default export takes the event ([send events](send_events.md#workflows) shows one). The routers decide which events go to a workflow: route them in `.pi/event_router.mjs` ([send events](send_events.md#routing)), or tell the agent in its system prompt when to use yours. A failed run is not retried; the workflow's `babysitterThread` (`main` by default) hears about it.
 
 ## How `agentx run` runs the agent
 
@@ -125,7 +125,40 @@ A workflow handles events with a script instead of the model, such as filing eve
 |---|---|---|
 | `maxThreads` | 4 | Pi threads that run at once. Each Pi process uses about 130 MB. |
 | `stallSeconds` | 600 | A Pi process that writes nothing for this long is stopped. Set it above the longest time one of the agent's tools runs without output. |
-| `routerSeconds` | 60 | How long the agent's router may take for one event. |
+| `routerSeconds` | 60 | How long each router may take for one event. |
+
+## Schedules
+
+A schedule sends the agent an event at the times a cron pattern names. List yours in `.pi/schedules.json`; the agent can add its own in `storage/knowledge/schedules.json`. A new agent has both, empty, and on a name in both, yours is used:
+
+```json
+{
+	"daily-report": { "cron": "0 9 * * 1-5", "content": "Write the daily report.", "threadId": "reports" },
+	"new-year": { "cron": "0 0 1 1 *", "content": "Say happy new year to the team.", "fireOnce": true }
+}
+```
+
+`cron` is in the agent's time zone (below). Schedules fire only under `agentx serve`, and an edit applies within a second. All the keys, such as `catchUp` for fires missed while it was down: [coordinator](../architecture/coordinator-runtime/README.md#schedules).
+
+## Removing an agent
+
+`agentx remove-agent <name>`, in the project root or `agent-x/`, lists what it would delete: the agent's folder, its state in `agent-x/storage/<name>/` (its sessions and what it learned), and its entry in `agent-x/agentx.json`. Run it again with `--yes` to delete them; the other agents' `canSendTo` lose its name. Stop `agentx serve` first: it refuses while the agent runs.
+
+## Who the agent may send to
+
+The project's agents are listed in `agent-x/agentx.json`; `agentx init-agent` adds each with an empty `description`. `agentx serve` runs only the agents listed there. Under it, an agent may send events to every other agent of the project. To allow only some, list them in its `canSendTo`:
+
+```json
+{
+	"agents": {
+		"support": { "description": "Answers questions about orders.", "canSendTo": ["billing", "ops"] },
+		"billing": { "description": "Files invoices." },
+		"ops": { "description": "Watches the servers." }
+	}
+}
+```
+
+The agent's system prompt lists the agents it may send to, each with its `description`, so write one line in every agent's `description` that says what it does. An event to any other agent is not delivered, and the thread that sent it is told why. An empty list allows no agent. Events this agent sends to itself are not affected, nor are those a person delivers.
 
 ## Time zone
 
@@ -139,10 +172,9 @@ Events tell the agent when they were sent and what time it is. A new agent's `.p
 
 ## What the agent learns
 
-The agent keeps what it learns in `storage/knowledge/`: text for its own system prompt, its own skills and extensions, and notes, files and scripts. The folder is the agent's, not yours, and is not checked in. A new agent's settings load it:
+The agent keeps what it learns in `storage/knowledge/`: text for its own system prompt, its own skills, and notes, files and scripts. The folder is the agent's, not yours, and is not checked in. A new agent's settings load it:
 
 ```json
-"extensions": ["../storage/knowledge/extensions"],
 "skills": ["../storage/knowledge/skills"],
 "agentx": {
 	"systemPrompt": ["../storage/knowledge/system_prompt"]
@@ -151,5 +183,4 @@ The agent keeps what it learns in `storage/knowledge/`: text for its own system 
 
 Without these lines the agent loads none of its knowledge. Remove a line to stop the agent from teaching itself that way. Know that:
 
-- If an extension the agent wrote fails to load, the agent does not start until you remove the file from `storage/knowledge/extensions/`.
 - The agent writes there when it decides to, also when an event tells it to, and what it writes applies to every later session. That includes its event router and its own workflows, which are code that `agentx run` runs. Read the folder from time to time.

@@ -1,11 +1,12 @@
 // The event queue extension, loaded by Pi into every agent session: everything that happens to a queued event inside a session.
 // It takes the thread's events off the queue, sends them into the session, records the session entry each one became, and settles them when the run ends.
-// A session is a thread: its id is the thread id, and while it is open it holds the thread's lease, so no other process runs the same conversation.
+// A thread is a folder of Pi sessions, and while one of them is open it holds the thread's lease, so no other process runs the same conversation.
 // While the session is idle, queued events start a run. During a run, events that arrive are steered in at the end of a turn.
 // It is the same under `agentx chat` and under `agentx run`, whose Pi runner only starts the Pi process of a thread that has events.
 // The Pi runner's sessions are workers (--agentx-worker): nobody watches them, so a worker leaves when its thread has no work, and a run of its that is cut off gets another attempt.
 // A one-shot run (`-p`, `--mode json`) holds its thread but takes nothing from the queue: it answers its own prompt.
 
+import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Queue, workflowPrefix } from "../../../../events/queue.js";
 import { eventIds, render } from "./render.js";
@@ -129,7 +130,9 @@ export default function (pi: ExtensionAPI) {
 	};
 
 	pi.on("session_start", (_event, ctx) => {
-		threadId = ctx.sessionManager.getSessionId();
+		// The thread is the folder that holds the session, storage/sessions/<thread>/. A session kept only in memory has none, and takes no events.
+		const folder = ctx.sessionManager.getSessionDir();
+		threadId = folder ? basename(folder) : "";
 		seen = ctx.sessionManager.getEntries().length;
 		timeZone = (pi.getSettings() as { agentx?: { timezone?: string | null } }).agentx?.timezone ?? undefined;
 		try {
@@ -139,7 +142,8 @@ export default function (pi: ExtensionAPI) {
 			say(ctx, `Unknown time zone "${timeZone}" in agentx.timezone of .pi/settings.json, so events show the machine's time. Use a name such as "Asia/Kolkata".`);
 			timeZone = undefined;
 		}
-		// A workflow's events run a script, never Pi, also when Pi was given the thread's id itself.
+		if (threadId === "") return;
+		// A workflow's events run a script, never Pi, also when Pi was started in the workflow's folder some other way.
 		if (threadId.startsWith(workflowPrefix)) {
 			if (!oneShot(ctx)) refuse(ctx);
 			return;

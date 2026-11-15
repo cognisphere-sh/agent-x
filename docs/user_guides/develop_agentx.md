@@ -9,11 +9,12 @@ pnpm run build    # writes dist/, which the agentx command runs
 pnpm test         # builds, then runs test/*.test.mjs
 ```
 
-The tests need no login and no network. They take about two minutes.
+The tests need no login and no network.
 
 - `test/queue.test.mjs` tests the queue, with several processes sharing one file.
 - `test/runner.test.mjs` creates scratch projects in the temp directory, with this checkout linked in as their agentx. It runs the built CLI, `agentx run` and real Pi processes against `test/fake-model.mjs`, a fake model server on localhost.
-- `test/agentx-run.test.mjs` does the same for the rest of `agentx run`: the router, workflows and their failure reports, stopping, a crashed loop, and `agentx event`.
+- `test/agentx-run.test.mjs` does the same for the rest of `agentx run`: the routers, workflows and their failure reports, stopping, and a crashed loop.
+- `test/coordinator.test.mjs` tests the `AgentManager` with stand-in processes, delivery and schedules, and `agentx serve` end to end: two agents, delivery between them, refusals, restarts and stopping.
 - `test/composio.test.mjs` does the same for the Composio extension, also against `test/fake-composio.mjs`, a fake Composio with its session routes and an MCP endpoint.
 
 ## Run the local build
@@ -29,7 +30,7 @@ agentx init-project my-project         # anywhere
 
 ## Use a local build in a project
 
-agentx is not on npm yet, so the version `init-project` pins cannot be installed, and commands in the project stop. Link the local build instead:
+To try a local build in a project, link it in place of the version it pins:
 
 ```sh
 cd my-project/agent-x
@@ -43,8 +44,7 @@ After a change to agentx:
 | Changed | Do |
 |---|---|
 | Most code | `pnpm run build`. The project uses `dist/` through the link. |
-| `src/agent-runtime/pi/pi-package/`, and `src/agent-runtime/events/queue.ts`, which its event queue extension imports | Nothing. Pi loads it from the link when a session starts. |
-| The queue, `src/agent-runtime/events/queue.ts` | Also `pnpm run build`: the CLI and `agentx run` use it from `dist/`. |
+| `src/agent-runtime/pi/pi-package/`, and `events/queue.ts` and `project-config.ts`, which its extensions import | Nothing for Pi, which loads them as source when a session starts. For `queue.ts` and `project-config.ts`, also `pnpm run build`: the rest of agentx uses them from `dist/`. |
 
 ## Before changing code
 

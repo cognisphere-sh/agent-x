@@ -1,5 +1,6 @@
 // A stand-in for a model endpoint (OpenAI chat-completions, streaming) on 127.0.0.1, so tests run real Pi sessions with no network and no login.
-// It answers by the last message of the request: after a tool result, text; "[sleep N]" in a user message, a bash tool call; "[fail]", an HTTP 400; otherwise text.
+// It answers by the last message of the request: after a tool result, text; "[sleep N]" in a user message, a bash tool call that sleeps;
+// "[bash <command>]", a bash tool call of that command; "[fail]", an HTTP 400; otherwise text.
 
 import { createServer } from "node:http";
 
@@ -29,8 +30,10 @@ export async function startFakeModel() {
 				`data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "fake-model", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 			response.writeHead(200, { "content-type": "text/event-stream" });
 			const sleep = last.role === "user" && /\[sleep ([\d.]+)\]/.exec(lastText);
-			if (sleep) {
-				const call = { index: 0, id: `call_${requests.length}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ command: `sleep ${sleep[1]}` }) } };
+			const bash = last.role === "user" && /\[bash (.+)\]/.exec(lastText);
+			if (sleep || bash) {
+				const command = sleep ? `sleep ${sleep[1]}` : bash[1];
+				const call = { index: 0, id: `call_${requests.length}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ command }) } };
 				response.write(chunk({ role: "assistant", content: null, tool_calls: [call] }));
 				response.write(chunk({}, "tool_calls"));
 			} else {

@@ -1,4 +1,4 @@
-// The event queue of one agent: a SQLite file in the agent's storage/, opened by every process that sends to or runs the agent.
+// The event queue of one agent: a SQLite file in the agent's storage/. Only its router loop adds events; the processes that run its threads take and settle them.
 // Loaded twice: compiled, by the CLI and `agentx run`, and from source, by the event queue extension in pi/pi-package, which Pi loads as source. The two copies share only the file.
 
 import { randomBytes } from "node:crypto";
@@ -21,14 +21,14 @@ export interface NewEvent {
 	isSilent?: boolean;
 }
 
-/** `queued`: waiting; with no thread, for the router. `in_flight`: taken by the session or the workflow that runs the thread. The others are final. */
+/** `queued`: waiting. `in_flight`: taken by the session or the workflow that runs the thread. The others are final. */
 export type Status = "queued" | "in_flight" | "done" | "failed" | "cancelled";
 
 /** An event on the queue. */
 export interface Event extends Required<Omit<NewEvent, "threadId" | "key">> {
-	/** A random string of 12 letters, digits, `-` and `_`, not starting with `-`, which nobody can guess. */
+	/** 12 letters, digits, `-` and `_`, not starting with `-`, made from the receiving agent and the event's key (a random key when none is given). */
 	id: string;
-	threadId: string | null;
+	threadId: string;
 	key: string | null;
 	status: Status;
 	/** How many times it was taken for delivery. */
@@ -45,7 +45,7 @@ export interface Event extends Required<Omit<NewEvent, "threadId" | "key">> {
 export const workflowPrefix = "workflow.";
 
 /** The workflow whose thread `threadId` is, or undefined for any other thread. */
-export function workflowName(threadId: string | null | undefined): string | undefined {
+export function workflowName(threadId: string | undefined): string | undefined {
 	return threadId?.startsWith(workflowPrefix) ? threadId.slice(workflowPrefix.length) : undefined;
 }
 
@@ -77,9 +77,12 @@ const workflowThread = `thread_id GLOB '${workflowPrefix}*'`;
 // The tag of the harness's metadata block (render.ts). No sender's text may hold it, so no event can fake a block or end one early.
 const blockTag = /<\/?agentx-metadata\b/i;
 
-// An event's id: 72 random bits, so that ids are unique without a check and nobody can guess one. A leading "-" becomes "_",
-// so that a command line does not take the id for an option, as in `agentx event show <id>`.
-const newId = () => randomBytes(9).toString("base64url").replace(/^-/, "_");
+/** A new event's id: 72 random bits, so that ids are unique without a check and nobody can guess one. A leading "-" becomes "_",
+ * so that a command line does not take the id for an option. */
+export const newId = () => randomBytes(9).toString("base64url").replace(/^-/, "_");
+
+/** Whether `id` has the shape of an event's id. */
+export const isEventId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_][A-Za-z0-9_-]{11}$/.test(id);
 
 // The tables. Several processes can open a new file at once, so they are made in one transaction, under the write lock: one makes them, the others find them.
 const schema = `
@@ -111,7 +114,7 @@ const schema = `
 interface Row {
 	seq: number;
 	id: string;
-	thread_id: string | null;
+	thread_id: string;
 	content: string;
 	metadata: string;
 	do_not_steer: number;
@@ -154,6 +157,25 @@ export function withQueue<T>(agentRoot: string, work: (queue: Queue) => T): T {
 /** Agent names and workflow names: letters, digits and dashes. A name is a folder name or part of a thread id, so it cannot point anywhere else. */
 export const nameRule = /^[a-zA-Z0-9-]+$/;
 
+/** Throws when the queue would refuse `event`: a bad thread id, a field of the wrong type, a metadata name that is the harness's or could fake a line, or the tag of the harness's block in its text. */
+export function checkEvent(event: NewEvent): void {
+	if (event.threadId !== undefined && !isThreadId(event.threadId)) {
+		throw new Error(`Invalid thread id "${event.threadId}": use letters, digits, ".", "_" and "-", starting and ending with a letter or digit, 200 characters at most.`);
+	}
+	// Not left to TypeScript: a workflow's script or a file in the inbox can hold anything, and a value the queue file cannot store would stop the router at that event each time it starts.
+	if (typeof event.content !== "string") throw new Error("Invalid event: its content must be text.");
+	if (typeof (event.key ?? "") !== "string") throw new Error("Invalid event: its key must be text.");
+	if (typeof (event.doNotSteer ?? false) !== "boolean" || typeof (event.isSilent ?? false) !== "boolean") throw new Error("Invalid event: doNotSteer and isSilent must be true or false.");
+	const metadata = event.metadata ?? {};
+	if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) throw new Error("Invalid event: its metadata must be an object.");
+	// Names starting with agentX- are the harness's own lines, and a name with a colon or a line break could fake one.
+	const badKey = Object.keys(metadata).find((key) => /^agentx-|[:\r\n\u2028\u2029]/i.test(key));
+	if (badKey !== undefined) throw new Error(`Invalid metadata name "${badKey}": names must not start with "agentX-" or contain ":" or a line break.`);
+	if ([event.content, ...Object.entries(metadata).map(([name, value]) => `${name} ${JSON.stringify(value)}`)].some((text) => blockTag.test(text))) {
+		throw new Error('Invalid event: its content or metadata contains "<agentx-metadata", the tag of the harness\'s own block.');
+	}
+}
+
 /** Whether `threadId` can be a thread's id: Pi's rule for session ids. */
 export function isThreadId(threadId: unknown): threadId is string {
 	return typeof threadId === "string" && threadIdRule.test(threadId);
@@ -191,44 +213,22 @@ export class Queue {
 	// For senders.
 
 	/**
-	 * Adds an event and returns its id. With a key that is already on the queue, adds nothing and returns the id of the event that has it.
-	 * `facts` are `agentX-` lines from the harness itself, such as agentX-WorkflowRun, which no sender may name.
+	 * Adds an event and returns its id. With a key or an id that is already on the queue, adds nothing and returns the id of the event that has it.
+	 * Every event on the queue has its thread: the router gives one to an event without. `facts` are `agentX-` lines from the harness itself, such as
+	 * agentX-Schedule, which no sender may name. `fromInbox` gives the event the id and the send time it got in the agent's inbox.
 	 */
-	enqueue(event: NewEvent, facts: Record<string, string> = {}): string {
-		if (event.threadId !== undefined && !isThreadId(event.threadId)) {
-			throw new Error(`Invalid thread id "${event.threadId}": use letters, digits, ".", "_" and "-", starting and ending with a letter or digit, 200 characters at most.`);
-		}
-		const metadata = event.metadata ?? {};
-		// Names starting with agentX- are the harness's own lines, and a name with a colon or a line break could fake one.
-		const badKey = Object.keys(metadata).find((key) => /^agentx-|[:\r\n\u2028\u2029]/i.test(key));
-		if (badKey !== undefined) throw new Error(`Invalid metadata name "${badKey}": names must not start with "agentX-" or contain ":" or a line break.`);
-		if ([event.content, ...Object.entries(metadata).map(([name, value]) => `${name} ${JSON.stringify(value)}`)].some((text) => blockTag.test(text))) {
-			throw new Error('Invalid event: its content or metadata contains "<agentx-metadata", the tag of the harness\'s own block.');
-		}
-		const id = newId();
+	enqueue(event: NewEvent & { threadId: string }, facts: Record<string, string> = {}, fromInbox?: { id: string; sentAt: number }): string {
+		checkEvent(event);
+		const id = fromInbox?.id ?? newId();
 		const now = Date.now();
 		const added = this.db
 			.prepare(
 				`INSERT INTO events (id, thread_id, content, metadata, do_not_steer, is_silent, status, attempts, key, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?) ON CONFLICT (key) DO NOTHING`,
+				 VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?) ON CONFLICT DO NOTHING`,
 			)
-			.run(id, event.threadId ?? null, event.content, JSON.stringify({ ...metadata, ...facts }), Number(event.doNotSteer ?? false), Number(event.isSilent ?? false), event.key ?? null, now, now);
+			.run(id, event.threadId, event.content, JSON.stringify({ ...event.metadata, ...facts }), Number(event.doNotSteer ?? false), Number(event.isSilent ?? false), event.key ?? null, fromInbox?.sentAt ?? now, now);
 		if (added.changes > 0) return id;
-		return String(this.db.prepare("SELECT id FROM events WHERE key = ?").get(event.key ?? null)?.id);
-	}
-
-	// For the router.
-
-	/** The oldest event that waits for the router: queued, with no thread. */
-	nextUnrouted(): Event | undefined {
-		const row = this.db.prepare(`SELECT * FROM events WHERE thread_id IS NULL AND status = 'queued' ORDER BY seq LIMIT 1`).get();
-		return row && toEvent(row);
-	}
-
-	/** Gives an event without a thread its thread, with the metadata given; false when it has a thread already, as when another process routed it. */
-	route(id: string, threadId: string, metadata: Record<string, unknown>): boolean {
-		if (!isThreadId(threadId)) throw new Error(`Invalid thread id "${threadId}".`);
-		return this.db.prepare("UPDATE events SET thread_id = ?, metadata = ?, updated_at = ? WHERE id = ? AND thread_id IS NULL").run(threadId, JSON.stringify(metadata), Date.now(), id).changes > 0;
+		return String(this.db.prepare("SELECT id FROM events WHERE key = ? OR id = ?").get(event.key ?? null, id)?.id);
 	}
 
 	// For the process that runs a thread. It holds the thread's lease, and only the holder can take and finish events.
@@ -300,7 +300,7 @@ export class Queue {
 	nextThread(except: string[] = [], workflows = false): string | undefined {
 		const row = this.db
 			.prepare(
-				`SELECT thread_id FROM events WHERE ${work} AND thread_id IS NOT NULL AND ${workflows ? "" : "NOT"} ${workflowThread}
+				`SELECT thread_id FROM events WHERE ${work} AND ${workflows ? "" : "NOT"} ${workflowThread}
 				   AND thread_id NOT IN (SELECT thread_id FROM threads WHERE heartbeat_at > ?)
 				   AND thread_id NOT IN (SELECT value FROM json_each(?))
 				 ORDER BY seq LIMIT 1`,
@@ -392,28 +392,12 @@ export class Queue {
 		this.endAttempt(threadId, error);
 	}
 
-	// For audits.
-
-	/** The newest events, newest first. */
-	list(limit: number): Event[] {
-		return this.db.prepare("SELECT * FROM events ORDER BY seq DESC LIMIT ?").all(limit).map(toEvent);
-	}
+	// For the router.
 
 	/** The event with this id. */
 	get(id: string): Event | undefined {
 		const row = this.db.prepare("SELECT * FROM events WHERE id = ?").get(id);
 		return row && toEvent(row);
-	}
-
-	/** The event with this key. */
-	byKey(key: string): Event | undefined {
-		const row = this.db.prepare("SELECT * FROM events WHERE key = ?").get(key);
-		return row && toEvent(row);
-	}
-
-	/** The events whose metadata has `name: value`, oldest first. */
-	withMetadata(name: string, value: string): Event[] {
-		return this.db.prepare("SELECT * FROM events WHERE json_extract(metadata, ?) = ? ORDER BY seq").all(`$."${name}"`, value).map(toEvent);
 	}
 
 	// `which` narrows it to some of the thread's in-flight events. Without `retry`, they fail whatever their attempts.

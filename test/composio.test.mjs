@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
 import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
-import { agentx, createAgent, events, onlySession, runner, until } from "./project.mjs";
+import { agentx, createAgent, editSettings, events, onlySession, runner, until } from "./project.mjs";
 
 // agentx's default policy: a copy, so a test pins exactly what goes to Composio.
 const defaults = {
@@ -35,14 +35,8 @@ function setup(withKey = true) {
 	return project;
 }
 
-const settingsPath = (project) => join(project.agent, ".pi", "settings.json");
-
 /** Sets the agent's Composio session policy, `agentx.composio.session`. */
-function setSession(project, session) {
-	const settings = JSON.parse(readFileSync(settingsPath(project), "utf8"));
-	settings.agentx.composio.session = session;
-	writeFileSync(settingsPath(project), JSON.stringify(settings));
-}
+const setSession = (project, session) => editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, composio: { ...settings.agentx.composio, session } } }));
 
 // The thread's Composio sessions, as its Pi session records them.
 const recorded = (project) => onlySession(project).entries.filter((entry) => entry.type === "custom" && entry.customType === "agentx-composio").map((entry) => entry.data.sessionId);
@@ -54,7 +48,7 @@ const composioTools = (index) => model.tools[index].filter((tool) => tool.starts
 
 test("a new agent gets a Composio user id, and its first queued event already sees the Composio tools", async (t) => {
 	const project = setup();
-	assert.equal(JSON.parse(readFileSync(settingsPath(project), "utf8")).agentx.composio.userId, "main@project");
+	assert.equal(JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8")).agentx.composio.userId, "main@project");
 	// Composio answers slower than the event queue extension's first look at the queue; the session still waits for it.
 	composio.delayMs = 2000;
 	const queue = new Queue(project.agent);
@@ -171,11 +165,11 @@ test("the project's agent-x/.env gives every agent its keys, and a variable alre
 	assert.equal(composio.created.length, 1);
 });
 
-test("an agent's own extension that registers an MCP server after awaiting in session_start still has its tools in the first queued event", async (t) => {
-	// No Composio key: only the agent's own server is in play.
+test("a developer's extension that registers an MCP server after awaiting in session_start still has its tools in the first queued event", async (t) => {
+	// No Composio key: only the developer's server is in play.
 	const project = setup(false);
 	writeFileSync(
-		join(project.agent, "storage", "knowledge", "extensions", "slow-server.ts"),
+		join(project.agent, ".pi", "extensions", "slow-server.ts"),
 		`export default function (pi) {
 	pi.on("session_start", async () => {
 		await new Promise((resolve) => setTimeout(resolve, 2000));

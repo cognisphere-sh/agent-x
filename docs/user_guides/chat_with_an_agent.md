@@ -6,16 +6,15 @@ Run these in `agent-x/agents/<name>`. If `agentx` is not installed globally, put
 |---|---|
 | `agentx chat` | Open the thread `main`, creating it the first time |
 | `agentx chat --thread-id <thread>` | Open another thread, and create it if it does not exist |
-| `agentx chat -c` | Continue the latest session in `main`'s folder, or in the folder of the `--thread-id` given |
-| `agentx chat -r` | Pick a session from that folder's list |
-| `agentx chat --session <id>` | Open a session by its full or partial id |
+| `agentx chat -r` | Pick one of the thread's sessions; add `--thread-id` for another thread |
+| `agentx chat --session <id>` | Open one of the thread's sessions by its full or partial id |
 | `agentx chat <pi args>` | Pass any Pi arguments, such as `-p "prompt"` |
 
 Sessions are kept in `storage/sessions/<thread>/`, one folder per thread. Files the agent makes go in `storage/workspace`.
 
 ## Threads
 
-A thread is one conversation, kept in one session. The thread's name is the session's id. `main` is the default. In Pi, `/new` starts a session with a new id, which is a new thread.
+A thread is one conversation, kept as a folder of sessions. `main` is the default. `agentx chat` goes on with the thread's latest session. In Pi, `/new` starts a fresh session in the same thread, and `/resume` goes back to an older one; whichever you write in last is the one the thread goes on with.
 
 Events can also reach a thread through the agent's queue ([send events](send_events.md)). While a session is open, the queued events of its thread arrive in it. A workflow's thread, `workflow.<name>`, runs a script, not Pi, so `agentx chat` refuses it.
 

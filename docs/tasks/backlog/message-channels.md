@@ -31,6 +31,6 @@ cognisphere-harness works this way: its prompt says "your text output is interna
 ## To decide
 
 1. What a channel is in agentx: a Pi extension with its own tools, a Composio toolkit (Slack, Gmail and Telegram have send tools there), or both.
-2. How a channel's incoming messages reach the queue. The [coordinator](coordinator.md) is planned to receive Composio trigger events and add them to the agent they are for ([webhooks](coordinator-webhooks.md)), whose router turns them into messages ([events](../../architecture/agent-runtime/events/README.md)); a channel whose service has Composio triggers, such as Slack, Telegram or Gmail, can come in that way.
+2. How a channel's incoming messages reach the queue. The [coordinator](../../architecture/coordinator-runtime/README.md) is planned to receive webhooks through services the project installs and add their events to the agent they are for ([webhooks](coordinator-webhooks.md)), whose router turns them into messages ([events](../../architecture/agent-runtime/events/README.md)). A channel whose service has Composio triggers, such as Slack or Gmail, comes in through the Composio service; one without gets a webhook service of its own.
 3. Where a channel's objective is defined: in the agent's `.pi/settings.json`, its system prompt, or both.
 4. The metadata names a channel message carries.

@@ -1,4 +1,4 @@
-# Pi integration
+# Pi reference
 
 What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Paths are in the Pi repo, under `packages/coding-agent/`. Check them again when upgrading Pi.
 
@@ -7,7 +7,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - Pi reads config from two places only: its agent directory (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) and `<cwd>/.pi/`. It does not look for `.pi/` in parent directories (`src/core/settings-manager.ts`).
 - In a trusted project, Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` with no settings (`docs/configuration.md`). Its own project prompt is one file, `.pi/SYSTEM.md`. It has no prompt folder.
 - The agent directory holds config and state together: `settings.json`, `auth.json`, `trust.json`, `models.json`, `bin/`.
-- In `.pi/settings.json`, resource paths resolve from `.pi/`. `sessionDir` resolves from `cwd` and is read before trust is checked. `extensions` and `skills` list more folders to load. A folder that does not exist is skipped with no warning.
+- In `.pi/settings.json`, resource paths resolve from `.pi/`. `extensions` and `skills` list more folders to load. A folder that does not exist is skipped with no warning.
 - Pi accepts settings keys it does not know. It gives no warning, keeps them when it rewrites a settings file, and returns them from `pi.getSettings()`. That call gives an extension the user and project settings merged (`persistScopedSettings` in `src/core/settings-manager.ts`, `docs/extensions.md`).
 
 ## Project trust
@@ -21,7 +21,6 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - `~/.agents/skills` loads for every project. Only user-level settings can exclude it.
 - Each skill has a `filePath`. A `before_agent_start` handler can replace `event.systemPromptOptions.skills`, the list Pi adds to the prompt.
 - `.agents/skills` in `cwd` and its parents, up to the git root, loads when the project is trusted (`src/core/package-manager.ts`).
-- `-ns` drops all skills, the agent's own too.
 
 ## CLI
 
@@ -35,11 +34,15 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 
 - `--session-id <id>` opens the session with exactly that id among those stored for the working directory, or creates it. It cannot be combined with `--session`, `-c` or `-r`. Given twice, the last one counts (`createSessionManager` in `src/main.ts`).
 - A session id must match `^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$` (`assertValidSessionId` in `src/core/session-manager.ts`). The id is part of the file name, `<time>_<id>.jsonl`, which limits its length.
-- Pi finds a session by its id among those stored for the working directory, and compares the directory as text (`SessionManager.findById` in `src/core/session-manager.ts`). A path through a symlink does not match the resolved path. The CLI always uses the resolved path as its working directory, so `agentx chat` and the Pi runner, which both start the CLI, find the same session file.
+- Pi finds a session by its id, or the latest one, among those stored for the working directory, and compares the directory as text (`findById`, `continueRecent` in `src/core/session-manager.ts`). A path through a symlink does not match the resolved path. The CLI always uses the resolved path as its working directory, so `agentx chat` and the Pi runner, which both start the CLI, find the same session file.
 - Pi writes the session file when the first message is added. A session that never got a message leaves no file.
 - Nothing locks a session file. Two processes that open the same session each append from their own last entry, which forks the conversation. A reader takes the last line as the current end.
 - Replacing the session in a running Pi (`/new`, `/resume`, `/fork`, `/clone`, `/import`) sends `session_shutdown`, with a reason, to the extensions. Pi then runs every extension's factory again and sends `session_start` to the new instances. `/reload` does the same and also loads the extension's module again. `/tree` keeps the session.
 - After a session is replaced or closed, the old `ctx` and `pi` objects throw when used. A timer an extension started keeps the process alive, and an uncaught throw from it ends the process. So an extension must stop its timers on `session_shutdown`.
+
+## Tools
+
+- The `bash` tool runs a command with `PI_SESSION_FILE`, the file of the session that runs it, and `PI_SESSION_ID` in its environment, removing ones it inherited. A command a person types with `!` gets none (`resolveSpawnContext` in `src/core/tools/bash.ts`). So `agentx event send`, run by the model, knows its thread, the file's folder ([sending](../../events/README.md#sending-and-delivering)). The rest of the command's environment is Pi's own (`getShellEnv` in `src/utils/shell.ts`), so `AGENTX_AGENT`, which agentx gives Pi, reaches every command, a person's `!` command too.
 
 ## Delivering messages
 
@@ -61,9 +64,8 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 ## Packages
 
 - `packages` in `.pi/settings.json` accepts a local path, resolved from `<cwd>/.pi/` (`getBaseDirForScope` in `src/core/package-manager.ts`). Pi loads it where it is, with no copy or install.
-- A missing local path is skipped with no warning (`resolveLocalExtensionSource`).
 - `-e <folder>` loads a package folder with all its resources, in temporary scope. A missing path is an error (`resolveExtensionSources` in `src/core/package-manager.ts`, `src/core/resource-loader.ts`).
-- `--session-dir <dir>` sets where sessions are stored and looked up, like `sessionDir` in settings. Pi looks only in that folder, not in folders below it: `-c`, `-r` and `--session-id` find the sessions in it alone (`findById`, `continueRecent` and `list` in `src/core/session-manager.ts`).
+- `--session-dir <dir>` sets where sessions are stored and looked up. Pi looks only in that folder, not in folders below it: `-c`, `-r` and `--session-id` find the sessions in it alone (`findById`, `continueRecent` and `list` in `src/core/session-manager.ts`). `--continue` in an empty folder starts a new session there.
 - A folder with no `pi` manifest in a `package.json` is read by convention: `extensions/`, `skills/`, `prompts/` (prompt templates), `themes/`. Pi takes the folder's entries in the order the file system lists them, unsorted (`collectAutoExtensionEntries` in `src/core/package-manager.ts`).
 - A `pi` manifest with resource fields (`extensions`, `skills`, `prompts`, `themes`) replaces that: Pi loads only what it lists, in the listed order, and no other type (`collectPackageResources`).
 - A package carries extensions, skills, prompt templates and themes. MCP servers are not a package resource; an extension adds them with `pi.registerMcpServer` (`docs/mcp.md`).
@@ -77,7 +79,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
 - The `input` event can return `continue`, `transform` or `handled` (skip the model).
 - `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
-- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's own extensions, then its built-in ones such as MCP support.
+- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's extensions in `.pi/`, then its built-in ones such as MCP support.
 - Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
 - Every session start (start-up, `/new`, `/resume`, `/fork`, `/reload`) emits `session_start`, then, once all its handlers have finished, `resources_discover`, if any extension handles it. Nothing follows at start-up: the mode then waits for input (RPC, terminal) or sends its prompt (print) (`bindExtensions` in `src/core/agent-session.ts`). `session_start` fires whether or not a message comes.
 - `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
@@ -90,7 +92,6 @@ Sources: `docs/mcp.md`, `docs/extensions.md`.
 - `env` and `headers` values can name environment variables as `${NAME}`. Pi fills them in when it connects, also for a registered server.
 - `exposure` decides how tools reach the model. `codemode`, the default: not declared; scripts in the `codemode` tool call them. `deferred`: found and loaded with `tool_search`. `direct`: declared like a built-in tool. Pi lists a server's instructions and `description` in the system prompt only for servers whose tools are not declared.
 - The first prompt waits up to 10 seconds for servers with `direct` tools, so their tools are in its request.
-- An MCP request times out after 60 seconds unless the server's `timeout` is raised.
 - Pi takes an HTTP server without an `Authorization` header for one that may sign in with OAuth, so a server that refuses its key shows in `/mcp` as needing sign-in.
 
 ## RPC mode
@@ -104,6 +105,5 @@ What the Pi runner relies on when it starts Pi for a thread ([Pi runner](../READ
 - An extension's dialog (`ctx.ui.select`, `confirm`, `input`, `editor`) is written to the output as an `extension_ui_request`. It waits for an `extension_ui_response` with the same id on the input, with no time limit unless the extension set one. If the answer has `cancelled: true`, `confirm` returns false and the others return nothing. Pi ignores an answer whose id it is not waiting for (`handleInputLine` in `src/modes/rpc/rpc-mode.ts`).
 - `ctx.ui.notify` is written the same way and expects no answer. An error in an extension's handler is written as an `extension_error` record.
 - When Pi cannot start a session without a terminal, for example because an extension does not load, it writes a line starting with `Error:` to its error output and exits with code 1 (`src/main.ts`). A missing model does not stop it: the session starts with the placeholder model.
-- Opening a session id that does not exist yet writes a warning to the error output, so not every line there is a failure.
 - `RpcClient`, Pi's own client for this mode, cannot answer a dialog, starts `node` from `PATH`, and kills the process one second after asking it to stop (`src/modes/rpc/rpc-client.ts`).
 - Measured with the bundled CLI (`dist/bundle/cli.js`, which uses Node's compile cache): ready in 0.15 to 0.2 seconds, and about 130 MB while idle.

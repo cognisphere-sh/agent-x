@@ -3,10 +3,10 @@
 // One process, not three: the code that can fail, the router, workflows and Pi, already runs in child processes of the loops.
 
 import { writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { EventRouter } from "../events/event-router.js";
 import { PiRunner } from "../pi/pi-runner.js";
+import { heartbeatFile, heartbeatMs, storageOf } from "../storage.js";
 import type { RunnerSettings } from "./runner-settings.js";
 import { WorkflowRunner } from "../workflows/workflow-runner.js";
 
@@ -17,8 +17,7 @@ interface Loop {
 	lastRound(): number;
 }
 
-// How often the heartbeat is written, and how long a loop may go without looking at the queue before it counts as stuck.
-const heartbeatMs = 10_000;
+// How long a loop may go without looking at the queue before it counts as stuck.
 const stuckMs = 30_000;
 // A loop that crashes is started again after this wait, doubled after each crash up to a minute, and back to the start after a run of 10 minutes.
 const firstDelayMs = 1000;
@@ -77,6 +76,6 @@ export class AgentSupervisor {
 
 	// The heartbeat says the agent works, so it is written only while every loop does. The coordinator reads it.
 	private beat(): void {
-		if (Object.values(this.loops).every((loop) => this.ended.has(loop) || Date.now() - loop.lastRound() < stuckMs)) writeFileSync(join(this.agentRoot, "storage", "heartbeat"), String(Date.now()));
+		if (Object.values(this.loops).every((loop) => this.ended.has(loop) || Date.now() - loop.lastRound() < stuckMs)) writeFileSync(heartbeatFile(storageOf(this.agentRoot)), String(Date.now()));
 	}
 }

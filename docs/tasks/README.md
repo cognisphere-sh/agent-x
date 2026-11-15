@@ -3,7 +3,7 @@
 Work on agentx, one Markdown file per task. A task holds the plan, not the design: the design goes to the module's doc as it is built.
 
 - `backlog/`: tasks not done yet.
-- `done/`: finished tasks, kept as a record. The design they produced lives in the module docs; a done task does not change after it is written up.
+- `done/`: finished tasks, kept as a record of what stands. The design they produced lives in the module docs. A done task does not change after it is written up, except at a release, when done tasks are cut down, or merged, to what stands.
 
 A task that is dropped is deleted, together with its row below.
 
@@ -11,10 +11,8 @@ A task that is dropped is deleted, together with its row below.
 
 | Task | Type | Priority | Status |
 |---|---|---|---|
-| [Queue the messages typed into a terminal session](backlog/queue-terminal-input.md) | feature | none | idea |
 | [Connect agents to people through message channels](backlog/message-channels.md) | feature | none | idea |
-| [Run every agent of a project with `agentx serve`](backlog/coordinator.md) | feature | none | planned |
-| [Bring Composio trigger events to agents](backlog/coordinator-webhooks.md) | feature | none | idea |
+| [Bring webhook events to agents through installable services](backlog/coordinator-webhooks.md) | feature | none | idea |
 | [Make each agent's Composio triggers](backlog/composio-triggers.md) | feature | none | idea |
 
 ## Done
@@ -23,6 +21,7 @@ A task that is dropped is deleted, together with its row below.
 |---|---|---|
 | [Give each agent its own access to external services through Composio](done/1-composio-access.md) | feature | 2026-11-13 |
 | [Run an agent with `agentx run`, its event router and its workflows](done/2-agentx-run.md) | feature | 2026-11-14 |
+| [Coordinator, events, storage, router and workflows](done/3-coordinator-events-storage-router-workflows.md) | feature | 2026-11-15 |
 
 ## A task file
 
@@ -30,8 +29,8 @@ The file name is the task's `name` plus `.md`. In `done/` it starts with the tas
 
 ```yaml
 ---
-name: queue-terminal-input        # kebab-case, the same as the file name
-title: Queue the messages typed into a terminal session
+name: message-channels            # kebab-case, the same as the file name
+title: Connect agents to people through message channels
 description: One sentence: what changes and why.
 type: feature                     # feature | bug | chore | docs | research
 priority: none                    # none | low | medium | high

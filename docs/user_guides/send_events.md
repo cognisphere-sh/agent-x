@@ -1,6 +1,6 @@
 # Send events to an agent
 
-Besides typing to an agent, you can send it **events** and let it work through them. Run these commands from `agent-x/agents/<name>`. If `agentx` is not installed globally, put `pnpm exec` in front.
+Besides typing to an agent, you can give it **events** and let it work through them. Run these commands in `agent-x/agents/<name>`. If `agentx` is not installed globally, put `pnpm exec` in front.
 
 ## Run the agent
 
@@ -8,56 +8,57 @@ Besides typing to an agent, you can send it **events** and let it work through t
 agentx run
 ```
 
-`agentx run` keeps the agent running until you stop it. It:
+`agentx run` keeps the agent running until you stop it. It takes each event from the agent's inbox, oldest first, lets the **routers** pick a thread for one without a thread, starts a Pi session for each thread with events, and runs **workflows**, scripts that handle events without the model.
 
-- sends each event without a thread through the agent's **router**, which picks its thread;
-- starts a Pi session for each thread with events;
-- runs **workflows**, scripts that handle events without the model.
+The first Ctrl-C lets running work finish; a second stops it now. Events that arrive meanwhile wait for the next start.
 
-The first Ctrl-C lets running work finish; a second one stops it now. Events that arrive while it is stopped wait for the next start.
+`agentx serve`, in the project root, runs every agent at once ([run a project on a server](run_on_a_server.md)). It also delivers what the agents send, to each other or to themselves, and fires schedules. Under `agentx run` alone, what an agent sends waits in its outbox.
 
-Instead of `agentx run`, you can keep one thread open in a terminal with `agentx chat --thread-id <thread>`: its events arrive in that session as if you had typed them. If you stop a terminal session in the middle of an event, that event is `cancelled`.
-
-## Send an event
+## Give the agent an event
 
 ```sh
-agentx event send "Summarize storage/workspace/notes.md"
-agentx event send --thread-id support --meta from=ops --meta ticket=42 "The export is failing again"
+agentx event deliver "Summarize storage/workspace/notes.md"
+agentx event deliver --thread-id support --meta from=ops "The export is failing again"
+agentx event deliver --agent billing --file storage/workspace/invoice.pdf "Please file this one"
 ```
+
+The event goes straight into the agent's inbox. It needs no `agentx serve`.
 
 | Option | Effect |
 |---|---|
-| `--thread-id <id>` | The thread. Without it, the agent's router picks one. Letters, digits, `.`, `_` and `-`, starting and ending with a letter or digit. `workflow.<name>` runs that workflow. |
-| `--agent <name>` | Send to another agent of the project. |
-| `--key <key>` | Sending again with the same key adds nothing. |
-| `--do-not-steer` | If the thread is busy, wait for its next run instead of joining the current one. |
+| `--thread-id <id>` | The thread. Without it, the routers pick one. `workflow.<name>` runs that workflow. |
+| `--agent <name>` | Another agent of the project. |
+| `--key <key>` | Delivering again with the same key adds nothing. |
+| `--do-not-steer` | If the thread is busy, wait for its next run instead of joining this one. |
 | `--silent` | Do not start a run; go along with the thread's next event. |
-| `--meta <name>=<value>` | A fact for the agent, such as `--meta from=ops`. Repeat it for more. `source=cli` is added unless you give `source` yourself. |
+| `--meta <name>=<value>` | A fact for the agent. Repeat it for more. `source=cli` is added unless you give `source`. |
+| `--file <path>` | A file that goes with the event. Repeat it for more. |
 
-Any other option is an error. The command prints the event's id, where it went and its facts. Put `--` before text that starts with dashes.
+The command prints the event's id. Put `--` before text that starts with dashes.
 
-Keep the text short. Put large data in a file under `storage/attachments/` and name the file in the text: the agent reads it when it needs to.
+Keep the text short, and send large data with `--file`. The file lands in the event's folder, `storage/workspace/inbox/<id>/`, the text's last line names it, and the agent reads it when it needs to.
 
-A thread is one conversation in one Pi session. Threads run side by side, up to 4 at once unless the agent's settings say otherwise ([customize an agent](customize_an_agent.md#how-agentx-run-runs-the-agent)). A thread's events are handled in the order sent, except that a later event can join a run ahead of a `--do-not-steer` one. An event that arrives while its thread is working reaches the agent at its next step.
+A thread is one conversation, kept as a folder of Pi sessions. Threads run side by side, up to 4 at once by default ([customize an agent](customize_an_agent.md#how-agentx-run-runs-the-agent)). A thread's events go in the order sent. An event that arrives while its thread works reaches the agent at its next step.
 
 ## Routing
 
-An event without a thread goes to the agent's router, `storage/knowledge/event_router.mjs`. The agent writes and keeps it. If it is missing, `agentx run` writes a starter that sends every event to `main`.
+An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.mjs`, then yours, `.pi/event_router.mjs`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`.
 
 ```js
+// .pi/event_router.mjs
 /** @type {import("agent-x").Router} */
 export default async function route(event, ctx) {
 	// event: { id, content, metadata, createdAt }. ctx: { workflows: [{ name, description }] }.
 	if (event.metadata.source === "composio") return { thread: "inbox" };
-	return { thread: "main" };
+	// Nothing: the next router decides, or main.
 }
 ```
 
-It may return a thread, or `workflow.<name>` to run a workflow. If it throws, takes longer than 60 seconds, or returns something else, the event goes to `main` with `agentX-RouterError: <why>` among its facts, and what the router printed is kept in `storage/workspace/router-logs/<event id>.log`.
+A router returns a thread, `workflow.<name>`, or nothing. One that throws, takes longer than 60 seconds or returns something else counts as nothing. The event then gets `agentX-RouterError: <why>`, and what the router printed is in `storage/workspace/router-logs/`.
 
 ## Workflows
 
-A workflow handles an event with a script instead of the model. List it in `.pi/workflows.json` (yours, checked in) or `storage/knowledge/workflows.json` (the agent's own):
+A workflow handles an event with a script instead of the model. List it in `.pi/workflows.json` (yours) or `storage/knowledge/workflows.json` (the agent's):
 
 ```json
 {
@@ -78,11 +79,18 @@ export default async function run(event, ctx) {
 }
 ```
 
-Run it by hand with `agentx event send --thread-id workflow.file-invoice '{"invoice": "4411"}'`, or let the router send events to it.
+Run it by hand with `agentx event deliver --thread-id workflow.file-invoice '{"invoice": "4411"}'`, or let a router send events to it.
 
-- Returning means it worked; throwing means it failed. It may take up to `timeoutSeconds`, 600 unless set.
+- Returning means it worked; throwing means it failed. It may take up to `timeoutSeconds`, 600 by default.
 - What it prints goes to `storage/workspace/workflow-logs/<workflow>/<event id>.log`.
-- A failed run is not run again by itself. The thread named in `failureReportTo` (`<agent>.<thread>`, this agent's `main` unless set) gets an event that says what failed and where the log is.
+- A failed run is not run again. Its babysitter thread (`babysitterThread`, `main` by default) gets an event that says what failed and where the log is.
+- `ctx.send(text, { agent, threadId, key, metadata, files })` sends an event, as the agent's own sends go ([below](#when-the-agent-sends)), from the babysitter thread, with `source: workflow.<name>`.
+
+## When the agent sends
+
+The agent sends with `agentx event send`, from its bash, with the same options. Every event it sends, also to itself, waits in its outbox, `storage/workspace/outbox/`, until `agentx serve` delivers it. The receiver sees who sent it, `agentX-FromAgent` and `agentX-FromThread`, and can answer on that thread.
+
+An agent may send only to the agents its `canSendTo` lists ([customize an agent](customize_an_agent.md#who-the-agent-may-send-to)). An event that cannot be delivered comes back to the thread that sent it, saying why.
 
 ## What the agent sees
 
@@ -96,43 +104,18 @@ agentX-CurrentTime: Wednesday 2026-11-11 21:59:54 GMT+5:30
 agentX-IsRetry: false
 source: cli
 from: ops
-ticket: 42
 </agentx-metadata>
 The export is failing again
 ```
 
-- The `id` is the one `agentx event send` prints.
-- The `agentX-` lines come from agentx. The others are your facts.
-- Times use the machine's time zone, unless the agent's settings name one ([customize an agent](customize_an_agent.md#time-zone)).
-- An event whose text or facts contain `<agentx-metadata` is refused, so nobody can fake the block.
+The `agentX-` lines come from agentx; the others are your facts. Times use the machine's time zone, unless the agent's settings name one ([customize an agent](customize_an_agent.md#time-zone)).
 
-Nobody may be watching when an event runs. So the agent treats an on-screen question from a tool or extension as declined, and asks you in its reply instead.
+Nobody may be watching when an event runs, so the agent treats an on-screen question from a tool as declined, and asks in its reply instead.
 
-## See what happened
+## The answer
 
-```sh
-agentx event list              # the newest events, and where each went
-agentx event show <id>         # one event: its thread, status, error, session entry, and a workflow's run
-```
+The agent's answer is in the thread's session: open it with `agentx chat --thread-id <thread>`. A failed Pi run is tried again, up to three times.
 
-| Status | Meaning |
-|---|---|
-| `queued` | Waiting for its thread, or, with no thread yet, for the router. |
-| `in_flight` | Its thread's session, or its workflow, has taken it. |
-| `done` | The run that handled it finished. |
-| `failed` | Three attempts failed, or its workflow's one run failed. `error` says why. |
-| `cancelled` | The run was stopped in a terminal session: aborted, or the session was closed or switched during it. |
+Only one process runs a thread at a time: `agentx chat` stops with a message on a thread that is open elsewhere. A one-shot run (`agentx chat -p "..."`) answers its own prompt and leaves the events alone.
 
-`done`, `failed` and `cancelled` are final. To have an event handled again, send it again.
-
-The agent's answer is in the thread's session: `agentx chat --thread-id <thread>`. `agentx event show` gives the session entry that got the event.
-
-## One session per thread
-
-Only one process runs a thread at a time. If the thread is open in another terminal, `agentx chat` for it stops with a message. Use that terminal, or open another thread.
-
-A one-shot run (`agentx chat -p "..."`) answers its own prompt and leaves the queue alone.
-
-## Without a model or a login
-
-An event on a Pi thread cannot run until the agent has a model and a login ([quick start](quick_start.md)). Until then it is tried three times within a few seconds and marked `failed`, with the reason in `error`. Send it again after you log in.
+An event cannot run until the agent has a model and a login ([quick start](quick_start.md)). Until then it fails within seconds, and `agentx run` prints why. Deliver it again after you log in.

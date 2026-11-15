@@ -1,37 +1,54 @@
-// `agentx event send|list|show`: sends an event to an agent, and shows what became of an agent's events.
+// `agentx event send|deliver`: the agent sends an event, and a person delivers one to an agent.
 
-import { existsSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
-import { type Event, type Queue, withQueue, workflowName } from "../../agent-runtime/events/queue.js";
-import { agentDir, sendEvent } from "../../agent-runtime/events/send-event.js";
-import { runLog } from "../../agent-runtime/workflows/workflow-runner.js";
-import { loadWorkflows } from "../../agent-runtime/workflows/workflows.js";
+import type { NewEvent } from "../../agent-runtime/events/queue.js";
+import { sendEvent, sendingThread } from "../../agent-runtime/events/send-event.js";
+import { agentXOf } from "../../agent-runtime/project-config.js";
+import { deliverTo } from "../../coordinator-runtime/deliver-event.js";
 
 const usage = `usage:
-  agentx event send [--agent <name>] [--thread-id <id>] [--key <key>] [--do-not-steer] [--silent] [--meta <name>=<value> ...] [--] <content>
+  agentx event send [options] [--] <content>
+                           the agent sends an event, from its own processes, such as the model's bash: into its outbox, which agentx serve delivers
+  agentx event deliver [options] [--] <content>
+                           a person delivers an event straight into the agent's inbox
     --agent <name>         another agent of the project (default: this one)
     --thread-id <id>       the thread the event belongs to, or workflow.<name> (default: none, the agent's router picks it)
     --key <key>            sending again with the same key adds nothing
     --do-not-steer         wait for the thread's next run instead of joining the one in progress
     --silent               do not start a run for this event
     --meta <name>=<value>  a fact for the agent about the event, such as --meta from=ops; repeat it for more
-  agentx event list [--agent <name>] [--limit <n>]
-                           the newest events (default: 20), and where each went
-  agentx event show [--agent <name>] <id>
-                           one event: its content, its route, what became of it, and a workflow's run`;
+    --file <path>          a file that goes with the event; repeat it for more`;
 
 /** Runs `agentx event <action> ...` in the agent directory `agentRoot`. */
 export function event(agentRoot: string, args: string[]): void {
 	const [action, ...rest] = args;
 	if (action === "send") send(agentRoot, rest);
-	else if (action === "list") list(agentRoot, rest);
-	else if (action === "show") show(agentRoot, rest);
+	else if (action === "deliver") deliver(agentRoot, rest);
 	else throw new Error(usage);
 }
 
-// Strict: an unknown or misspelt option is an error. What follows `--` is content, also when it starts with dashes.
+// The agent's send, from its own processes, such as the model's bash, which have AGENTX_AGENT.
 function send(agentRoot: string, args: string[]): void {
+	const runs = process.env.AGENTX_AGENT;
+	if (runs === undefined) throw new Error(`agentx event send is the agent's own, run in its processes, such as the model's bash. To give an agent an event, use agentx event deliver.\n${usage}`);
+	// It sends only as the agent it runs in, not as one whose directory it went into.
+	if (runs !== basename(agentRoot)) throw new Error(`This runs inside agent "${runs}", so it sends only from that agent's directory. To send to another agent, use --agent.`);
+	const { event, to, files, said } = parsed(agentRoot, args);
+	const id = sendEvent(agentRoot, event, { to, files });
+	console.log(`Sent event ${id} ${said}. agentx serve delivers it; a refusal comes back on thread "${sendingThread()}".`);
+}
+
+// A person's delivery, straight into the agent's inbox, as the coordinator delivers. Not the agent's, which would pass its canSendTo.
+function deliver(agentRoot: string, args: string[]): void {
+	if (process.env.AGENTX_AGENT !== undefined) throw new Error(`agentx event deliver is for people, not the agent's processes, which send with agentx event send.\n${usage}`);
+	const { event, to = basename(agentRoot), files, said } = parsed(agentRoot, args);
+	const id = deliverTo(agentXOf(agentRoot), to, event, { files });
+	console.log(`Delivered event ${id} ${said}.`);
+}
+
+// The event the arguments give, and how to say where it goes. Strict: an unknown or misspelt option is an error. What follows `--` is content, also when it starts with dashes.
+function parsed(agentRoot: string, args: string[]): { event: NewEvent; to: string | undefined; files: string[]; said: string } {
 	const { values, positionals } = parseArgs({
 		args,
 		allowPositionals: true,
@@ -42,6 +59,7 @@ function send(agentRoot: string, args: string[]): void {
 			"do-not-steer": { type: "boolean", default: false },
 			silent: { type: "boolean", default: false },
 			meta: { type: "string", multiple: true, default: [] },
+			file: { type: "string", multiple: true, default: [] },
 		},
 	});
 	// Where the event comes from, unless the sender says.
@@ -53,69 +71,9 @@ function send(agentRoot: string, args: string[]): void {
 	}
 	if (positionals.length === 0) throw new Error(`Nothing to send.\n${usage}`);
 	const threadId = values["thread-id"];
-	const id = sendEvent(agentRoot, { threadId, key: values.key, content: positionals.join(" "), metadata, doNotSteer: values["do-not-steer"], isSilent: values.silent }, values.agent);
+	const event = { threadId, key: values.key, content: positionals.join(" "), metadata, doNotSteer: values["do-not-steer"], isSilent: values.silent };
 	const facts = Object.entries(metadata).map(([name, value]) => `${name}=${value}`);
 	const where = threadId === undefined ? "for the router" : `on thread "${threadId}"`;
-	console.log(`Queued event ${id} ${where}${values.agent === undefined ? "" : ` of agent "${values.agent}"`} with ${facts.join(", ")}.`);
+	const elsewhere = values.agent !== undefined && values.agent !== basename(agentRoot);
+	return { event, to: values.agent, files: values.file, said: `${where}${elsewhere ? ` of agent "${values.agent}"` : ""} with ${facts.join(", ")}` };
 }
-
-function list(agentRoot: string, args: string[]): void {
-	const { values } = parseArgs({ args, options: { agent: { type: "string" }, limit: { type: "string", default: "20" } } });
-	const limit = Number(values.limit);
-	if (!Number.isInteger(limit) || limit < 1) throw new Error(`--limit takes a whole number above 0.\n${usage}`);
-	withQueue(target(agentRoot, values.agent), (queue) => {
-		for (const found of queue.list(limit)) console.log([time(found.createdAt), found.id, found.status.padEnd(9), found.threadId ?? "(router)", found.metadata.source ?? ""].join("  "));
-	});
-}
-
-function show(agentRoot: string, args: string[]): void {
-	const { values, positionals } = parseArgs({ args, allowPositionals: true, options: { agent: { type: "string" } } });
-	const [id] = positionals;
-	if (id === undefined) throw new Error(`Which event? Give its id.\n${usage}`);
-	const root = target(agentRoot, values.agent);
-	withQueue(root, (queue) => {
-		const found = queue.get(id);
-		if (found === undefined) throw new Error(`Agent "${basename(root)}" has no event ${id}.`);
-		const lines = [
-			`Event ${found.id} of agent "${basename(root)}"`,
-			`Created: ${time(found.createdAt)}, last change: ${time(found.updatedAt)}`,
-			`Thread: ${found.threadId ?? "none yet: it waits for the router"}${found.metadata["agentX-RouterError"] === undefined ? "" : ", because the router failed"}`,
-			`Status: ${found.status}, attempts: ${found.attempts}`,
-			...(found.key === null ? [] : [`Key: ${found.key}`]),
-			...(found.entryId === null ? [] : [`Session entry: ${found.entryId}, in storage/sessions/${found.threadId}/`]),
-			...(found.error === null ? [] : ["Error:", indent(found.error)]),
-			"Metadata:",
-			...Object.entries(found.metadata).map(([name, value]) => `  ${name}: ${typeof value === "string" ? value : JSON.stringify(value)}`),
-			"Content:",
-			indent(found.content),
-			...(workflowName(found.threadId) === undefined ? [] : workflowRun(root, queue, found)),
-		];
-		console.log(lines.join("\n"));
-	});
-}
-
-// What a workflow's run of the event left: its log, the events it sent, and its failure report with what became of it.
-function workflowRun(agentRoot: string, queue: Queue, found: Event): string[] {
-	const name = workflowName(found.threadId) ?? "";
-	const log = runLog(name, found.id);
-	const sent = queue.withMetadata("agentX-WorkflowRun", found.id);
-	// The report is on the agent the workflow reports to, this one unless it names another.
-	const key = `failed:${found.id}`;
-	const agent = loadWorkflows(agentRoot).get(name)?.failureReportTo.agent ?? basename(agentRoot);
-	const reported = agent === basename(agentRoot) ? queue.byKey(key) : withQueue(agentDir(agentRoot, agent), (other) => other.byKey(key));
-	const report = reported && `${reported.id} on ${agent}.${reported.threadId}, ${reported.status}${reported.entryId === null ? "" : `, session entry ${reported.entryId}`}`;
-	return [
-		"Workflow run:",
-		`  Log: ${existsSync(join(agentRoot, log)) ? log : "none"}`,
-		`  Events it sent: ${sent.length === 0 ? "none" : sent.map((child) => `${child.id} to ${child.threadId ?? "the router"} (${child.status})`).join(", ")}`,
-		`  Failure report: ${report ?? "none"}`,
-	];
-}
-
-// This agent's directory, or that of the fellow agent `--agent` names.
-const target = (agentRoot: string, agent: string | undefined) => (agent === undefined ? agentRoot : agentDir(agentRoot, agent));
-
-// "2026-11-14 09:30:12", in the machine's time zone.
-const time = (at: number) => new Date(at - new Date(at).getTimezoneOffset() * 60_000).toISOString().slice(0, 19).replace("T", " ");
-
-const indent = (text: string) => text.replace(/^/gm, "  ");

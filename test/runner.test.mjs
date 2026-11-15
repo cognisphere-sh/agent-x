@@ -4,13 +4,14 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
+import { Coordinator } from "../dist/coordinator-runtime/coordinator.js";
 import { startFakeModel } from "./fake-model.mjs";
-import { agentx, alive, cli, createAgent, events, holder, onlySession, onQueueFile, open, runner, sessions, until } from "./project.mjs";
+import { addAgent, agentx, alive, asAgent, cli, createAgent, editConfig, editSettings, events, holder, inboxEvents, onlySession, onQueueFile, open, projectRoot, scratch, sessions, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -18,46 +19,34 @@ before(async () => {
 });
 after(() => model.close());
 
-/** A fresh project, its queue, and a way to start `agentx run`, which is stopped when the test ends. */
+/** A fresh project (see `scratch`) and its queue. */
 function setup(t) {
-	const project = createAgent(model.port);
-	const queue = new Queue(project.agent);
-	const servers = [];
-	t.after(async () => {
-		for (const server of servers) await server.stop();
-		queue.close();
-	});
-	const message = (id) => events(project.agent).find((found) => found.id === id);
-	return {
-		project,
-		queue,
-		message,
-		start: (maxThreads, stallSeconds) => servers[servers.push(runner(project, maxThreads, stallSeconds)) - 1],
-		// Resolves when the events are all in the given status.
-		reach: (status, ...ids) => until(() => ids.every((id) => message(id).status === status)),
-	};
+	const base = scratch(t, model.port);
+	const queue = new Queue(base.project.agent);
+	t.after(() => queue.close());
+	return { ...base, queue };
 }
 
 test("a queued event runs in the session of its thread and is linked to its session entry", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "hello", metadata: { from: "test" } });
 	start();
 	await reach("done", id);
 
 	const session = onlySession(project);
-	assert.equal(session.id, "main");
+	assert.equal(session.thread, "main");
 	assert.deepEqual(session.roles, ["system", "user", "assistant"]);
 	assert.equal(session.users[0].text, `<agentx-metadata id="${id}">\n${session.users[0].text.split("\n").slice(1, 4).join("\n")}\nagentX-IsRetry: false\nfrom: test\n</agentx-metadata>\nhello`);
 	assert.match(session.users[0].text, /\nagentX-ThreadId: main\nagentX-SentTime: \w+day [^\n]+\nagentX-CurrentTime: \w+day [^\n]+\n/);
-	assert.equal(message(id).entryId, session.users[0].entryId);
-	assert.equal(message(id).attempts, 1);
+	assert.equal(event(id).entryId, session.users[0].entryId);
+	assert.equal(event(id).attempts, 1);
 });
 
 test("an event that arrives during a run is steered into it; one marked do-not-steer waits for the next run", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const first = queue.enqueue({ threadId: "main", content: "[sleep 2] first" });
 	start();
-	await until(() => message(first).entryId);
+	await until(() => event(first).entryId);
 	const steered = queue.enqueue({ threadId: "main", content: "steered" });
 	const later = queue.enqueue({ threadId: "main", content: "later", doNotSteer: true });
 	await reach("done", first, steered, later);
@@ -66,17 +55,17 @@ test("an event that arrives during a run is steered into it; one marked do-not-s
 	// The steered message follows the tool result of the run in progress; the other one follows that run's last answer.
 	assert.deepEqual(session.roles, ["system", "user", "assistant", "toolResult", "user", "assistant", "user", "assistant"]);
 	assert.deepEqual(session.contents, ["[sleep 2] first", "steered", "later"]);
-	assert.deepEqual([first, steered, later].map((id) => message(id).entryId), session.users.map((user) => user.entryId));
+	assert.deepEqual([first, steered, later].map((id) => event(id).entryId), session.users.map((user) => user.entryId));
 });
 
 test("a failed run is retried with retry metadata, and after three attempts the event is failed", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[fail] this" });
 	const server = start();
 	await reach("failed", id);
 
-	assert.equal(message(id).attempts, 3);
-	assert.match(message(id).error, /fake model was told to fail/);
+	assert.equal(event(id).attempts, 3);
+	assert.match(event(id).error, /fake model was told to fail/);
 	const [session] = sessions(project);
 	assert.deepEqual(session.users.map((user) => /agentX-IsRetry: (\w+)(?:\nagentX-RetryAttempt: (\d))?/.exec(user.text).slice(1, 3)), [["false", undefined], ["true", "1"], ["true", "2"]]);
 
@@ -87,33 +76,33 @@ test("a failed run is retried with retry metadata, and after three attempts the 
 });
 
 test("threads run side by side, each in its own session, up to maxThreads", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const a = queue.enqueue({ threadId: "a", content: "[sleep 2] a1" });
 	const b = queue.enqueue({ threadId: "b", content: "[sleep 2] b1" });
 	const c = queue.enqueue({ threadId: "c", content: "c1" });
 	const server = start(2);
 	// Both a and b are inside their tool call at the same moment, and c, the newest, waits for a free worker.
-	await until(() => message(a).entryId && message(b).entryId);
-	assert.deepEqual([message(a).status, message(b).status, message(c).status], ["in_flight", "in_flight", "queued"]);
+	await until(() => event(a).entryId && event(b).entryId);
+	assert.deepEqual([event(a).status, event(b).status, event(c).status], ["in_flight", "in_flight", "queued"]);
 	await reach("done", a, b, c);
 
 	// The process survived three sessions closing, and a thread that is used again continues its one session.
 	const again = queue.enqueue({ threadId: "a", content: "a2" });
 	await reach("done", again);
 	assert.equal(server.child.exitCode, null);
-	const byId = Object.fromEntries(sessions(project).map((session) => [session.id, session.contents]));
+	const byId = Object.fromEntries(sessions(project).map((session) => [session.thread, session.contents]));
 	assert.deepEqual(byId, { a: ["[sleep 2] a1", "a2"], b: ["[sleep 2] b1"], c: ["c1"] });
 });
 
 test("with one worker, threads run one after another, the thread of the oldest event first", async (t) => {
-	const { queue, message, start, reach } = setup(t);
+	const { queue, event, start, reach } = setup(t);
 	const first = queue.enqueue({ threadId: "x", content: "[sleep 1] x1" });
 	const second = queue.enqueue({ threadId: "y", content: "y1" });
 	start(1);
-	await until(() => message(first).status === "in_flight");
-	assert.equal(message(second).status, "queued");
+	await until(() => event(first).status === "in_flight");
+	assert.equal(event(second).status, "queued");
 	await reach("done", first, second);
-	assert.ok(message(first).updatedAt <= message(second).updatedAt);
+	assert.ok(event(first).updatedAt <= event(second).updatedAt);
 });
 
 test("agentx chat and agentx run continue the same thread in one session file", async (t) => {
@@ -132,12 +121,12 @@ test("agentx chat and agentx run continue the same thread in one session file", 
 	const again = await agentx(project, ["chat", "-p", "from the cli again"]);
 	assert.equal(again.status, 0, again.stderr);
 	const session = onlySession(project);
-	assert.equal(session.id, "main");
+	assert.equal(session.thread, "main");
 	assert.deepEqual(session.contents, ["from the cli", "from the queue", "from the cli again"]);
 });
 
 test("a one-shot agentx chat answers its own prompt and leaves the thread's queued events on the queue", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "queued before" });
 	const calls = model.requests.length;
 	const cli = await agentx(project, ["chat", "-p", "[sleep 2] typed"]);
@@ -145,7 +134,7 @@ test("a one-shot agentx chat answers its own prompt and leaves the thread's queu
 	// Two model calls, both for the typed prompt alone: the tool call, then the answer, which is what gets printed.
 	assert.deepEqual(model.requests.slice(calls), [["[sleep 2] typed"], ["[sleep 2] typed"]]);
 	assert.equal(cli.stdout.trim(), `reply ${calls + 2}`);
-	assert.equal(message(id).status, "queued");
+	assert.equal(event(id).status, "queued");
 	assert.deepEqual(sessions(project)[0].users.map((user) => user.text), ["[sleep 2] typed"]);
 
 	start();
@@ -172,10 +161,10 @@ test("a session that agentx chat keeps open receives the thread's queued events 
 });
 
 test("agentx chat refuses a thread that agentx run is running, and the session stays as it was", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 3] slow" });
 	start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	const before = sessions(project)[0].users.length;
 
 	// The default thread and a named one are refused before Pi starts.
@@ -191,27 +180,31 @@ test("agentx chat refuses a thread that agentx run is running, and the session s
 	assert.equal(other.status, 0, other.stderr);
 	assert.equal((await agentx(project, ["chat", "--thread-id=other", "-p", "hello again"])).status, 0);
 	assert.equal((await agentx(project, ["chat", "--thread-id=main", "-p", "let me in"])).status, 1);
-	assert.equal(sessions(project).find((session) => session.id === "other").users.length, 2);
+	assert.equal(sessions(project).find((session) => session.thread === "other").users.length, 2);
+	// Pi's own -c, in another thread, continues that thread's latest session.
+	const resumed = await agentx(project, ["chat", "--thread-id", "other", "-c", "-p", "and once more"]);
+	assert.equal(resumed.status, 0, resumed.stderr);
+	assert.deepEqual(sessions(project).filter((session) => session.thread === "other").map((session) => session.users.length), [3]);
 
 	await reach("done", id);
-	const main = sessions(project).find((session) => session.id === "main");
+	const main = sessions(project).find((session) => session.thread === "main");
 	assert.equal(main.users.length, before);
 	assert.ok(!main.users.some((user) => user.text.includes("let me in")));
 });
 
 test("when a thread's Pi process dies, agentx run ends the attempt of its events at once and starts the thread again", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 2] killed" });
 	const server = start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	// Not to enter the run in progress, so the process has not taken it when it dies.
 	const waiting = queue.enqueue({ threadId: "main", content: "waiting", doNotSteer: true });
 	process.kill(holder(project.agent, "main"), "SIGKILL");
 
 	// Well before the dead process's lease has run out, which takes 110 to 120 s.
-	await until(() => message(id).attempts === 2, 10_000);
+	await until(() => event(id).attempts === 2, 10_000);
 	await reach("done", id, waiting);
-	assert.equal(message(waiting).attempts, 1, "a message the dead process had not taken loses no attempt");
+	assert.equal(event(waiting).attempts, 1, "a message the dead process had not taken loses no attempt");
 	assert.match(server.output(), /main: Pi was stopped by SIGKILL/);
 	assert.equal(server.child.exitCode, null);
 	const session = onlySession(project);
@@ -219,49 +212,54 @@ test("when a thread's Pi process dies, agentx run ends the attempt of its events
 });
 
 test("a Pi process that is told to stop ends the attempt of its events itself, and agentx run counts no second one", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 2] stopped" });
 	const server = start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	// What a process manager does to every process of a service it stops.
 	process.kill(holder(project.agent, "main"), "SIGTERM");
 	await until(() => /main: Pi stopped with exit code 143/.test(server.output()));
-	assert.equal(message(id).error, "The session was closed during the run.");
+	assert.equal(event(id).error, "The session was closed during the run.");
 
 	await reach("done", id);
-	assert.equal(message(id).attempts, 2);
+	assert.equal(event(id).attempts, 2);
 });
 
 test("an agentx run that is killed takes its sessions with it, and their events get another attempt from the next one", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 2] interrupted" });
 	const first = start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	const pi = holder(project.agent, "main");
 	await first.stop();
 
 	// The runner's end closes the input of its Pi processes. Each closes its session, which aborts the run, and the queue extension ends the attempt.
-	await until(() => message(id).status === "queued");
-	assert.deepEqual([message(id).attempts, message(id).error], [1, "The session was closed during the run."]);
+	// This has failed rarely, with the event still in flight; on a timeout, say what Pi and the lease were doing.
+	await until(() => event(id).status !== "in_flight").catch((error) => {
+		const leases = onQueueFile(project.agent, (db) => db.prepare("SELECT * FROM threads").all());
+		throw new Error(`${error.message}\n${JSON.stringify({ pi, piAlive: alive(pi), leases, event: event(id) })}\n${first.output()}`);
+	});
+	assert.equal(event(id).status, "queued");
+	assert.deepEqual([event(id).attempts, event(id).error], [1, "The session was closed during the run."]);
 	await until(() => !alive(pi));
 	assert.equal(queue.heldElsewhere("main"), false, "the session gave the thread up, so the next runner does not wait for a lease to run out");
 
 	start();
 	await reach("done", id);
-	assert.equal(message(id).attempts, 2);
+	assert.equal(event(id).attempts, 2);
 	const session = onlySession(project);
 	assert.match(session.users.at(-1).text, /agentX-IsRetry: true\nagentX-RetryAttempt: 1\n/);
 });
 
 test("an agent that cannot start fails its events after three attempts, with what Pi said", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	writeFileSync(join(project.agent, ".pi", "extensions", "broken.ts"), `throw new Error("broken on purpose");`);
 	const id = queue.enqueue({ threadId: "main", content: "never runs" });
 	const server = start();
 	await reach("failed", id);
 
-	assert.equal(message(id).attempts, 3);
-	assert.match(message(id).error, /^Error: Failed to load extension .*broken on purpose/);
+	assert.equal(event(id).attempts, 3);
+	assert.match(event(id).error, /^Error: Failed to load extension .*broken on purpose/);
 	// Each of the three starts ended with Pi's own words, which can reach the output after the event failed.
 	await until(() => server.output().match(/main: Error: Failed to load extension/g)?.length === 3);
 	assert.equal(server.child.exitCode, null);
@@ -303,7 +301,7 @@ test("a worker session that does not get its thread ends itself", async (t) => {
 });
 
 test("an event that arrives while a thread's session is closing waits for it and continues the same conversation", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	// An extension of the agent that is slow to shut down keeps the session closing after the queue extension gave the thread up.
 	writeFileSync(
 		join(project.agent, ".pi", "extensions", "slow-shutdown.ts"),
@@ -319,7 +317,7 @@ test("an event that arrives while a thread's session is closing waits for it and
 	const third = queue.enqueue({ threadId: "main", content: "third" });
 	await reach("done", third);
 
-	assert.deepEqual([first, second, third].map((id) => message(id).attempts), [1, 1, 1]);
+	assert.deepEqual([first, second, third].map((id) => event(id).attempts), [1, 1, 1]);
 	const session = onlySession(project);
 	assert.deepEqual(session.roles, ["system", "user", "assistant", "user", "assistant", "user", "assistant"]);
 	// Each model call saw the whole conversation so far: nothing was answered from an older copy of the session.
@@ -329,47 +327,47 @@ test("an event that arrives while a thread's session is closing waits for it and
 });
 
 test("aborting a run cancels the event it was working on and leaves a waiting one for the next run", async (t) => {
-	const { project, queue, message, reach } = setup(t);
+	const { project, queue, event, reach } = setup(t);
 	const child = open(project, ["chat", "--mode", "rpc"], t);
 	await until(() => queue.heldElsewhere("main"));
 
 	const working = queue.enqueue({ threadId: "main", content: "[sleep 8] long" });
-	await until(() => message(working).entryId);
+	await until(() => event(working).entryId);
 	const waiting = queue.enqueue({ threadId: "main", content: "arrived during the tool call" });
 	child.stdin.write(`${JSON.stringify({ type: "abort" })}\n`);
 	await reach("cancelled", working);
 	await reach("done", waiting);
 
-	assert.equal(message(waiting).attempts, 1);
+	assert.equal(event(waiting).attempts, 1);
 	// The model was asked about the waiting message: it was not swallowed by the aborted run.
 	assert.ok(model.requests.at(-1).at(-1).endsWith("arrived during the tool call"));
 	child.stdin.end();
 });
 
 test("without a usable model an event fails at once, with the reason", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	rmSync(join(project.agent, "..", "..", ".pi", "models.json"));
 	const id = queue.enqueue({ threadId: "main", content: "nobody to answer" });
 	const server = start();
 	await reach("failed", id);
-	assert.equal(message(id).attempts, 3);
-	assert.match(message(id).error, /^No model selected/);
+	assert.equal(event(id).attempts, 3);
+	assert.match(event(id).error, /^No model selected/);
 	assert.equal(server.child.exitCode, null);
 });
 
 test("a send that an extension of the agent gets refused during a run leaves the run's queued events alone", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	// Without deliverAs, Pi refuses a send during a run and reports it to the host, as it does for a queue message it does not take.
 	writeFileSync(join(project.agent, ".pi", "extensions", "noisy.ts"), `export default function (pi) { pi.on("tool_execution_start", () => pi.sendUserMessage("x")); }`);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 1] with a noisy extension" });
 	const server = start();
 	await reach("done", id);
-	assert.equal(message(id).attempts, 1);
+	assert.equal(event(id).attempts, 1);
 	assert.match(server.output(), /send_user_message/);
 });
 
 test("agentx run ends a worker that stops renewing its lease, and the thread's event gets another attempt", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	// An extension that blocks Pi's main thread for good, once: while the file is there.
 	writeFileSync(join(project.agent, "hang"), "");
 	writeFileSync(join(project.agent, ".pi", "extensions", "hang.ts"), `import { existsSync, rmSync } from "node:fs"; export default function (pi) { pi.on("turn_start", () => { if (!existsSync("hang")) return; rmSync("hang"); for (;;); }); }`);
@@ -379,85 +377,115 @@ test("agentx run ends a worker that stops renewing its lease, and the thread's e
 	// As two minutes later: the blocked process has not renewed its lease.
 	onQueueFile(project.agent);
 	await reach("done", id);
-	assert.equal(message(id).attempts, 2);
+	assert.equal(event(id).attempts, 2);
 	assert.match(server.output(), /main: Pi stopped renewing its lease, so the runner ends it/);
 	assert.match(server.output(), /main: Pi was stopped by SIGKILL/);
 });
 
 test("agentx run stops a worker that writes nothing for its stall time, and the event is tried again, three times at most", async (t) => {
-	const { queue, message, start, reach } = setup(t);
+	const { queue, event, start, reach } = setup(t);
 	// A tool that runs longer than the stall time without output.
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 30] stuck" });
 	const server = start(4, 2);
 	await reach("failed", id);
-	assert.equal(message(id).attempts, 3);
+	assert.equal(event(id).attempts, 3);
 	assert.match(server.output(), /main: Pi wrote nothing for 2 s, so the runner stops it/);
 });
 
 test("a forced stop ends the running threads at once, and their events wait for the next start", async (t) => {
-	const { queue, message, start } = setup(t);
+	const { queue, event, start } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 30] long" });
 	const server = start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	// The first signal lets the run finish; the second stops it.
 	server.child.kill("SIGINT");
 	await sleep(500);
 	const stoppedAt = Date.now();
 	assert.equal(await server.end(), 0);
 	assert.ok(Date.now() - stoppedAt < 10_000, "the run is not waited for");
-	assert.deepEqual([message(id).status, message(id).attempts], ["queued", 1]);
+	assert.deepEqual([event(id).status, event(id).attempts], ["queued", 1]);
 });
 
 test("a session that loses its thread to another process lets go of it, and agentx run takes the thread back when that process is gone", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 5] taken away" });
 	const server = start();
-	await until(() => message(id).entryId);
+	await until(() => event(id).entryId);
 	// What a paused Pi process finds when it wakes: another process holds the thread.
 	const takenAt = Date.now();
 	onQueueFile(project.agent, `UPDATE threads SET owner = 'another process', heartbeat_at = ${Date.now() + 3_600_000}`);
 	await until(() => /main: session closed/.test(server.output()));
 	assert.ok(Date.now() - takenAt < 3_000, "the run in progress is aborted, not run to its end, so it writes no more to the session");
-	assert.equal(message(id).status, "in_flight", "nothing is settled on a thread that is no longer held");
+	assert.equal(event(id).status, "in_flight", "nothing is settled on a thread that is no longer held");
 
 	// That process ends without finishing the message.
 	onQueueFile(project.agent, "DELETE FROM threads");
 	await reach("done", id);
-	assert.equal(message(id).attempts, 2);
+	assert.equal(event(id).attempts, 2);
 	assert.equal(server.child.exitCode, null);
-	assert.deepEqual(sessions(project).map((session) => session.id), ["main"]);
+	assert.deepEqual(sessions(project).map((session) => session.thread), ["main"]);
 });
 
-test("agentx event send takes the thread, its flags, a key and metadata as --meta name=value", async (t) => {
-	const { project, message } = setup(t);
-	const sent = await agentx(project, ["event", "send", "--thread-id", "support", "--meta", "from=ops", "--meta=ticket=42", "--do-not-steer", "--silent", "two", "words"]);
+test("agentx event deliver takes the thread, its flags, a key, metadata as --meta name=value, and files, into the agent's inbox; agentx event send is the agent's, into its outbox", async (t) => {
+	const { project } = setup(t);
+	writeFileSync(join(project.agent, "storage", "workspace", "report.txt"), "the report");
+	const sent = await agentx(project, ["event", "deliver", "--thread-id", "support", "--meta", "from=ops", "--meta=ticket=42", "--do-not-steer", "--silent", "--file", "storage/workspace/report.txt", "two", "words"]);
 	assert.equal(sent.status, 0, sent.stderr);
-	const [, id] = /^Queued event ([\w-]{12}) on thread "support" with source=cli, from=ops, ticket=42\.$/.exec(sent.stdout.trim()) ?? [];
-	const { threadId, content, metadata, doNotSteer, isSilent, status } = message(id);
-	assert.deepEqual({ threadId, content, metadata, doNotSteer, isSilent, status }, { threadId: "support", content: "two words", metadata: { source: "cli", from: "ops", ticket: "42" }, doNotSteer: true, isSilent: true, status: "queued" });
+	const [, id] = /^Delivered event ([\w-]{12}) on thread "support" with source=cli, from=ops, ticket=42\.$/.exec(sent.stdout.trim()) ?? [];
+	const [mail] = inboxEvents(project.agent);
+	assert.equal(mail.id, id);
+	const { threadId, content, metadata, doNotSteer, isSilent } = mail.event;
+	assert.deepEqual({ threadId, content, metadata, doNotSteer, isSilent }, { threadId: "support", content: "two words\n\nFiles: `report.txt`", metadata: { source: "cli", from: "ops", ticket: "42" }, doNotSteer: true, isSilent: true });
+	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "inbox", id, "report.txt"), "utf8"), "the report");
+
+	// A file that is missing, or a folder, is refused.
+	for (const file of ["storage/workspace/none.txt", "storage/workspace"]) assert.match((await agentx(project, ["event", "deliver", "--file", file, "x"])).stderr, new RegExp(`^${file.replaceAll(".", "\\.")} is not a file\\.`));
+	assert.equal(inboxEvents(project.agent).length, 1);
 
 	// After `--`, everything is content, however many words and whatever they look like. Without --thread-id the event waits for the router.
-	const routed = await agentx(project, ["event", "send", "--meta", "source=ops-script", "--", "--not-an-option", "and", "--more", "words"]);
-	assert.match(routed.stdout, /^Queued event [\w-]{12} for the router with source=ops-script\.$/m);
-	const second = events(project.agent)[1];
-	assert.deepEqual([second.threadId, second.content, second.metadata], [null, "--not-an-option and --more words", { source: "ops-script" }]);
+	const routed = await agentx(project, ["event", "deliver", "--meta", "source=ops-script", "--", "--not-an-option", "and", "--more", "words"]);
+	assert.match(routed.stdout, /^Delivered event [\w-]{12} for the router with source=ops-script\.$/m);
+	const second = inboxEvents(project.agent)[1].event;
+	assert.deepEqual([second.threadId, second.content, second.metadata], [undefined, "--not-an-option and --more words", { source: "ops-script" }]);
 
-	// The same key twice is one event.
-	const keyed = [await agentx(project, ["event", "send", "--key", "k1", "once"]), await agentx(project, ["event", "send", "--key", "k1", "once again"])];
-	assert.equal(new Set(keyed.map((result) => /Queued event ([\w-]{12})/.exec(result.stdout)[1])).size, 1);
+	// The same key twice is one event, with one id.
+	const keyed = [await agentx(project, ["event", "deliver", "--key", "k1", "once"]), await agentx(project, ["event", "deliver", "--key", "k1", "once again"])];
+	assert.equal(new Set(keyed.map((result) => /Delivered event ([\w-]{12})/.exec(result.stdout)[1])).size, 1);
 
 	// A misspelt flag is an error, and so is metadata without a name, without a value, or with a name the harness keeps for itself,
-	// an agent that does not exist, and a workflow the agent does not have.
-	const typo = await agentx(project, ["event", "send", "--do-not-ster", "hello"]);
+	// and a workflow the agent does not have.
+	const typo = await agentx(project, ["event", "deliver", "--do-not-ster", "hello"]);
 	assert.equal(typo.status, 1);
 	assert.match(typo.stderr, /Unknown option '--do-not-ster'/);
-	assert.match((await agentx(project, ["event", "send", "--meta", "from", "hello"])).stderr, /needs a name and a value/);
-	assert.equal((await agentx(project, ["event", "send", "--meta", "=ops", "hello"])).status, 1);
-	assert.equal((await agentx(project, ["event", "send", "--meta", "agentX-MessageId=9", "hello"])).status, 1);
-	assert.match((await agentx(project, ["event", "send", "--silent"])).stderr, /Nothing to send/);
-	assert.match((await agentx(project, ["event", "send", "--agent", "nobody", "hello"])).stderr, /no agent "nobody"/);
-	assert.match((await agentx(project, ["event", "send", "--thread-id", "workflow.missing", "hello"])).stderr, /has no workflow "missing"/);
-	assert.equal(events(project.agent).length, 3);
+	assert.match((await agentx(project, ["event", "deliver", "--meta", "from", "hello"])).stderr, /needs a name and a value/);
+	assert.equal((await agentx(project, ["event", "deliver", "--meta", "=ops", "hello"])).status, 1);
+	assert.equal((await agentx(project, ["event", "deliver", "--meta", "agentX-MessageId=9", "hello"])).status, 1);
+	assert.match((await agentx(project, ["event", "deliver", "--silent"])).stderr, /Nothing to send/);
+	assert.match((await agentx(project, ["event", "deliver", "--thread-id", "workflow.missing", "hello"])).stderr, /has no workflow "missing"/);
+	assert.equal(inboxEvents(project.agent).length, 3);
+
+	// A person delivers straight into the receiving agent's inbox, so one for an agent the project does not have is refused at once. A person does not send.
+	assert.match((await agentx(project, ["event", "deliver", "--agent", "nobody", "hello"])).stderr, /This project has no agent "nobody"/);
+	assert.match((await agentx(project, ["event", "send", "hello"])).stderr, /agentx event send is the agent's own, run in its processes/);
+	// Nor does the agent deliver, which would pass its canSendTo.
+	assert.match((await agentx(asAgent(project), ["event", "deliver", "hello"])).stderr, /agentx event deliver is for people/);
+	// The agent sends, from its own processes, as the model's bash runs it: into its outbox, from the thread that sends, Pi's session or main.
+	const other = await agentx(asAgent(project), ["event", "send", "--agent", "nobody", "hello"]);
+	assert.match(other.stdout, /^Sent event [\w-]{12} for the router of agent "nobody" with source=cli\. agentx serve delivers it; a refusal comes back on thread "main"\.$/m);
+	const [out] = inboxEvents(project.agent, "outbox");
+	// The agent does not name itself: the coordinator takes the sender from the outbox it found the event in.
+	assert.deepEqual([out.to, out.from], ["nobody", { thread: "main" }]);
+	assert.equal(inboxEvents(project.agent).length, 3);
+	// Inside an agent, it sends only as that agent: not from the directory of another one it went into.
+	const elsewhere = await agentx({ ...project, env: { ...project.env, AGENTX_AGENT: "other" } }, ["event", "send", "hello"]);
+	assert.match(elsewhere.stderr, /This runs inside agent "other", so it sends only from that agent's directory/);
+	assert.equal(inboxEvents(project.agent).length, 3);
+	// To itself too: into its outbox, with the thread that sends, for the coordinator to deliver.
+	const toItself = await agentx({ ...project, env: { ...asAgent(project).env, PI_SESSION_FILE: join(project.agent, "storage", "sessions", "support", "session.jsonl") } }, ["event", "send", "--thread-id", "main", "to myself"]);
+	assert.equal(toItself.status, 0, toItself.stderr);
+	const mine = inboxEvents(project.agent, "outbox").at(-1);
+	assert.deepEqual([mine.to, mine.from, mine.event.content], ["main", { thread: "support" }, "to myself"]);
+	assert.equal(inboxEvents(project.agent).length, 3);
 });
 
 test("the built CLI file runs as a command by itself, which is how an installed or linked agentx is started", () => {
@@ -467,10 +495,24 @@ test("the built CLI file runs as a command by itself, which is how an installed 
 	assert.match(result.stdout + result.stderr, /usage:/);
 });
 
+test("the npm package ships every file that the Pi package loads as source, and every file those import", () => {
+	const repo = join(dirname(cli), "..", "..");
+	const packed = JSON.parse(spawnSync("npm", ["pack", "--dry-run", "--json"], { cwd: repo, encoding: "utf8" }).stdout)[0].files.map((file) => file.path);
+	// Pi loads the package's TypeScript as it is, so a file it imports from outside the package must ship as source too. Those found are followed in turn.
+	const loaded = packed.filter((path) => path.startsWith("src/agent-runtime/pi/pi-package/") && path.endsWith(".ts"));
+	for (const file of loaded) {
+		for (const [, from] of readFileSync(join(repo, file), "utf8").matchAll(/ from "(\.[^"]+)"/g)) {
+			const imported = join(dirname(file), from).replace(/\.js$/, ".ts");
+			assert.ok(packed.includes(imported), `${file} imports ${imported}, which the npm package does not ship`);
+			if (!loaded.includes(imported)) loaded.push(imported);
+		}
+	}
+});
+
 test("chat, run and event refuse a directory that is not an agent", async (t) => {
 	const { project } = setup(t);
 	for (const elsewhere of [dirname(project.agent), join(project.agent, "storage"), join(project.agent, "..", "..", "..")]) {
-		for (const command of [["event", "send", "hello"], ["chat", "-p", "hello"], ["run"]]) {
+		for (const command of [["event", "deliver", "hello"], ["chat", "-p", "hello"], ["run"]]) {
 			const result = await agentx({ agent: elsewhere, env: project.env }, command);
 			assert.equal(result.status, 1, `${command[0]} in ${elsewhere}`);
 			assert.match(result.stderr, /is not an agent directory/);
@@ -513,7 +555,7 @@ test("every command but init-project runs the agentx the project installed, and 
 
 test("init-agent takes only names of letters, digits and dashes, and init-project says when git init fails", async () => {
 	const project = createAgent(model.port);
-	const root = join(project.agent, "..", "..", "..");
+	const root = projectRoot(project);
 	for (const name of ["../escape", "a/b", "under_score"]) {
 		const result = await agentx({ agent: root, env: project.env }, ["init-agent", name]);
 		assert.equal(result.status, 1);
@@ -521,23 +563,94 @@ test("init-agent takes only names of letters, digits and dashes, and init-projec
 	}
 	assert.equal(existsSync(join(root, "escape")), false);
 	assert.equal((await agentx({ agent: root, env: project.env }, ["init-agent", "second-agent-2"])).status, 0);
+	// Each agent is listed in the project's agentx.json, with a description to fill in.
+	assert.deepEqual(JSON.parse(readFileSync(join(root, "agent-x", "agentx.json"), "utf8")).agents, { main: { description: "" }, "second-agent-2": { description: "" } });
 	// No git on the PATH.
 	const noGit = await agentx({ agent: dirname(root), env: { ...project.env, PATH: "" } }, ["init-project", "without-git"]);
 	assert.equal(noGit.status, 1);
 	assert.match(noGit.stderr, /git init failed/);
 });
 
-test("a new agent has a knowledge folder of its own, and Pi loads what the agent writes there", async (t) => {
+test("remove-agent deletes an agent's folder, its state and its entry, and takes it off canSendTo; only with --yes, and not while it runs", async () => {
+	const project = createAgent(model.port);
+	const root = projectRoot(project);
+	const b = addAgent(project, "b");
+	editConfig(project, (config) => ({ agents: { ...config.agents, main: { description: "", canSendTo: ["b"] } } }));
+	const remove = (...args) => agentx({ agent: root, env: project.env }, ["remove-agent", "b", ...args]);
+	const config = () => JSON.parse(readFileSync(join(root, "agent-x", "agentx.json"), "utf8"));
+
+	const asked = await remove();
+	assert.equal(asked.status, 0);
+	assert.match(asked.stdout, /--yes deletes, with the agent's sessions and what it learned:\n.*agents\/b\n.*storage\/b\n  its entry in /);
+	assert.ok(existsSync(b));
+
+	// A heartbeat from the last seconds: it runs.
+	writeFileSync(join(root, "agent-x", "storage", "b", "heartbeat"), String(Date.now()));
+	assert.match((await remove("--yes")).stderr, /Agent "b" is running/);
+	writeFileSync(join(root, "agent-x", "storage", "b", "heartbeat"), String(Date.now() - 60_000));
+
+	assert.equal((await remove("--yes")).status, 0);
+	assert.deepEqual([existsSync(b), existsSync(join(root, "agent-x", "storage", "b"))], [false, false]);
+	assert.deepEqual(config().agents, { main: { description: "", canSendTo: [] } });
+	assert.match((await remove("--yes")).stderr, /This project has no agent "b"/);
+	// The other agent and its state are untouched.
+	assert.ok(existsSync(join(project.agent, "storage", "knowledge")));
+});
+
+test("an agent's state is in agent-x/storage/<agent>, which its storage/ links to; a missing link is made again, and a storage folder of its own is used as it is", async () => {
+	const project = createAgent(model.port);
+	const root = projectRoot(project);
+	const link = join(project.agent, "storage");
+	const central = join(root, "agent-x", "storage", "main");
+	assert.equal(readlinkSync(link), join("..", "..", "storage", "main"));
+	assert.deepEqual(readdirSync(join(central, "knowledge")).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
+	// Empty lists of workflows and schedules, the developer's and the agent's.
+	const lists = [join(central, "knowledge"), join(project.agent, ".pi")].flatMap((dir) => ["workflows.json", "schedules.json"].map((file) => JSON.parse(readFileSync(join(dir, file), "utf8"))));
+	assert.deepEqual(lists, [{}, {}, {}, {}]);
+	// And a folder next to each workflows.json for its scripts.
+	assert.deepEqual([join(central, "knowledge", "workflows"), join(project.agent, ".pi", "workflows")].map((dir) => existsSync(dir)), [true, true]);
+	// git sees the link as a file, so the pattern for it has no trailing slash.
+	const ignored = spawnSync("git", ["check-ignore", "agent-x/storage/main/heartbeat", "agent-x/agents/main/storage"], { cwd: root, encoding: "utf8" });
+	assert.deepEqual(ignored.stdout.trim().split("\n"), ["agent-x/storage/main/heartbeat", "agent-x/agents/main/storage"]);
+
+	// Only the link gone: it is made again, and the folder's files stay.
+	writeFileSync(join(central, "knowledge", "schedules.json"), '{"kept": {"cron": "0 9 * * *", "content": "kept"}}');
+	unlinkSync(link);
+	assert.equal((await agentx(project, ["event", "deliver", "--silent", "hello"])).status, 0);
+	assert.ok(lstatSync(link).isSymbolicLink());
+	assert.match(readFileSync(join(link, "knowledge", "schedules.json"), "utf8"), /kept/);
+
+	// Neither is checked in, so a fresh clone has neither: agentx chat makes both, and the session lands in the central folder.
+	unlinkSync(link);
+	rmSync(central, { recursive: true });
+	assert.equal((await agentx(project, ["chat", "-p", "hi"])).status, 0);
+	assert.ok(lstatSync(link).isSymbolicLink());
+	assert.equal(readdirSync(join(central, "sessions", "main")).length, 1);
+
+	// A storage/ that is a folder of its own, as a sandbox's mount will be, is used as it is. agentx serve does not run the agent: it reads the central folder.
+	unlinkSync(link);
+	mkdirSync(link);
+	assert.equal((await agentx(project, ["chat", "-p", "hi"])).status, 0);
+	assert.equal(readdirSync(join(link, "sessions", "main")).length, 1);
+	assert.equal(new Coordinator(join(root, "agent-x")).agents.length, 0);
+	// Nor does a person's delivery reach it: it fails at once. The agent's own send goes into the outbox of its own folder.
+	assert.match((await agentx(project, ["event", "deliver", "hello"])).stderr, /storage is not a link to \S+agent-x\/storage\/main, so the host cannot reach the agent's state/);
+	assert.equal((await agentx(asAgent(project), ["event", "send", "hello"])).status, 0);
+	assert.equal(readdirSync(join(link, "workspace", "outbox", ".pending")).length, 1);
+});
+
+test("a new agent has a knowledge folder of its own, and Pi loads the skills and prompt text the agent writes there, but no extension", async (t) => {
 	const { project } = setup(t);
 	const knowledge = join(project.agent, "storage", "knowledge");
-	assert.deepEqual(readdirSync(knowledge).sort(), ["extensions", "skills", "system_prompt"]);
-	// Its settings load that folder, name no time zone, and give it a Composio user id.
+	assert.deepEqual(readdirSync(knowledge).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
+	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, and give it a Composio user id.
 	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
-	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [["../storage/knowledge/extensions"], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project" } }]);
+	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [[], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project" } }]);
 
-	// What an agent can write for itself: a skill, an extension, and a note for its system prompt.
+	// What an agent can write for itself: a skill and a note for its system prompt. An extension it puts in its knowledge is not loaded.
 	mkdirSync(join(knowledge, "skills", "greet"));
 	writeFileSync(join(knowledge, "skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: How to greet people. Use it when greeting.\n---\n\nSay hello.\n");
+	mkdirSync(join(knowledge, "extensions"));
 	writeFileSync(join(knowledge, "extensions", "marker.ts"), `import { writeFileSync } from "node:fs";\nexport default function (pi) { pi.on("session_start", (_event, ctx) => writeFileSync(ctx.cwd + "/storage/marker", "")); }`);
 	writeFileSync(join(knowledge, "system_prompt", "learned.md"), "LEARNED: the build runs with pnpm.");
 	// And what its developer adds, which comes first.
@@ -545,7 +658,7 @@ test("a new agent has a knowledge folder of its own, and Pi loads what the agent
 
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
-	assert.ok(existsSync(join(project.agent, "storage", "marker")), "the extension was loaded");
+	assert.ok(!existsSync(join(project.agent, "storage", "marker")), "the extension was not loaded");
 	// The harness's prompt, the developer's files, the agent's own under a heading that names their folder, then Pi's list of skills.
 	const prompt = model.systemPrompts.at(-1);
 	const places = ["# Harness", "DEVELOPER: answer briefly.", "# From storage/knowledge/system_prompt", "LEARNED: the build runs with pnpm.", "How to greet people."].map((part) => prompt.indexOf(part));
@@ -559,12 +672,13 @@ test("each thread keeps its sessions in a folder of its own, and opening the thr
 	assert.equal((await agentx(project, ["chat", "-p", "on main"])).status, 0);
 	assert.equal((await agentx(project, ["chat", "--thread-id", "support", "-p", "on support"])).status, 0);
 	assert.deepEqual(readdirSync(sessionsDir).sort(), ["main", "support"]);
+	// One session file in the thread's folder, named by Pi.
 	const [file] = readdirSync(join(sessionsDir, "support"));
-	assert.match(file, /_support\.jsonl$/);
+	assert.match(file, /\.jsonl$/);
 
 	assert.equal((await agentx(project, ["chat", "--thread-id", "support", "-p", "again"])).status, 0);
 	assert.deepEqual(readdirSync(join(sessionsDir, "support")), [file]);
-	assert.deepEqual(sessions(project).find((session) => session.id === "support").contents, ["on support", "again"]);
+	assert.deepEqual(sessions(project).find((session) => session.thread === "support").contents, ["on support", "again"]);
 });
 
 test("an agent whose storage has no knowledge folder, as after a fresh clone, starts all the same", async (t) => {
@@ -577,9 +691,7 @@ test("an agent whose storage has no knowledge folder, as after a fresh clone, st
 
 test("events show the machine's time, or the time zone that the agent's settings name", async (t) => {
 	const { project, queue, start, reach } = setup(t);
-	const settingsPath = join(project.agent, ".pi", "settings.json");
-	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-	const withZone = (timezone) => writeFileSync(settingsPath, JSON.stringify({ ...settings, agentx: { ...settings.agentx, timezone } }));
+	const withZone = (timezone) => editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone } }));
 	const server = start();
 	// Each message gets a session of its own, which reads the settings when it starts.
 	const answered = async (content, sessions) => {
@@ -588,7 +700,6 @@ test("events show the machine's time, or the time zone that the agent's settings
 	};
 
 	// A new agent's settings say null: the machine's time zone, and nothing to report.
-	assert.equal(settings.agentx.timezone, null);
 	await answered("no zone named", 1);
 	assert.match(sessions(project)[0].users[0].text, /\nagentX-CurrentTime: \w+day [^\n]+ GMT[^\n]*\n/);
 	assert.doesNotMatch(server.output(), /time zone/);
@@ -604,7 +715,7 @@ test("events show the machine's time, or the time zone that the agent's settings
 });
 
 test("a model that an extension of the agent provides serves queued events like any other", async (t) => {
-	const { project, queue, message, start, reach } = setup(t);
+	const { project, queue, event, start, reach } = setup(t);
 	// No provider in Pi's own files: the agent's extension registers the one its settings name.
 	rmSync(join(project.agent, "..", "..", ".pi", "models.json"));
 	writeFileSync(
@@ -625,5 +736,5 @@ test("a model that an extension of the agent provides serves queued events like 
 	const id = queue.enqueue({ threadId: "main", content: "queued" });
 	start();
 	await reach("done", id);
-	assert.equal(message(id).attempts, 1);
+	assert.equal(event(id).attempts, 1);
 });

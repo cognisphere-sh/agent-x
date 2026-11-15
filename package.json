@@ -11,6 +11,7 @@
 	"files": [
 		"src/agent-runtime/pi/pi-package",
 		"src/agent-runtime/events/queue.ts",
+		"src/agent-runtime/project-config.ts",
 		"dist",
 		"templates"
 	],
@@ -20,7 +21,8 @@
 		"test": "pnpm run build && node --test \"test/*.test.mjs\""
 	},
 	"dependencies": {
-		"@earendil-works/pi-coding-agent": "1.5.2"
+		"@earendil-works/pi-coding-agent": "1.5.2",
+		"croner": "11.0.0"
 	},
 	"devDependencies": {
 		"@types/node": "26.6.6",
