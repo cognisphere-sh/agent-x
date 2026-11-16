@@ -19,6 +19,7 @@ Start with the [quick start](docs/user_guides/quick_start.md). All docs: [docs/R
 CLAUDE.md                 Goals, mental model, and how docs are kept current.
 docs/                     High-level design, one folder per module as in src/, user guides, tasks.
 src/
+  index.ts                The package's types, for the routers, workflows and services a project writes.
   cli/                    The agentx command: entry point, the hand-over to the pinned copy, one file per command.
   agent-runtime/          Everything that runs one agent.
     supervisor/           agentx run: three loops, their limits, stopping, and the agent's process the coordinator starts.
@@ -26,7 +27,7 @@ src/
     workflows/            Events handled by a script.
     functions/            Calls a router or workflow in a child process; their types.
     pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent.
-  coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services.
+  coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services, agentx's and the project's own.
     services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots).
 test/                     The queue, and end to end agentx run, agentx serve and Composio, against a fake model and a fake Composio.
 templates/                project/ for init-project, agent/ for init-agent.

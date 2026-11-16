@@ -1,5 +1,6 @@
 {
 	"name": "agent-x-project",
 	"private": true,
+	"type": "module",
 	"dependencies": {}
 }

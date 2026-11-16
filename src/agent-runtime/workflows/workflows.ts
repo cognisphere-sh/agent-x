@@ -62,7 +62,7 @@ function check(file: string, name: string, entry: unknown): WorkflowDefinition |
 	if (!nameRule.test(name)) return "a name has only letters, digits and dashes.";
 	const { description, script, timeoutSeconds = 600, babysitterThread = "main" } = (entry ?? {}) as Record<string, unknown>;
 	if (typeof description !== "string" || description.trim() === "") return "it needs a description.";
-	if (typeof script !== "string") return "it needs a script, a path from the folder of its workflows.json.";
+	if (typeof script !== "string" || !script.endsWith(".ts")) return "it needs a script, a .ts file, by its path from the folder of its workflows.json.";
 	const path = resolve(dirname(file), script);
 	if (!existsSync(path)) return `its script ${path} does not exist.`;
 	if (typeof timeoutSeconds !== "number" || !(timeoutSeconds > 0)) return "timeoutSeconds must be a number of seconds above 0.";

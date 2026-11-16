@@ -7,7 +7,7 @@
 		"agentx": "dist/cli/agentx.js",
 		"agent-x": "dist/cli/agentx.js"
 	},
-	"types": "dist/agent-runtime/functions/contracts.d.ts",
+	"types": "dist/index.d.ts",
 	"files": [
 		"src/agent-runtime/pi/pi-package",
 		"src/agent-runtime/events/queue.ts",
@@ -29,6 +29,6 @@
 		"typescript": "7.0.2"
 	},
 	"engines": {
-		"node": ">=22.19.0"
+		"node": ">=24.12.0"
 	}
 }

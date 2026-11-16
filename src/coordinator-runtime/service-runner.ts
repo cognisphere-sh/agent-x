@@ -1,7 +1,7 @@
 // A service as the coordinator runs it: it starts the service with its context, runs its polling, and stops it. A service that fails to start is
 // off, and its polling ends at once. A failure in its polling is logged, never thrown, so no service can end the coordinator.
 
-import type { Service, ServiceContext } from "./service.js";
+import type { ServiceContext, ServiceDefinition } from "./service.js";
 
 /** Runs one service. */
 export class ServiceRunner {
@@ -13,13 +13,13 @@ export class ServiceRunner {
 
 	constructor(
 		readonly name: string,
-		readonly service: Service,
+		readonly service: ServiceDefinition,
 	) {}
 
 	/** Starts the service with `context`, to which the runner adds `every`. */
 	async start(context: Omit<ServiceContext, "every">): Promise<void> {
 		try {
-			await this.service.onStart({ ...context, every: (ms, work) => this.every(ms, work) });
+			await this.service.onStart?.({ ...context, every: (ms, work) => this.every(ms, work) });
 			this.on = true;
 		} catch (error) {
 			console.error(`Service "${this.name}" is off: ${(error as Error).message}`);
@@ -32,7 +32,7 @@ export class ServiceRunner {
 		await this.endPolling();
 		if (!this.on) return;
 		try {
-			await this.service.onStop();
+			await this.service.onStop?.();
 		} catch (error) {
 			console.error(`Service "${this.name}" failed to stop: ${(error as Error).message}`);
 		}

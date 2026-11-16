@@ -58,7 +58,7 @@ A server named `composio` would replace the agent's Composio tools; give yours a
 
 ## External services (Composio)
 
-Every agent can use [Composio](https://docs.composio.dev)'s tools to work in Gmail, Google Calendar, Drive, Sheets and Docs, Supabase, HubSpot and Telegram, through accounts of its own. Create a Composio project and a scoped API key with only **Session management** (read, write) and **Session tool execution** (write), and set it where agents run. Without it, the agent has no Composio tools and says so when a task needs them.
+Every agent can use [Composio](https://docs.composio.dev)'s tools to work in external services, such as Gmail, Google Calendar and Drive, through accounts of its own. Create a Composio project and a scoped API key with only **Session management** (read, write) and **Session tool execution** (write), and set it where agents run. Without it, the agent has no Composio tools and says so when a task needs them.
 
 ```sh
 # agent-x/.env in the project, which git ignores
@@ -69,7 +69,7 @@ Every agent of the project gets the variables of `agent-x/.env`. On a server, se
 
 A new agent's `.pi/settings.json` has its Composio user id, `<agent>@<project>`. Keep it as it is: the agent's connected accounts are kept under it. To connect an account, ask the agent in `agentx chat`, for example "connect my Gmail"; it gives you a link to sign in.
 
-By default an agent may use those eight services and ask for connections. Change that under `session`, in Composio's [session options](https://docs.composio.dev/docs/configuring-sessions); what you give replaces agentx's default key by key, and `toolkits` as a whole:
+A new agent's settings enable eight services: Gmail, Google Calendar, Drive, Sheets and Docs, Supabase, HubSpot and Telegram. Without `toolkits`, an agent may use every service Composio has. By default an agent may ask for connections. Change all of this under `session`, in Composio's [session options](https://docs.composio.dev/docs/configuring-sessions); what you give replaces agentx's default key by key:
 
 ```json
 "agentx": {
@@ -103,13 +103,13 @@ A workflow handles events with a script instead of the model, such as filing eve
 {
 	"file-invoice": {
 		"description": "Files an invoice email. For events from the billing mailbox.",
-		"script": "workflows/file-invoice.mjs",
+		"script": "workflows/file-invoice.ts",
 		"timeoutSeconds": 600
 	}
 }
 ```
 
-`script` is a path from `.pi/` to a module whose default export takes the event ([send events](send_events.md#workflows) shows one). The routers decide which events go to a workflow: route them in `.pi/event_router.mjs` ([send events](send_events.md#routing)), or tell the agent in its system prompt when to use yours. A failed run is not retried; the workflow's `babysitterThread` (`main` by default) hears about it.
+`script` is a path from `.pi/` to a `.ts` module whose default export takes the event ([send events](send_events.md#workflows) shows one). The routers decide which events go to a workflow: route them in `.pi/event_router.ts` ([send events](send_events.md#routing)), or tell the agent in its system prompt when to use yours. A failed run is not retried; the workflow's `babysitterThread` (`main` by default) hears about it.
 
 ## How `agentx run` runs the agent
 
@@ -143,7 +143,7 @@ A schedule can run a [workflow](send_events.md#workflows) instead of the model: 
 
 ## Removing an agent
 
-`agentx remove-agent <name>`, in the project root or `agent-x/`, lists what it would delete: the agent's folder, its state in `agent-x/storage/<name>/` (its sessions and what it learned), and its entry in `agent-x/agentx.json`. Run it again with `--yes` to delete them; the other agents' `canSendTo` lose its name. Stop `agentx serve` first: it refuses while the agent runs.
+`agentx remove-agent <name>`, in the project root, `agent-x/` or `agent-x/agents/`, lists what it deletes: the agent's folder, its state in `agent-x/storage/<name>/` (its sessions and what it learned), and its entry in `agent-x/agentx.json`. It deletes them when you answer `y`; anything else, or Ctrl-C, keeps them. `--yes` deletes without asking. The other agents' `canSendTo` lose its name. Stop `agentx serve` first: it refuses while the agent runs.
 
 ## Who the agent may send to
 

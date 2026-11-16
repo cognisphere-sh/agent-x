@@ -42,16 +42,19 @@ A thread is one conversation, kept as a folder of Pi sessions. Threads run side 
 
 ## Routing
 
-An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.mjs`, then yours, `.pi/event_router.mjs`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`.
+An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.ts`, then yours, `.pi/event_router.ts`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`.
 
-```js
-// .pi/event_router.mjs
-/** @type {import("agent-x").Router} */
-export default async function route(event, ctx) {
+```ts
+// .pi/event_router.ts
+import type { Router } from "agent-x";
+
+const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }. ctx: { workflows: [{ name, description }] }.
 	if (event.metadata.source === "composio") return { thread: "inbox" };
 	// Nothing: the next router decides, or main.
-}
+};
+
+export default route;
 ```
 
 A router returns a thread, `workflow.<name>`, or nothing. One that throws, takes longer than 60 seconds or returns something else counts as nothing. The event then gets `agentX-RouterError: <why>`, and what the router printed is in `storage/workspace/router-logs/`.
@@ -64,20 +67,25 @@ A workflow handles an event with a script instead of the model. List it in `.pi/
 {
 	"file-invoice": {
 		"description": "Files an invoice email. For events from the billing mailbox.",
-		"script": "workflows/file-invoice.mjs"
+		"script": "workflows/file-invoice.ts"
 	}
 }
 ```
 
-```js
-// .pi/workflows/file-invoice.mjs
-/** @type {import("agent-x").Workflow} */
-export default async function run(event, ctx) {
+```ts
+// .pi/workflows/file-invoice.ts
+import type { Workflow } from "agent-x";
+
+const run: Workflow = async (event, ctx) => {
 	const { invoice } = JSON.parse(event.content);
 	// ... file it ...
 	await ctx.send(`Filed invoice ${invoice}.`, { threadId: "main" });
-}
+};
+
+export default run;
 ```
+
+Routers and workflows are TypeScript that Node runs as it is, by stripping the types ([D74](../architecture/agent-runtime/functions/README.md#d74)).
 
 Run it by hand with `agentx event deliver --thread-id workflow.file-invoice '{"invoice": "4411"}'`, or let a router or a [schedule](customize_an_agent.md#schedules) send events to it. Its parameters are the event's content and metadata: `--meta month=last` arrives as `event.metadata.month`.
 

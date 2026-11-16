@@ -1,6 +1,6 @@
 # Quick start
 
-You need Node 22.19 or later, pnpm and git.
+You need Node 24.12 or later, pnpm and git.
 
 ```sh
 pnpm add -g agent-x                     # once: the agentx command
@@ -29,6 +29,6 @@ What you get:
 
 `web/` and `agent-x/` are separate packages, so you can deploy them apart. `pnpm install` in the root installs both; inside one, only that one. npm works too, but use one package manager per project.
 
-`agentx` works in the project root, in `agent-x/` and in an agent, and always runs the version the project pins. Before `pnpm install`, it stops and asks you to run it. Without a global `agentx`, use `pnpm exec agentx <command>` in `agent-x/` or an agent, and `pnpm agentx <command>` in the root.
+`agentx` works in the project root, in `agent-x/`, in `agent-x/agents/` and in an agent, and always runs the version the project pins. Before `pnpm install`, it stops and asks you to run it. Without a global `agentx`, use `pnpm exec agentx <command>` in `agent-x/`, `agent-x/agents/` or an agent, and `pnpm agentx <command>` in the root.
 
 Next: [chat with an agent](chat_with_an_agent.md), [run it and send it events](send_events.md), [customize an agent](customize_an_agent.md).

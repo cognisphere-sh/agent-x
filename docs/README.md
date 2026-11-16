@@ -34,7 +34,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D74**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D77**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -99,6 +99,9 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D71](architecture/coordinator-runtime/services/composio/README.md#d71) | One Composio webhook for the project, which finds the agent by its Composio user id | coordinator-runtime/services/composio |
 | [D72](architecture/coordinator-runtime/services/telegram/README.md#d72) | Telegram messages come in through a service; the agent answers with Composio's Telegram tools | coordinator-runtime/services/telegram |
 | [D73](architecture/agent-runtime/pi/pi-package/README.md#d73) | Each prompt file is a section of the system prompt of its own | agent-runtime/pi/pi-package |
+| [D74](architecture/agent-runtime/functions/README.md#d74) | Routers, workflows and the project's services are TypeScript, which Node runs by stripping the types | agent-runtime/functions |
+| [D75](architecture/coordinator-runtime/README.md#d75) | A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process | coordinator-runtime |
+| [D76](architecture/agent-runtime/pi/pi-package/composio/README.md#d76) | The agent's settings name its toolkits; agentx's code names none | agent-runtime/pi/pi-package/composio |
 
 ## User guides
 
@@ -109,6 +112,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [send_events.md](user_guides/send_events.md) | Run an agent, give it events and files, route them, write workflows |
 | [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram |
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
+| [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |
 | [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
 
 ## Maintaining these docs

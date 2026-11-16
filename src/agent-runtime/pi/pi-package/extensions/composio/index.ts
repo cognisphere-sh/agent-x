@@ -12,20 +12,19 @@ const section = "composio";
 // A session start waits for Composio; a Composio that does not answer must not hold the session.
 const timeoutMs = 10_000;
 
-// agentx's defaults for a session's policy: a set of common services; the agent may ask a person to connect accounts for them but may not delete one,
-// and gets no remote sandbox, because it has its own shell and workspace.
+// agentx's defaults for a session's policy: the agent may ask a person to connect accounts but may not delete one, and gets no remote sandbox,
+// because it has its own shell and workspace. No `toolkits`: Composio then allows every toolkit, and a new agent's template names a few.
 const defaults = {
-	toolkits: { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] },
 	manage_connections: { enable: true, enable_connection_removal: false },
 	workbench: { enable: false },
 };
 
-/** The session policy: agentx's defaults, with what the agent's settings give in their place, key by key also inside an object, so `{ "manage_connections": { "enable": false } }` keeps the rest of that default. `toolkits` is replaced whole: its `enable` and `disable` lists exclude each other. */
+/** The session policy: agentx's defaults, with what the agent's settings give in their place, key by key also inside an object, so `{ "manage_connections": { "enable": false } }` keeps the rest of that default. */
 function policy(session: Record<string, unknown> = {}): Record<string, unknown> {
 	const merged: Record<string, unknown> = { ...defaults, ...session };
 	for (const [name, value] of Object.entries(defaults)) {
 		const given = session[name];
-		if (name !== "toolkits" && typeof given === "object" && given !== null && !Array.isArray(given)) merged[name] = { ...value, ...given };
+		if (typeof given === "object" && given !== null && !Array.isArray(given)) merged[name] = { ...value, ...given };
 	}
 	return merged;
 }

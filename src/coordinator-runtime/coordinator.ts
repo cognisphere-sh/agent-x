@@ -1,5 +1,6 @@
 // Coordinator: the one always-running process of a project, which `agentx serve` starts. It runs every agent with an AgentManager, and the services:
-// the core ones, the relay that delivers between agents and the scheduler, and the optional ones agentx.json turns on (services/). It owns the API server:
+// the core ones, the relay that delivers between agents and the scheduler, the optional ones agentx.json turns on (services/), and the project's own
+// in agent-x/services/, which agentx.json turns on too (project-services.ts). It owns the API server:
 // its own routes, which control the agents, and each service's routes under /services/<name>/. With a person's `agentx event deliver`, it is the only
 // way into an agent from outside it.
 
@@ -11,13 +12,16 @@ import { centralStorage, ensureStorage, storageProblem } from "../agent-runtime/
 import { AgentManager } from "./agent-manager.js";
 import { deliverTo } from "./deliver-event.js";
 import { type ApiResponse, ApiServer, type Route } from "./api-server.js";
+import { nameRule } from "../agent-runtime/events/queue.js";
+import { loadProjectService, projectServices } from "./project-services.js";
 import { ServiceRunner } from "./service-runner.js";
 import { coreServices, optionalServices, type ServiceClass } from "./services/services.js";
 
 /** Runs the agents and the services of the project's `agent-x/` directory, and serves on `host`:`port`. */
 export class Coordinator {
 	readonly agents: AgentManager[];
-	private readonly services: ServiceRunner[];
+	// The services that start, chosen at start.
+	private services: ServiceRunner[] = [];
 	private readonly serviceConfig: Record<string, unknown>;
 	private readonly publicUrl: string | undefined;
 	private readonly api = new ApiServer();
@@ -28,7 +32,7 @@ export class Coordinator {
 	/** `optional` is the optional services there are; a test gives its own. */
 	constructor(
 		private readonly agentX: string,
-		optional: Record<string, ServiceClass> = optionalServices,
+		private readonly optional: Record<string, ServiceClass> = optionalServices,
 	) {
 		const config = projectConfig(agentX);
 		// The agents agentx.json lists, found once, so adding one means starting agentx serve again. A folder it does not list is not run.
@@ -40,27 +44,23 @@ export class Coordinator {
 		const roots = listed.flatMap((name) => agentIn(agentX, name) ?? []).filter((root) => usesCentralStorage(root));
 		this.agents = roots.map((root) => new AgentManager(root, centralStorage(root)));
 
-		// The core services, then the optional ones agentx.json lists, each with its config there.
 		const { services = {} } = config;
 		this.serviceConfig = typeof services === "object" && services !== null && !Array.isArray(services) ? services : {};
 		if (this.serviceConfig !== services) console.error(`${configFile(agentX)}: "services" must be an object; no optional service is on.`);
-		for (const name of Object.keys(this.serviceConfig)) {
-			if (!Object.hasOwn(coreServices, name) && !Object.hasOwn(optional, name)) console.error(`${configFile(agentX)} names service "${name}", which agentx does not have; it is skipped.`);
-		}
-		const chosen = [...Object.entries(coreServices), ...Object.entries(optional).filter(([name]) => Object.hasOwn(this.serviceConfig, name))];
-		this.services = chosen.map(([name, Class]) => new ServiceRunner(name, new Class()));
 		this.publicUrl = typeof config.publicUrl === "string" ? config.publicUrl : undefined;
 		if (config.publicUrl !== undefined && this.publicUrl === undefined) console.error(`${configFile(agentX)}: "publicUrl" must be a URL, as text; it is left out.`);
 	}
 
 	/** Starts the services, then the agents and the API server; resolves to the address it listens on. */
 	async start(host: string, port: number): Promise<string> {
+		this.services = await this.chooseServices();
 		const available = withEnvFile(join(this.agentX, ".env.services"));
 		const agents = this.agents.map(({ agent, root }) => ({ name: agent, root, storage: centralStorage(root) }));
 		// One at a time, in order: the relay first, so that it stops last.
 		for (const runner of this.services) {
 			const secrets: Record<string, string> = {};
-			for (const [key, value] of Object.entries(available)) if (value !== undefined && runner.service.secrets.some((name) => isSecret(name, key))) secrets[key] = value;
+			const wanted = runner.service.secrets ?? [];
+			for (const [key, value] of Object.entries(available)) if (value !== undefined && wanted.some((name) => isSecret(name, key))) secrets[key] = value;
 			const config = this.serviceConfig[runner.name] ?? {};
 			await runner.start({
 				config,
@@ -74,11 +74,36 @@ export class Coordinator {
 		for (const agent of this.agents) agent.start();
 		const serviceRoutes = this.services
 			.filter((running) => running.on)
-			.flatMap(({ name, service }) => service.routes.map((route) => ({ ...route, path: `services/${name}/${route.path}` })));
+			.flatMap(({ name, service }) => (service.routes ?? []).map((route) => ({ ...route, path: `services/${name}/${route.path}` })));
 		this.routes = [...this.ownRoutes(), ...serviceRoutes];
 		const token = available.AGENTX_API_TOKEN || undefined;
 		if (token === undefined) console.error("AGENTX_API_TOKEN is not set, in the environment or agent-x/.env.services: private routes answer 503.");
 		return this.api.listen(host, port, this.routes, token);
+	}
+
+	// The core services, then the optional ones agentx.json lists, then the project's own it lists, each with its config there. A project's service
+	// that cannot be loaded is off, alone.
+	private async chooseServices(): Promise<ServiceRunner[]> {
+		const builtIn = (name: string) => Object.hasOwn(coreServices, name) || Object.hasOwn(this.optional, name);
+		const listed = (name: string) => Object.hasOwn(this.serviceConfig, name);
+		const runners = [...Object.entries(coreServices), ...Object.entries(this.optional).filter(([name]) => listed(name))].map(([name, Class]) => new ServiceRunner(name, new Class()));
+		const own = projectServices(this.agentX);
+		for (const name of own) {
+			if (builtIn(name)) console.error(`agent-x/services/${name} has the name of one of agentx's services; it is not run.`);
+			else if (!nameRule.test(name)) console.error(`agent-x/services/${name}: a service's name has only letters, digits and dashes; it is not run.`);
+			else if (!listed(name)) console.error(`agent-x/services/${name} is not listed under "services" in ${configFile(this.agentX)}; it is not run.`);
+			else {
+				try {
+					runners.push(new ServiceRunner(name, await loadProjectService(this.agentX, name)));
+				} catch (error) {
+					console.error(`Service "${name}" is off: ${(error as Error).message}`);
+				}
+			}
+		}
+		for (const name of Object.keys(this.serviceConfig)) {
+			if (!builtIn(name) && !own.includes(name)) console.error(`${configFile(this.agentX)} names service "${name}", which neither agentx nor agent-x/services/ has; it is skipped.`);
+		}
+		return runners;
 	}
 
 	/** The names of the services that started. */

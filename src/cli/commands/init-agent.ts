@@ -8,7 +8,7 @@ import { ensureStorage } from "../../agent-runtime/storage.js";
 import { copyTemplate } from "../copy-template.js";
 import { projectAgentX } from "../agent-root.js";
 
-/** Creates `agent-x/agents/<name>` from templates/agent and lists it in agentx.json. `cwd` is the project root or its agent-x/. */
+/** Creates `agent-x/agents/<name>` from templates/agent and lists it in agentx.json. `cwd` is the project root, its agent-x/ or agent-x/agents/. */
 export function initAgent(name: string, cwd: string): void {
 	// The name is a folder name, so it cannot point outside agents/.
 	if (!nameRule.test(name)) throw new Error(`"${name}" is not an agent name. Use letters, digits and dashes.`);
@@ -20,7 +20,7 @@ export function initAgent(name: string, cwd: string): void {
 	const project = basename(dirname(agentX)).replace(/[^a-zA-Z0-9-]/g, "-");
 	const settingsPath = join(root, ".pi", "settings.json");
 	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-	settings.agentx.composio = { userId: `${name}@${project}` };
+	settings.agentx.composio = { userId: `${name}@${project}`, ...settings.agentx.composio };
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
 	// Its state, in agent-x/storage/<name>/, which storage/ links to; neither is checked in.
 	ensureStorage(root);

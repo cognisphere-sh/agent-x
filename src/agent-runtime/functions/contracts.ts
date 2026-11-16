@@ -1,5 +1,5 @@
-// The contracts of the code an agent and its developer write for agentx: event routers and workflows. The agent's code gets them with
-// `import type { Router, Workflow } from "agent-x"`, or in a .mjs file with a JSDoc comment: `/** @type {import("agent-x").Router} */`.
+// The contracts of the code an agent and its developer write for agentx, all .ts files that Node runs by stripping their types: event routers
+// and workflows. The code gets them with `import type { Router, Workflow } from "agent-x"` (src/index.ts).
 
 /** An event as the router and workflows get it. */
 export interface Event {
@@ -23,7 +23,7 @@ export interface RouteResult {
 }
 
 /**
- * The default export of an event router: the agent's `storage/knowledge/event_router.mjs`, then its developer's `.pi/event_router.mjs`.
+ * The default export of an event router: the agent's `storage/knowledge/event_router.ts`, then its developer's `.pi/event_router.ts`.
  * agentx asks them in that order, for every event without a thread, until one returns a thread; when none does, the event goes to `main`.
  */
 export type Router = (event: Event, ctx: RouterContext) => RouteResult | void | Promise<RouteResult | void>;

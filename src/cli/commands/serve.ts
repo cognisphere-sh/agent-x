@@ -10,7 +10,7 @@ const usage = `usage: agentx serve [--host <host>] [--port <port>]
   --host <host>  where the server listens (default: 127.0.0.1)
   --port <port>  its port (default: 3100; 0 for any free one)`;
 
-/** Runs the coordinator of the project whose root or agent-x/ is `cwd`. The first SIGINT or SIGTERM lets running work finish; the second stops it. */
+/** Runs the coordinator of the project whose root, agent-x/ or agent-x/agents/ is `cwd`. The first SIGINT or SIGTERM lets running work finish; the second stops it. */
 export async function serve(cwd: string, args: string[]): Promise<void> {
 	const { values } = parseArgs({ args, options: { host: { type: "string", default: "127.0.0.1" }, port: { type: "string", default: "3100" } } });
 	const port = Number(values.port);

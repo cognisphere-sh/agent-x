@@ -10,9 +10,9 @@ export function agentRoot(dir: string): string {
 	return dir;
 }
 
-/** The `agent-x/` directory of the project whose root or `agent-x/` is `cwd`. Throws otherwise. */
+/** The `agent-x/` directory of the project whose root, `agent-x/` or `agent-x/agents/` is `cwd`. Throws otherwise. */
 export function projectAgentX(cwd: string): string {
-	const agentX = [join(cwd, "agent-x"), cwd].find(pinsAgentx);
-	if (!agentX) throw new Error(`${cwd} is not a project's root or its agent-x/ directory. Run this in one of them.`);
+	const agentX = [join(cwd, "agent-x"), cwd, ...(basename(cwd) === "agents" ? [dirname(cwd)] : [])].find(pinsAgentx);
+	if (!agentX) throw new Error(`${cwd} is not a project's root, its agent-x/ or its agent-x/agents/ directory. Run this in one of them.`);
 	return agentX;
 }

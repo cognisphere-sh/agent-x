@@ -15,7 +15,7 @@ An optional [service](../../README.md#services) of the coordinator: it gives age
 
   `apiUrl`, which may be left out, is another address of the Bot API, such as a Bot API server of one's own; the tests point it at a fake.
 - **Secrets:** each agent's bot token, `TELEGRAM_BOT_TOKEN_<AGENT>`, the agent's name in capitals with `_` for `-`, such as `TELEGRAM_BOT_TOKEN_MAIN`. The service's `secrets` is `TELEGRAM_BOT_TOKEN_*`, so it gets every such variable and no other.
-- **Answers.** The agent's Composio user id has the same bot connected in Composio, by its token. Agents have Composio's Telegram toolkit by default; the agent answers with `TELEGRAM_SEND_MESSAGE`, with the event's `chat` as `chat_id`.
+- **Answers.** The agent's Composio user id has the same bot connected in Composio, by its token. A new agent's settings enable Composio's Telegram toolkit; the agent answers with `TELEGRAM_SEND_MESSAGE`, with the event's `chat` as `chat_id`.
 
 `onStart` checks the config, and calls Telegram's `setWebhook` for each bot, with `<publicUrl>/services/telegram/<agent>`, only `message` updates, and the bot's secret token: an HMAC-SHA256 of the bot token, so it needs no setting of its own and only the token's holder can make it. Without `publicUrl`, an agent the coordinator does not run, a listed agent without `chats` or its token, or a token Telegram refuses, the service is off.
 

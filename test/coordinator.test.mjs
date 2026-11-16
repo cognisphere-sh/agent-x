@@ -249,9 +249,9 @@ test("a workflow sends from its babysitter thread, which gets its refusals and i
 	const b = addAgent(project, "b");
 	addAgent(project, "c");
 	editConfig(project, (config) => ({ agents: { ...config.agents, main: { canSendTo: ["b"] } } }));
-	writeFileSync(join(project.agent, ".pi", "workflows.json"), JSON.stringify({ tell: { description: "Tells b and c.", script: "workflows/tell.mjs", babysitterThread: "alerts" } }));
+	writeFileSync(join(project.agent, ".pi", "workflows.json"), JSON.stringify({ tell: { description: "Tells b and c.", script: "workflows/tell.ts", babysitterThread: "alerts" } }));
 	writeFileSync(
-		join(project.agent, ".pi", "workflows", "tell.mjs"),
+		join(project.agent, ".pi", "workflows", "tell.ts"),
 		`export default async function (event, ctx) { await ctx.send("from a workflow", { agent: "b", threadId: "notes" }); await ctx.send("from a workflow", { agent: "c" }); }`,
 	);
 	await serve(t, project);
@@ -283,9 +283,9 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 			mute: { cron: "* * * * *", threadId: "ticks" },
 		}),
 	);
-	writeFileSync(join(main, ".pi", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "workflows/report.mjs" } }));
+	writeFileSync(join(main, ".pi", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "workflows/report.ts" } }));
 	mkdirSync(join(main, ".pi", "workflows"), { recursive: true });
-	writeFileSync(join(main, ".pi", "workflows", "report.mjs"), "export default async function () {}");
+	writeFileSync(join(main, ".pi", "workflows", "report.ts"), "export default async function () {}");
 	// The agent's own: the developer's "minutely" wins.
 	writeFileSync(join(main, "storage", "knowledge", "schedules.json"), JSON.stringify({ minutely: { cron: "0 0 1 1 *", content: "mine" }, late: { cron: "0 * * * *", content: "late", catchUp: true } }));
 	const fired = (content) => inboxEvents(main).filter((mail) => mail.event.content === content);
@@ -457,7 +457,7 @@ test("services start with their config, the public URL and only their own secret
 	assert.ok(!log.includes("overlapped") && !log.includes("broken ran"));
 	const said = errors.calls.map((call) => call.arguments[0]);
 	assert.ok(said.includes('Service "broken" is off: no token'));
-	assert.ok(said.some((line) => /names service "missing", which agentx does not have; it is skipped\.$/.test(line)));
+	assert.ok(said.some((line) => /names service "missing", which neither agentx nor agent-x\/services\/ has; it is skipped\.$/.test(line)));
 	assert.ok(said.includes("probe: a failing run"));
 });
 
@@ -486,6 +486,67 @@ test("a service delivers into an agent's inbox with agentX-Service, once per key
 	assert.deepEqual([same, refused], [true, 'This project has no agent "nobody".']);
 	const mail = read(join(project.agent, "storage", "workspace", "inbox"), id);
 	assert.deepEqual([mail.event.content, mail.event.metadata, mail.facts], ["from a webhook", { source: "courier" }, { "agentX-Service": "courier" }]);
+});
+
+test("the project's own services, in agent-x/services/<name>/index.ts, run when agentx.json lists them, with their config, only their secrets and their routes; one that cannot load is off alone", async (t) => {
+	const errors = t.mock.method(console, "error", () => {}).mock;
+	const project = createAgent(model.port);
+	const agentX = join(projectRoot(project), "agent-x");
+	const service = (name, source) => {
+		mkdirSync(join(agentX, "services", name), { recursive: true });
+		writeFileSync(join(agentX, "services", name, "index.ts"), source);
+	};
+	// TypeScript as a developer writes it: Node strips the types.
+	service(
+		"echo",
+		`import type { ApiRequest, ApiResponse, ServiceContext, ServiceDefinition } from "agent-x";
+import { started } from "./started.ts";
+
+export default class Echo implements ServiceDefinition {
+	secrets = ["ECHO_KEY"];
+	routes = [{ method: "POST" as const, path: "in", access: "public" as const, summary: "Delivers the body to main.", handle: (request: ApiRequest) => this.receive(request) }];
+	private context!: ServiceContext;
+
+	onStart(context: ServiceContext): void {
+		this.context = context;
+		started.push({ config: context.config, secrets: context.secrets });
+	}
+
+	private receive({ body }: ApiRequest): ApiResponse {
+		const id: string = this.context.deliver("main", { key: "echo-1", content: body.toString("utf8"), metadata: { source: "echo" } });
+		return { status: 200, body: { event: id } };
+	}
+}
+`,
+	);
+	writeFileSync(join(agentX, "services", "echo", "started.ts"), "export const started: unknown[] = [];\n(globalThis as Record<string, unknown>).echoStarted = started;\n");
+	service("unlisted", "export default class Unlisted {}\n");
+	service("throws", 'throw new Error("it broke on import");\n');
+	service("noclass", "export default 42;\n");
+	service("badshape", 'export default class BadShape { routes = "not a list"; }\n');
+	service("relay", "export default class Relay {}\n");
+	editConfig(project, (config) => ({ ...config, services: { echo: { greeting: "hi" }, throws: {}, noclass: {}, badshape: {} } }));
+	writeFileSync(join(agentX, ".env.services"), "ECHO_KEY=the-key\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
+
+	const coordinator = new Coordinator(agentX);
+	t.after(() => coordinator.stop(true));
+	const address = await coordinator.start("127.0.0.1", 0);
+	assert.deepEqual(coordinator.servicesOn(), ["relay", "scheduler", "echo"]);
+	assert.deepEqual(globalThis.echoStarted, [{ config: { greeting: "hi" }, secrets: { ECHO_KEY: "the-key" } }]);
+	const response = await request(address, "POST", "/services/echo/in", { body: "hello from a webhook" });
+	assert.equal(response.status, 200);
+	const mail = read(join(project.agent, "storage", "workspace", "inbox"), JSON.parse(response.body).event);
+	assert.deepEqual([mail.event.content, mail.event.metadata, mail.facts], ["hello from a webhook", { source: "echo" }, { "agentX-Service": "echo" }]);
+	const { routes } = JSON.parse((await request(address, "GET", "/routes", { token: "the-token" })).body);
+	assert.ok(routes.some((route) => route.path === "/services/echo/in" && route.access === "public"));
+	await coordinator.stop(true);
+
+	const said = errors.calls.map((call) => call.arguments[0]);
+	assert.ok(said.includes('Service "throws" is off: it broke on import'));
+	assert.ok(said.includes('Service "noclass" is off: services/noclass/index.ts has no default export class.'));
+	assert.ok(said.some((line) => line.startsWith('Service "badshape" is off: services/badshape/index.ts: each route needs')));
+	assert.ok(said.includes("agent-x/services/relay has the name of one of agentx's services; it is not run."));
+	assert.ok(said.some((line) => line.startsWith("agent-x/services/unlisted is not listed under \"services\"")));
 });
 
 test("the host follows no link in an agent's storage to a mailbox: an inbox that is a link gets no event, and an outbox that is a link is not read", () => {

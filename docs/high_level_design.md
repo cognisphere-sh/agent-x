@@ -15,12 +15,13 @@ my-project/
     agentx.json                 the agents: description and canSendTo of each; agentx serve runs the ones it lists; the services' config (developer)
     .env                        keys for every agent, such as COMPOSIO_API_KEY (developer, gitignored)
     .env.services               the coordinator's services' secrets, which no agent reads (developer, gitignored)
+    services/<name>/index.ts    the project's own coordinator services, on when agentx.json lists them (developer, checked in)
     .pi/                        Pi's agent directory for all agents: login and Pi's state (Pi, gitignored)
     agents/<agent>/             one agent
       .pi/                      its definition, read-only to the agent (developer, checked in)
         settings.json mcp.json  Pi's config; agentx's settings under `agentx`
         system_prompt/ skills/ extensions/
-        event_router.mjs        picks the thread of an event that has none
+        event_router.ts         picks the thread of an event that has none
         workflows.json workflows/  scripts that handle events without the model
         schedules.json          cron patterns that send the agent events
       storage                   link to agent-x/storage/<agent>/
@@ -75,7 +76,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio | queue, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
 | Composio | `pi-package/extensions/composio/` | Each agent's access to external services | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
 | Pi reference | | What agentx relies on in Pi | | [pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) |
-| Coordinator | `src/coordinator-runtime/` | `agentx serve`: an AgentManager per agent, the services, the API server with its routes to report and control the agents, and the services' routes under `/services/<name>/`; `deliverEvent`, the only code that writes an inbox | storage, project config, mailbox, workflows | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
+| Coordinator | `src/coordinator-runtime/` | `agentx serve`: an AgentManager per agent, the services, agentx's and the project's own from `agent-x/services/`, the API server with its routes to report and control the agents, and the services' routes under `/services/<name>/`; `deliverEvent`, the only code that writes an inbox | storage, project config, mailbox, workflows | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
 | Relay | `src/coordinator-runtime/services/relay/` | Core service: each agent's outbox into the inboxes it names, or a refusal back to the sending thread | service, deliverEvent, mailbox, project config | [relay](architecture/coordinator-runtime/services/relay/README.md) |
 | Scheduler | `src/coordinator-runtime/services/scheduler/` | Core service: each agent's schedules, fired into its inbox | service, deliverEvent, queue | [scheduler](architecture/coordinator-runtime/services/scheduler/README.md) |
 | Composio webhook | `src/coordinator-runtime/services/composio/` | Core service: Composio's signed trigger events, each into the inbox of the agent with its Composio user id | service, deliverEvent | [composio](architecture/coordinator-runtime/services/composio/README.md) |
@@ -83,9 +84,9 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 ## Lifecycles
 
-**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main --yes` deletes the three, and takes it off the other agents' canSendTo; not while it runs.
+**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs.
 
-**The coordinator** (`agentx serve`). It starts, reads `agentx.json` once, and starts its services: the core ones, the relay, the scheduler and Composio's webhook, on when its secret is set, then the optional ones `agentx.json` lists. One that fails to start is off; the rest go on. Then it starts an AgentManager per listed agent with a folder, and its API server, with its own routes, which report, start and stop the agents with the API token, and the services' routes under `/services/<name>/`. Each second the scheduler fires the schedules that are due, and the relay delivers every outbox. The first SIGINT or SIGTERM lets the agents finish their running work, the second stops it, while the services go on, except the scheduler, which fires nothing during a stop. Then the services stop, the last started first, so the relay delivers once more, and the server closes.
+**The coordinator** (`agentx serve`). It starts, reads `agentx.json` once, and starts its services: the core ones, the relay, the scheduler and Composio's webhook, on when its secret is set, then the optional ones `agentx.json` lists, then the project's own in `agent-x/services/` that it lists. One that fails to load or start is off; the rest go on. Then it starts an AgentManager per listed agent with a folder, and its API server, with its own routes, which report, start and stop the agents with the API token, and the services' routes under `/services/<name>/`. Each second the scheduler fires the schedules that are due, and the relay delivers every outbox. The first SIGINT or SIGTERM lets the agents finish their running work, the second stops it, while the services go on, except the scheduler, which fires nothing during a stop. Then the services stop, the last started first, so the relay delivers once more, and the server closes.
 
 **An agent's process**, as its AgentManager sees it: `starting` until its first heartbeat, then `running`. When it exits it is `restarting`, after 1 s, doubled up to a minute. After 5 restarts with no 10-minute run between them it is `failed` until it is started again, through the API or by starting `agentx serve` again. A process with no heartbeat for a minute is killed and restarted. On a stop, of the agent through the API or of `agentx serve`, it is `stopping`, then `stopped`. `agentx run` runs the same process in a terminal.
 
@@ -113,6 +114,6 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 |---|---|
 | CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `event send`, `event deliver` | `agentx upgrade` |
 | `agentx run`: router loop, Pi runner, workflows, heartbeat | Sandboxes |
-| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram | Composio's triggers, made for each agent by its service |
+| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | Composio's triggers, made for each agent by its service |
 | Pi package: harness prompt, event queue, Composio | The web app's use of the API: agent controls, events from people, answers back |
 | Each agent's state in `agent-x/storage/` | |

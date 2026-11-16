@@ -9,12 +9,12 @@ import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
 import { agentx, createAgent, editSettings, events, onlySession, runner, until } from "./project.mjs";
 
-// agentx's default policy: a copy, so a test pins exactly what goes to Composio.
+// agentx's default policy, and the toolkits a new agent's settings enable: copies, so a test pins exactly what goes to Composio.
 const defaults = {
-	toolkits: { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] },
 	manage_connections: { enable: true, enable_connection_removal: false },
 	workbench: { enable: false },
 };
+const templateToolkits = { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] };
 
 let model;
 let composio;
@@ -61,7 +61,7 @@ test("a new agent gets a Composio user id, and its first queued event already se
 
 	assert.ok(model.tools[before].includes("mcp__composio__COMPOSIO_SEARCH_TOOLS"), String(model.tools[before]));
 	assert.equal(unavailable(before), undefined);
-	assert.deepEqual(composio.created, [{ ...defaults, user_id: "main@project" }]);
+	assert.deepEqual(composio.created, [{ ...defaults, toolkits: templateToolkits, user_id: "main@project" }]);
 	// Pi sent the key from the environment, never anything else.
 	assert.ok(composio.mcpKeys.length > 0);
 	assert.ok(composio.mcpKeys.every((key) => key === composio.env.COMPOSIO_API_KEY));
@@ -75,12 +75,11 @@ test("a thread keeps its Composio session, and gets a new one when the settings 
 	assert.equal(composio.created.length, 1);
 
 	// The agent's own policy goes to Composio, over agentx's defaults.
-	// A key it gives replaces agentx's, also inside an object; `toolkits` is replaced whole.
-	setSession(project, { toolkits: { disable: ["hubspot"] }, manage_connections: { enable: false }, tags: { enabled: ["readOnlyHint"] } });
+	// A key it gives replaces agentx's, also inside an object. Without `toolkits`, none is sent, so Composio allows every toolkit.
+	setSession(project, { manage_connections: { enable: false }, tags: { enabled: ["readOnlyHint"] } });
 	await run();
 	assert.equal(composio.created.length, 2);
 	assert.deepEqual(composio.created[1], {
-		toolkits: { disable: ["hubspot"] },
 		manage_connections: { enable: false, enable_connection_removal: false },
 		workbench: { enable: false },
 		tags: { enabled: ["readOnlyHint"] },

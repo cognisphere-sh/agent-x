@@ -5,6 +5,11 @@
 	"packages": [],
 	"agentx": {
 		"timezone": null,
-		"systemPrompt": ["../storage/knowledge/system_prompt"]
+		"systemPrompt": ["../storage/knowledge/system_prompt"],
+		"composio": {
+			"session": {
+				"toolkits": { "enable": ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] }
+			}
+		}
 	}
 }

@@ -15,7 +15,7 @@ A new agent has both, empty, each with an empty `workflows/` folder next to it f
 {
 	"file-invoice": {
 		"description": "Files an invoice email. For events from the billing mailbox.",
-		"script": "workflows/file-invoice.mjs",
+		"script": "workflows/file-invoice.ts",
 		"timeoutSeconds": 600,
 		"babysitterThread": "billing"
 	}
@@ -33,14 +33,17 @@ Names use letters, digits and dashes. On a name in both files, the developer's w
 
 ## The contract
 
-The script's default export takes the event and a context. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
+The script, a `.ts` file ([D74](../functions/README.md#d74)), has a default export that takes the event and a context. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
 
-```js
-/** @type {import("agent-x").Workflow} */
-export default async function run(event, ctx) {
+```ts
+import type { Workflow } from "agent-x";
+
+const run: Workflow = async (event, ctx) => {
 	const { invoice } = JSON.parse(event.content); // the content and event.metadata are the workflow's input
 	await ctx.send(`Filed invoice ${invoice}.`, { threadId: "main" });
-}
+};
+
+export default run;
 ```
 
 - `event` is `{ id, content, metadata, createdAt }`. Its content and metadata are the workflow's parameters: what a sender gives with `--meta` or `metadata`, or a schedule in its `metadata`, is in `event.metadata`, with facts such as `source`. Its files are in its inbox folder, and the content's last line names them.

@@ -1,6 +1,6 @@
 # Coordinator runtime
 
-The coordinator is the one always-running process of a project. `agentx serve`, in the project root or `agent-x/`, starts it. It runs every agent as a process of its own, and its services: the [relay](services/relay/README.md), which delivers the events agents send, the [scheduler](services/scheduler/README.md), which fires their schedules, [Composio](services/composio/README.md)'s webhook, which brings them their triggers' events, and the optional services a project turns on, such as [Telegram](services/telegram/README.md). It owns the API server: its own routes report and control the agents, and each service's routes are served under `/services/<name>/`. With a person's `agentx event deliver`, it is the only way into an agent from outside.
+The coordinator is the one always-running process of a project. `agentx serve`, in the project root, `agent-x/` or `agent-x/agents/`, starts it. It runs every agent as a process of its own, and its services: the [relay](services/relay/README.md), which delivers the events agents send, the [scheduler](services/scheduler/README.md), which fires their schedules, [Composio](services/composio/README.md)'s webhook, which brings them their triggers' events, the optional services a project turns on, such as [Telegram](services/telegram/README.md), and the project's own services, which its developer writes in `agent-x/services/`. It owns the API server: its own routes report and control the agents, and each service's routes are served under `/services/<name>/`. With a person's `agentx event deliver`, it is the only way into an agent from outside.
 
 It reaches an agent only by starting and stopping its process, by reading `agentx.json` and the agent's checked-in files, and through plain files: its inbox, outbox, heartbeat and schedule state, in the agent's central folder, `agent-x/storage/<agent>/`, not through its `storage` link, which a sandbox's host will not have ([D65](../agent-runtime/agent/README.md#d65)).
 
@@ -10,7 +10,8 @@ src/coordinator-runtime/
   api-server.ts      class ApiServer: routes and the API token; Route, the API contract of the coordinator and every service
   agent-manager.ts   class AgentManager: one agent's process, its restarts and its heartbeat
   deliver-event.ts   deliverEvent, deliverTo: put an event into an inbox, the only code that does
-  service.ts         class Service, the contract of every service, and its context
+  service.ts         ServiceDefinition, the contract of every service; its context; class Service, the base of agentx's own
+  project-services.ts  the project's own services in agent-x/services/: finds them, imports one, checks its shape
   service-runner.ts  class ServiceRunner: starts a service, runs its polling, stops it
   services/
     services.ts      the core services, in the order they start, and the optional ones, by name
@@ -59,7 +60,7 @@ An agent's state is `starting`, `running`, `restarting`, `failed`, `stopping` or
 
 ## Services
 
-Everything the coordinator does besides running the agents is a service ([D66](#d66)): a class that extends `Service` (`service.ts`), in a folder of its own under `services/`, with a doc of its own under `services/` here. Each hook may be left out, and `routes`, its API contract, may be empty:
+Everything the coordinator does besides running the agents is a service ([D66](#d66)): a class with the shape of `ServiceDefinition` (`service.ts`). agentx's own extend `Service`, each in a folder of its own under `services/`, with a doc of its own under `services/` here; a project's own are in its `agent-x/services/` ([below](#the-projects-own-services)). Each hook may be left out, and `routes`, its API contract, may be empty:
 
 | Hook | When | What it does |
 |---|---|---|
@@ -77,11 +78,21 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 | [composio](services/composio/README.md) | core | Composio's webhook: each signed trigger event into the inbox of the agent with its Composio user id. On when `COMPOSIO_WEBHOOK_SECRET` is set. |
 | [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start; each message from a chat the agent lists, with its files, into its inbox. |
 
-- **Core and optional.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). A name agentx has no service for is logged and skipped.
+- **Core, optional and the project's own.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). The project's own start last, each when `agentx.json` lists it, so they stop first. A name that neither agentx nor `agent-x/services/` has is logged and skipped.
 - **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.
 - **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it. It gets their values from the coordinator's environment, which wins, or `agent-x/.env.services`, which only the coordinator reads; agents read `agent-x/.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
 - **A service that fails to start** is off, says why, and stays off until `agentx serve` starts again; the agents and the other services start all the same.
 - **Polling.** `every` never starts a run while the last one goes on, and logs a failure, so no service can end the coordinator.
+
+### The project's own services
+
+A project's developer writes a service in `agent-x/services/<name>/index.ts` ([D75](#d75)), and lists it in `agentx.json` under `services` to turn it on; [write a service](../../user_guides/write_a_service.md) shows how. At start, the coordinator (`project-services.ts`):
+
+1. Finds each folder of `agent-x/services/` with an `index.ts`. One with the name of agentx's own services, or a name that is not letters, digits and dashes, is refused, and one that `agentx.json` does not list is not run; each says so in the log.
+2. Imports the listed ones into its own process. Node strips their types ([D74](../agent-runtime/functions/README.md#d74)); `agent-x/package.json` gives their npm packages.
+3. Makes each one with its default export, a class, and checks its shape: `secrets` a list of names, each route with a method, path, summary and `handle`, and the hooks functions. A file that fails to import, a default export that is not a class, a constructor that throws, or a wrong shape leaves that service off, with a log line, as an `onStart` that throws does.
+
+From there it runs as agentx's own do. The types come with the `agent-x` package: `ServiceDefinition`, `ServiceContext`, `Route`, `ApiRequest` and `ApiResponse`. A change takes effect when `agentx serve` starts again.
 
 ## The API server
 
@@ -126,6 +137,7 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - A send that cannot be delivered is not an error of the command that sent it: it comes back as an event, about a second later, or once `agentx serve` runs.
 - An agent that crashes after runs of more than 10 minutes is restarted for ever; `/agents` shows its restarts.
 - One project on one machine: each agent's queue is a file on a local disk.
+- The project's own services run in the coordinator's process. `secrets` limits what the context gives one, not what it can read: the whole environment and every file. An error it throws outside its hooks, routes and `every`, such as in a timer of its own, ends `agentx serve` and every agent with it. Until sandboxes, an agent can write `agent-x/services/`, and its code would run in the coordinator at the next start.
 
 ## Decisions
 
@@ -166,8 +178,8 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 <a id="d66"></a>
 ### D66. Everything the coordinator does besides running the agents is a service, in its process
 
-- **Decision.** The relay, the scheduler and every later part of the coordinator extend one class, `Service`, with `onStart`, `routes` and `onStop`. Core services are always on; optional ones are turned on in `agentx.json`. They run in the coordinator's process. One whose `onStart` throws is off, and nothing else is.
-- **Why.** Webhooks, Composio's triggers, Telegram and polling each need start-up work, polling, routes and a clean stop. One contract wires each in the same way, instead of by hand in the coordinator. Services ship with agentx, so they are trusted as the coordinator is, and mostly wait on files and the network.
+- **Decision.** The relay, the scheduler and every later part of the coordinator have one shape, `ServiceDefinition`, with `secrets`, `onStart`, `routes` and `onStop`; agentx's own extend the class `Service`. Core services are always on; optional ones and the project's own are turned on in `agentx.json`. They run in the coordinator's process. One whose `onStart` throws is off, and nothing else is.
+- **Why.** Webhooks, Composio's triggers, Telegram and polling each need start-up work, polling, routes and a clean stop. One contract wires each in the same way, instead of by hand in the coordinator. Services are agentx's or the project developer's code, so they are trusted as the coordinator is, and mostly wait on files and the network.
 - **Rejected.** A process per service: it would isolate a service's crashes and secrets, but needs requests forwarded to it, a way to deliver, and restarts like an agent's. A service that needs it can start its own child in `onStart`.
 - **Consequence.** Running the agents stays the coordinator's own, not a service: every service waits for it at stop, and the agents will run apart from the coordinator, in sandboxes.
 
@@ -181,7 +193,7 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 <a id="d68"></a>
 ### D68. A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services`
 
-- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service to turn it on. A service names its secrets, or a prefix of them with `*` when they are one per agent, such as `TELEGRAM_BOT_TOKEN_*`, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
+- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service or one of the project's own to turn it on. A service names its secrets, or a prefix of them with `*` when they are one per agent, such as `TELEGRAM_BOT_TOKEN_*`, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
 - **Why.** The project's config is already read once by `agentx serve` and checked in. Agents read only `agent-x/.env`, so a file of the services' own keeps their secrets out of what Pi, the routers and the workflows get, with no list of names to leave out.
 - **Rejected.** A `services.json` of its own; the services' secrets in `agent-x/.env`, which every agent's process reads; `--public-url` on `agentx serve`, which every deployment would have to pass.
 - **Consequence.** A secret the host sets in the coordinator's environment is inherited by the agents' processes. Sandboxes, which start agents apart from it, end that.
@@ -200,3 +212,12 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - **Why.** Three kinds of caller need three kinds of proof: the project's own systems hold a shared secret; an external service proves itself as that service does, such as Composio's signature; people already sign in to the web app, and a second sign-in would be a second auth system to keep in step. Private by default means nothing is open by mistake.
 - **Rejected.** Binding the server to localhost instead of a token, which fails once the web app runs on another machine; the coordinator checking people's sessions.
 - **Consequence.** The web app's server holds the token, never the browser. A reverse proxy should forward only webhook paths from the internet.
+
+<a id="d75"></a>
+### D75. A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process
+
+- **Problem.** A project needs webhooks and pollers that agentx does not ship, such as Stripe's or GitHub's, without changing agentx.
+- **Decision.** Each folder of `agent-x/services/` with an `index.ts` is a service of the project, named after its folder. Its default export is a class with the shape of `ServiceDefinition`, typed with `import type` from `agent-x` and checked by its shape. It runs when `agentx.json` lists it under `services`, after agentx's own, in the coordinator's process. A name of one of agentx's services is refused.
+- **Why.** The same contract as agentx's services gives a project's service everything they have: config, its secrets, routes, `deliver` and `every`. Listing it keeps a checked-in service off in a deployment that does not want it, as optional services are. Types only, and a check of the shape, need no runtime export from the package and work with any copy of agentx's code.
+- **Rejected.** A process per project service: it isolates crashes, but every route, `deliver` and `every` would cross a channel, and the developer's code runs as the same OS user all the same. A base class exported at runtime to extend: a package entry for defaults of a few lines. On whenever its folder exists: no way to turn one off in a deployment but deleting it.
+- **Consequence.** A project's service is trusted as the coordinator is; [known limits](#known-limits).

@@ -35,8 +35,23 @@ export interface ServiceContext {
 	every(ms: number, work: () => void | Promise<void>): void;
 }
 
-/** A part of the coordinator, in a folder of its own under services/. Each hook may be left out. */
-export abstract class Service {
+/**
+ * The shape of every service: agentx's own and the project's, which its developer writes in `agent-x/services/<name>/index.ts` with
+ * `export default class implements ServiceDefinition`. Each member may be left out.
+ */
+export interface ServiceDefinition {
+	/** Environment variables it needs, from the coordinator's environment or `agent-x/.env.services`. A name that ends with `*` takes every variable that starts with it. */
+	secrets?: string[];
+	/** Its routes, below `/services/<name>/`, served while it is on. */
+	routes?: Route[];
+	/** Sets it up; a throw leaves it off. */
+	onStart?(context: ServiceContext): void | Promise<void>;
+	/** Runs after the agents have stopped and its polling has ended. */
+	onStop?(): void | Promise<void>;
+}
+
+/** A part of the coordinator that ships with agentx, in a folder of its own under services/. Each hook may be left out. */
+export abstract class Service implements ServiceDefinition {
 	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env.services`, which no agent reads. A name that ends with `*` takes every variable that starts with it. */
 	readonly secrets: string[] = [];
 

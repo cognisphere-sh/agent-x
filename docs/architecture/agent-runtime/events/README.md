@@ -112,7 +112,7 @@ Each method is one atomic step. The file uses WAL mode, and waits up to 5 second
 The `EventRouter` loop takes the inbox oldest first, one event at a time. When the inbox is empty, it looks again a second later.
 
 1. An event whose id is on the queue already is a copy: its marker is deleted, and no router is asked.
-2. An event without a thread goes to the routers, each only when the one before picked nothing ([D51](#d51)): the agent's own, `storage/knowledge/event_router.mjs`, then the developer's, `.pi/event_router.mjs`. A missing file is skipped. When none picks a thread, the event goes to `main`. Each call runs in a child process ([functions](../functions/README.md)), with up to `routerSeconds` ([settings](../supervisor/README.md#settings)).
+2. An event without a thread goes to the routers, each only when the one before picked nothing ([D51](#d51)): the agent's own, `storage/knowledge/event_router.ts`, then the developer's, `.pi/event_router.ts`. A missing file is skipped. When none picks a thread, the event goes to `main`. Each call runs in a child process ([functions](../functions/README.md)), with up to `routerSeconds` ([settings](../supervisor/README.md#settings)).
 3. An event that names a thread keeps it.
 4. The event goes on the queue with its thread, id and send time, and its marker is deleted.
 
@@ -122,15 +122,18 @@ The first stop signal stops routing after the call in progress. The second ends 
 
 ## The routers' contract
 
-Both routers export one function. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
+Both routers are `.ts` files ([D74](../functions/README.md#d74)) that export one function. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
 
-```js
-/** @type {import("agent-x").Router} */
-export default async function route(event, ctx) {
+```ts
+import type { Router } from "agent-x";
+
+const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }
 	// ctx:   { workflows: [{ name, description }] }
 	return { thread: "main" }; // a Pi thread or "workflow.<name>"; nothing leaves the event to the next router
-}
+};
+
+export default route;
 ```
 
 - `agentx init-agent` writes the developer's router, which sends every event to `main`, for the developer to change. The agent writes its own when it needs one.

@@ -15,9 +15,9 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | Command | Does |
 |---|---|
 | `agentx init-project [name]` | Creates `<name>/`, or fills the current directory, which must be empty. Pins `agent-x` at its own version ([D14](project/README.md#d14)) and runs `git init` ([D7](project/README.md#d7)). |
-| `agentx init-agent <name>` | In the project root or `agent-x/`. Creates `agent-x/agents/<name>` from the template, its [storage](../agent-runtime/agent/README.md#storage) and the link to it, writes its Composio user id `<name>@<project>` ([D38](../agent-runtime/pi/pi-package/composio/README.md#d38)), and lists it in `agentx.json` ([D63](../coordinator-runtime/README.md#d63)). Names use letters, digits and dashes. |
-| `agentx remove-agent <name> [--yes]` | In the project root or `agent-x/`. Deletes the agent's folder, its state and its entry in `agentx.json`, and takes it off the other agents' `canSendTo`. Without `--yes` it only lists what it would delete. Refuses while the agent runs. |
-| `agentx serve [--host <host>] [--port <port>]` | In the project root or `agent-x/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. |
+| `agentx init-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Creates `agent-x/agents/<name>` from the template, its [storage](../agent-runtime/agent/README.md#storage) and the link to it, writes its Composio user id `<name>@<project>` ([D38](../agent-runtime/pi/pi-package/composio/README.md#d38)), and lists it in `agentx.json` ([D63](../coordinator-runtime/README.md#d63)). Names use letters, digits and dashes. |
+| `agentx remove-agent <name> [--yes]` | In the project root, `agent-x/` or `agent-x/agents/`. Deletes the agent's folder, its state and its entry in `agentx.json`, and takes it off the other agents' `canSendTo`. Lists them and asks first; only `y` or `yes` deletes, and input that ends unanswered, as with Ctrl-C, keeps them. `--yes` skips the question. Refuses while the agent runs. |
+| `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. |
 | `agentx run` | Runs the agent until it is stopped ([supervisor](../agent-runtime/supervisor/README.md)). |
 | `agentx chat [--thread-id <id>] [pi args]` | Opens the pinned Pi on a thread, `main` by default. Other arguments go to Pi ([Pi](../agent-runtime/pi/README.md#how-agentx-chat-starts-pi)). |
 | `agentx event deliver [options] [--] <content>` | A person gives an agent an event, straight into its inbox, with no `agentx serve`. Refuses to run in the agent's processes. |
@@ -31,7 +31,7 @@ Planned: `upgrade`.
 
 ## Where the command comes from
 
-The pinned agentx is in `agent-x/node_modules`. Start it with `pnpm exec agentx` in `agent-x/` or an agent, `pnpm agentx` in the project root, or a global `agentx`.
+The pinned agentx is in `agent-x/node_modules`. Start it with `pnpm exec agentx` in `agent-x/`, `agent-x/agents/` or an agent, `pnpm agentx` in the project root, or a global `agentx`.
 
 Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` looks in the current directory and each parent for the package that pins `agent-x`.
 

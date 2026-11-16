@@ -571,7 +571,7 @@ test("init-agent takes only names of letters, digits and dashes, and init-projec
 	assert.match(noGit.stderr, /git init failed/);
 });
 
-test("remove-agent deletes an agent's folder, its state and its entry, and takes it off canSendTo; only with --yes, and not while it runs", async () => {
+test("remove-agent deletes an agent's folder, its state and its entry, and takes it off canSendTo; after a yes or with --yes, and not while it runs", async () => {
 	const project = createAgent(model.port);
 	const root = projectRoot(project);
 	const b = addAgent(project, "b");
@@ -579,9 +579,10 @@ test("remove-agent deletes an agent's folder, its state and its entry, and takes
 	const remove = (...args) => agentx({ agent: root, env: project.env }, ["remove-agent", "b", ...args]);
 	const config = () => JSON.parse(readFileSync(join(root, "agent-x", "agentx.json"), "utf8"));
 
+	// Input that ends unanswered is a no.
 	const asked = await remove();
 	assert.equal(asked.status, 0);
-	assert.match(asked.stdout, /--yes deletes, with the agent's sessions and what it learned:\n.*agents\/b\n.*storage\/b\n  its entry in /);
+	assert.match(asked.stdout, /Removing agent "b" deletes, with its sessions and what it learned:\n.*agents\/b\n.*storage\/b\n  its entry in .*\nDelete them\? \[y\/N\] Nothing deleted\./);
 	assert.ok(existsSync(b));
 
 	// A heartbeat from the last seconds: it runs.
@@ -589,10 +590,17 @@ test("remove-agent deletes an agent's folder, its state and its entry, and takes
 	assert.match((await remove("--yes")).stderr, /Agent "b" is running/);
 	writeFileSync(join(root, "agent-x", "storage", "b", "heartbeat"), String(Date.now() - 60_000));
 
-	assert.equal((await remove("--yes")).status, 0);
+	// Answered yes, in agent-x/agents/.
+	const answered = spawnSync(process.execPath, [cli, "remove-agent", "b"], { cwd: join(root, "agent-x", "agents"), env: project.env, input: "y\n", encoding: "utf8" });
+	assert.equal(answered.status, 0, answered.stderr);
 	assert.deepEqual([existsSync(b), existsSync(join(root, "agent-x", "storage", "b"))], [false, false]);
 	assert.deepEqual(config().agents, { main: { description: "", canSendTo: [] } });
 	assert.match((await remove("--yes")).stderr, /This project has no agent "b"/);
+
+	// --yes asks nothing.
+	addAgent(project, "b");
+	assert.match((await remove("--yes")).stdout, /^Removed agent "b"/);
+	assert.equal(existsSync(b), false);
 	// The other agent and its state are untouched.
 	assert.ok(existsSync(join(project.agent, "storage", "knowledge")));
 });
@@ -643,9 +651,10 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 	const { project } = setup(t);
 	const knowledge = join(project.agent, "storage", "knowledge");
 	assert.deepEqual(readdirSync(knowledge).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
-	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, and give it a Composio user id.
+	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, and give it a Composio user id beside the template's toolkits.
 	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
-	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [[], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project" } }]);
+	const toolkits = { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] };
+	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [[], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project", session: { toolkits } } }]);
 
 	// What an agent can write for itself: a skill and a note for its system prompt. An extension it puts in its knowledge is not loaded.
 	mkdirSync(join(knowledge, "skills", "greet"));

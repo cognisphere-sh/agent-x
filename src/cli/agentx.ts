@@ -16,11 +16,13 @@ import { pinnedCli } from "./pinned-cli.js";
 
 const usage = `usage:
   agentx init-project [name]   create a project with web/ (Next.js) and agent-x/, in ./<name> or the current directory
-  agentx init-agent <name>     create agent-x/agents/<name>, run in a project's root or its agent-x/
+
+in a project's root, agent-x/ or agent-x/agents/:
+  agentx init-agent <name>     create agent-x/agents/<name>
   agentx remove-agent <name> [--yes]
-                               delete an agent: its folder, its state in agent-x/storage/ and its entry in agentx.json; without --yes, say what
+                               delete an agent: its folder, its state in agent-x/storage/ and its entry in agentx.json; asks first, unless --yes
   agentx serve [--host <host>] [--port <port>]
-                               run every agent of the project until stopped, and deliver events between them, in its root or agent-x/
+                               run every agent of the project until stopped, and deliver events between them
 
 in an agent directory:
   agentx run                   run the agent until stopped: route its events, run its Pi threads and its workflows
@@ -57,7 +59,7 @@ try {
 	}
 	if (command === "init-project") initProject(name ?? ".", cwd);
 	else if (command === "init-agent" && name) initAgent(name, cwd);
-	else if (command === "remove-agent") removeAgent(cwd, args);
+	else if (command === "remove-agent") await removeAgent(cwd, args);
 	else if (command === "serve") await serve(cwd, args);
 	// The other commands act on the agent directory they are started in.
 	else if (command === "run" && args.length === 0) await runAgent(agentAt(cwd));

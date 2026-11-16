@@ -1,6 +1,6 @@
 // EventRouter: one of the three loops of `agentx run`, and the only one that adds events to the queue. It takes the agent's inbox oldest first:
 // an event without a thread gets the thread its routers pick, each called in a child process of its own for each event: the agent's own,
-// storage/knowledge/event_router.mjs, then its developer's, .pi/event_router.mjs, each when it exists, until one picks a thread; else `main`.
+// storage/knowledge/event_router.ts, then its developer's, .pi/event_router.ts, each when it exists, until one picks a thread; else `main`.
 // An event that names a thread keeps it. A router that fails counts as one that picked none, and the event gets `agentX-RouterError: <why>`,
 // so no event is stuck and the agent learns that a router broke; what the router printed is kept in a log.
 
@@ -21,8 +21,8 @@ const keptOutput = 2048;
 
 // The routers, asked in this order until one picks a thread: the agent's own, then its developer's. Either may be missing.
 const routers = [
-	{ owner: "agent", file: join("storage", "knowledge", "event_router.mjs") },
-	{ owner: "developer", file: join(".pi", "event_router.mjs") },
+	{ owner: "agent", file: join("storage", "knowledge", "event_router.ts") },
+	{ owner: "developer", file: join(".pi", "event_router.ts") },
 ];
 
 // Where what a router printed for an event it failed on is kept, from the agent directory.

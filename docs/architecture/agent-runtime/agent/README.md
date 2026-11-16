@@ -15,10 +15,10 @@ agent-x/agents/<name>/
     mcp.json            MCP servers
     system_prompt/      *.md, a section each after the harness's, in the order of the index before each name; 1-role.md says what the agent is for
     skills/  extensions/   the developer's
-    event_router.mjs    the developer's router; the template's sends every event to main
+    event_router.ts     the developer's router; the template's sends every event to main
     workflows.json  workflows/  schedules.json
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
-    knowledge/          what the agent learns: system_prompt/, skills/, event_router.mjs, workflows.json, workflows/, schedules.json
+    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json
     sessions/<thread>/  the thread's Pi sessions
     workspace/          the agent's files; workflow-logs/, router-logs/, inbox/, outbox/
     event_queue.db      the event queue
@@ -32,7 +32,7 @@ An agent's runtime state is in `agent-x/storage/<name>/`, and the agent reaches 
 
 - `init-agent` makes the folder and the link (`ensureStorage` in `src/agent-runtime/storage.ts`). `agentx run`, `chat`, `event` and `serve` make them again when missing, as after a fresh clone.
 - A `storage` that is already there, a link or a folder of its own, is used as it is; agentx never moves or deletes one. But `agentx serve` does not run an agent whose `storage` is not its central folder, and `agentx event deliver` refuses one, since both reach the agent through the central folder.
-- `agentx remove-agent <name> --yes` deletes an agent with its state ([CLI](../../cli/README.md#commands)).
+- `agentx remove-agent <name>` deletes an agent with its state, after asking ([CLI](../../cli/README.md#commands)).
 
 ## .pi/settings.json
 
@@ -46,7 +46,12 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 	"packages": [],
 	"agentx": {
 		"timezone": null,
-		"systemPrompt": ["../storage/knowledge/system_prompt"]
+		"systemPrompt": ["../storage/knowledge/system_prompt"],
+		"composio": {
+			"session": {
+				"toolkits": { "enable": ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] }
+			}
+		}
 	}
 }
 ```
@@ -58,7 +63,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 | Key | Meaning |
 |---|---|
 | `systemPrompt` | Folders whose `*.md` files follow `.pi/system_prompt/` in the system prompt, each a section `agentx-knowledge-<file name>`, whatever the folder. The template adds the agent's knowledge. |
-| `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). |
+| `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). The template enables eight toolkits; `init-agent` adds the user id. |
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
 | `timezone` | The time zone of event times and schedules. `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
 
@@ -74,7 +79,7 @@ The system prompt extension builds the prompt: the harness's preamble, then, aft
 |---|---|
 | `system_prompt/*.md` | at the end of the system prompt, a section per file, at the start of every run, through `agentx.systemPrompt` |
 | `skills/<name>/SKILL.md` | when a session starts, through `skills` |
-| `event_router.mjs` | for every event without a thread ([routing](../events/README.md#routing)) |
+| `event_router.ts` | for every event without a thread ([routing](../events/README.md#routing)) |
 | `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
 | `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |
 | anything else | when the agent reads it |
