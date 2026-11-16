@@ -80,7 +80,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Relay | `src/coordinator-runtime/services/relay/` | Core service: each agent's outbox into the inboxes it names, or a refusal back to the sending thread | service, deliverEvent, mailbox, project config | [relay](architecture/coordinator-runtime/services/relay/README.md) |
 | Scheduler | `src/coordinator-runtime/services/scheduler/` | Core service: each agent's schedules, fired into its inbox | service, deliverEvent, queue | [scheduler](architecture/coordinator-runtime/services/scheduler/README.md) |
 | Composio webhook | `src/coordinator-runtime/services/composio/` | Core service: Composio's signed trigger events, each into the inbox of the agent with its Composio user id | service, deliverEvent | [composio](architecture/coordinator-runtime/services/composio/README.md) |
-| Telegram | `src/coordinator-runtime/services/telegram/` | Optional service: each listed agent's bot webhook, and its chats' messages, with their files, into its inbox | service, deliverEvent | [telegram](architecture/coordinator-runtime/services/telegram/README.md) |
+| Telegram | `src/coordinator-runtime/services/telegram/` | Optional service: each listed agent's bot webhook, its bot connected in Composio for its user id, and its chats' messages, with their files, into its inbox | service, deliverEvent | [telegram](architecture/coordinator-runtime/services/telegram/README.md) |
 
 ## Lifecycles
 

@@ -1,6 +1,6 @@
 # Composio
 
-A core [service](../../README.md#services) of the coordinator: Composio's webhook. It brings each event of a Composio trigger, such as a new email, to the agent whose Composio user id the trigger was made for. Code: `src/coordinator-runtime/services/composio/composio.ts`.
+A core [service](../../README.md#services) of the coordinator: Composio's webhook. It brings each event of a Composio trigger, such as a new email, to the agent whose Composio user id the trigger was made for. Code: `src/coordinator-runtime/services/composio/composio.ts`, and `composio-user-id.ts`, which reads an agent's Composio user id, as the Telegram service does too.
 
 A Composio project sends every trigger event to one URL, its webhook subscription, signed with the project's secret. All agents of an agentx project share one Composio project, each with its own user id ([D38](../../../agent-runtime/pi/pi-package/composio/README.md#d38)). So the service has one route for the project, and finds the agent by user id ([D71](#d71)).
 

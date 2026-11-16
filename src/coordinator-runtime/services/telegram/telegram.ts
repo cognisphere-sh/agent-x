@@ -1,6 +1,6 @@
 // The Telegram service, an optional one: each agent that `services.telegram` in agentx.json lists gets a Telegram bot. At start it points each bot's
-// webhook at the bot's route; each message from a chat the agent lists goes into its inbox, with the message's files downloaded into the event. The
-// agent answers with Composio's Telegram tools, with the same bot connected to its Composio user id.
+// webhook at the bot's route, and connects the bot in Composio for the agent's Composio user id; each message from a chat the agent lists goes into its
+// inbox, with the message's files downloaded into the event. The agent answers with Composio's Telegram tools, which send as its bot.
 
 import { createHmac } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -9,6 +9,8 @@ import { basename, join } from "node:path";
 import { withoutBlockTag } from "../../../agent-runtime/events/queue.js";
 import { type ApiRequest, type ApiResponse, type Route, sameText } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
+import { composioUserId } from "../composio/composio-user-id.js";
+import { connectBot } from "./composio-bot.js";
 
 // Each agent's bot token is a variable of its own: TELEGRAM_BOT_TOKEN_MAIN for the agent main, TELEGRAM_BOT_TOKEN_MY_AGENT for my-agent.
 const tokenPrefix = "TELEGRAM_BOT_TOKEN_";
@@ -21,6 +23,8 @@ interface Bot {
 	chats: string[];
 	// What Telegram sends in X-Telegram-Bot-Api-Secret-Token, made from the token, so it needs no setting of its own and only the token's holder knows it.
 	secret: string;
+	// The agent's Composio user id, which the bot is connected for.
+	userId?: string;
 }
 
 // The parts of a Telegram message the service reads.
@@ -39,7 +43,8 @@ const fileKinds = ["document", "audio", "video", "voice", "video_note", "animati
 
 /** Telegram: each listed agent's bot sends the messages of the agent's chats into its inbox. */
 export class TelegramService extends Service {
-	override readonly secrets = [`${tokenPrefix}*`];
+	// The coordinator's Composio key, which may connect accounts, unlike the agents' own; COMPOSIO_BASE_URL points elsewhere, such as at a fake in tests.
+	override readonly secrets = [`${tokenPrefix}*`, "COMPOSIO_COORDINATOR_API_KEY", "COMPOSIO_BASE_URL"];
 	override readonly routes: Route[] = [
 		{
 			method: "POST",
@@ -53,7 +58,7 @@ export class TelegramService extends Service {
 	private api = "https://api.telegram.org";
 	private readonly bots = new Map<string, Bot>();
 
-	/** Checks the config and each agent's token, and sets each bot's webhook; any failure leaves the service off. */
+	/** Checks the config and each agent's token, and sets each bot's webhook, any failure leaving the service off; then connects each bot in Composio. */
 	override async onStart(context: ServiceContext): Promise<void> {
 		const { apiUrl, agents } = (context.config ?? {}) as { apiUrl?: unknown; agents?: unknown };
 		if (context.publicUrl === undefined) throw new Error('it needs "publicUrl" in agentx.json, the address Telegram sends to.');
@@ -62,15 +67,35 @@ export class TelegramService extends Service {
 		if (typeof apiUrl === "string") this.api = apiUrl;
 		this.context = context;
 		for (const [agent, entry] of Object.entries(agents)) {
-			if (!context.agents.some((running) => running.name === agent)) throw new Error(`services.telegram names agent "${agent}", which agentx serve does not run.`);
+			const running = context.agents.find((candidate) => candidate.name === agent);
+			if (running === undefined) throw new Error(`services.telegram names agent "${agent}", which agentx serve does not run.`);
 			const chats = (entry as { chats?: unknown } | null)?.chats;
 			if (!Array.isArray(chats) || !chats.every((chat) => typeof chat === "number" || typeof chat === "string")) throw new Error(`services.telegram: agent "${agent}" needs "chats", the ids of the chats it takes messages from.`);
 			const variable = tokenPrefix + agent.toUpperCase().replaceAll("-", "_");
 			const token = context.secrets[variable];
 			if (!token) throw new Error(`${variable}, the bot token of agent "${agent}", is not set in the environment or agent-x/.env.services.`);
-			const bot = { agent, token, chats: chats.map(String), secret: createHmac("sha256", token).update("agentx webhook").digest("base64url") };
+			// A bot has one webhook, so the second agent's would take the first's messages.
+			const sharing = [...this.bots.values()].find((other) => other.token === token);
+			if (sharing !== undefined) throw new Error(`agents "${sharing.agent}" and "${agent}" have the same bot token; each agent needs a bot of its own.`);
+			const secret = createHmac("sha256", token).update("agentx webhook").digest("base64url");
+			const bot = { agent, token, chats: chats.map(String), secret, userId: composioUserId(running.root) };
 			await this.call(bot, "setWebhook", { url: `${context.publicUrl.replace(/\/$/, "")}/services/telegram/${agent}`, secret_token: bot.secret, allowed_updates: ["message"] });
 			this.bots.set(agent, bot);
+		}
+		// Messages come in without Composio, so a bot that cannot be connected is logged, and the service stays on.
+		const key = context.secrets.COMPOSIO_COORDINATOR_API_KEY;
+		if (!key) {
+			console.error("telegram: COMPOSIO_COORDINATOR_API_KEY is not set, in the environment or agent-x/.env.services, so no bot is connected in Composio; an agent answers only with a bot connected by hand.");
+			return;
+		}
+		const composio = { base: context.secrets.COMPOSIO_BASE_URL ?? "https://backend.composio.dev", key };
+		for (const { agent, token, userId } of this.bots.values()) {
+			try {
+				if (userId === undefined) throw new Error("it has no agentx.composio.userId in its .pi/settings.json.");
+				await connectBot(composio, userId, token);
+			} catch (error) {
+				console.error(`telegram: agent ${agent}'s bot is not connected in Composio, so the agent cannot answer in Telegram: ${(error as Error).message}`);
+			}
 		}
 	}
 

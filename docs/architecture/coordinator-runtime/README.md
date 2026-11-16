@@ -76,7 +76,7 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 | [relay](services/relay/README.md) | core | Each second, and once more when the agents have stopped, delivers every agent's outbox. |
 | [scheduler](services/scheduler/README.md) | core | Each second, fires every agent's schedules that are due; not while the coordinator stops. |
 | [composio](services/composio/README.md) | core | Composio's webhook: each signed trigger event into the inbox of the agent with its Composio user id. On when `COMPOSIO_WEBHOOK_SECRET` is set. |
-| [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start; each message from a chat the agent lists, with its files, into its inbox. |
+| [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start, and connects the bot in Composio for the agent's user id; each message from a chat the agent lists, with its files, into its inbox. |
 
 - **Core, optional and the project's own.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). The project's own start last, each when `agentx.json` lists it, so they stop first. A name that neither agentx nor `agent-x/services/` has is logged and skipped.
 - **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.

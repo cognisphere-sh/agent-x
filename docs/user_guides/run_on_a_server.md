@@ -65,16 +65,16 @@ Use one Composio project per environment: a project has one webhook URL. On a la
 
 An agent can have a Telegram bot: people in the chats you list write to it, and it answers there ([Telegram service](../architecture/coordinator-runtime/services/telegram/README.md)).
 
-1. Make a bot with [@BotFather](https://t.me/BotFather), and put its token in `agent-x/.env.services` as `TELEGRAM_BOT_TOKEN_<AGENT>`, such as `TELEGRAM_BOT_TOKEN_MAIN` for `main`.
+1. Make a bot with [@BotFather](https://t.me/BotFather) for each agent, and put its token in `agent-x/.env.services` as `TELEGRAM_BOT_TOKEN_<AGENT>`, such as `TELEGRAM_BOT_TOKEN_MAIN` for `main`. Each agent needs a bot of its own.
 2. In `agent-x/agentx.json`, set `publicUrl` and list the agent with its chats:
 
    ```json
    "publicUrl": "https://agents.example.com",
-   "services": { "telegram": { "agents": { "main": { "chats": [123456789] } } } }
+   "services": { "telegram": { "agents": { "main": { "chats": [123456789] }, "support": { "chats": [-1001234567890] } } } }
    ```
 
    A private chat's id is the person's Telegram user id; a group's is negative. In a group, the bot gets only commands and replies to it, unless you turn its privacy mode off with @BotFather's `/setprivacy`. A message from a chat not listed is dropped, and its id is in `agentx serve`'s log, so to find a chat's id, write to the bot and read the log.
 3. Forward `/services/telegram/` from the internet to `agentx serve`, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
-4. So the agent can answer, connect the same bot in Composio for the agent: ask it in `agentx chat`, such as "connect my Telegram bot", and give the bot token on Composio's page. This needs `COMPOSIO_API_KEY` ([External services](customize_an_agent.md#external-services-composio)).
+4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env.services` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
 
 Each message reaches the agent's routers with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder.

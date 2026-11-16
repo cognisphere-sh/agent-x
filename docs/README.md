@@ -102,6 +102,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D74](architecture/agent-runtime/functions/README.md#d74) | Routers, workflows and the project's services are TypeScript, which Node runs by stripping the types | agent-runtime/functions |
 | [D75](architecture/coordinator-runtime/README.md#d75) | A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process | coordinator-runtime |
 | [D76](architecture/agent-runtime/pi/pi-package/composio/README.md#d76) | The agent's settings name its toolkits; agentx's code names none | agent-runtime/pi/pi-package/composio |
+| [D77](architecture/coordinator-runtime/services/telegram/README.md#d77) | The Telegram service connects each bot in Composio with the coordinator's own Composio key | coordinator-runtime/services/telegram |
 
 ## User guides
 

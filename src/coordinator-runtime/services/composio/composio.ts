@@ -3,12 +3,13 @@
 // when COMPOSIO_WEBHOOK_SECRET is set.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ApiRequest, ApiResponse, Route } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
+import { composioUserId } from "./composio-user-id.js";
 
 // How far a request's timestamp may be from now, as Composio's SDK allows, so a request recorded and sent again later is refused.
 const toleranceSeconds = 300;
@@ -98,15 +99,4 @@ function signedId(secret: string, headers: IncomingHttpHeaders, body: Buffer): s
 		return version === "v1" && given.length === expected.length && timingSafeEqual(given, expected);
 	});
 	return matches ? id : undefined;
-}
-
-// The agent's Composio user id, from its checked-in settings, never from what the agent writes; undefined when it has none or they cannot be read.
-function composioUserId(agentRoot: string): string | undefined {
-	try {
-		const settings = JSON.parse(readFileSync(join(agentRoot, ".pi", "settings.json"), "utf8")) as { agentx?: { composio?: { userId?: unknown } } };
-		const userId = settings.agentx?.composio?.userId;
-		return typeof userId === "string" ? userId : undefined;
-	} catch {
-		return undefined;
-	}
 }

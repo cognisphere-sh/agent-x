@@ -25,6 +25,7 @@ A task that is dropped is deleted, together with its row below.
 | [Bring Composio's trigger events to agents through a core coordinator service](done/5-composio-webhook.md) | feature | 2026-11-15 |
 | [Connect agents to Telegram through an optional coordinator service](done/6-telegram.md) | feature | 2026-11-15 |
 | [Let a project's developer write coordinator services in agent-x/services/](done/7-developer-services.md) | feature | 2026-11-16 |
+| [Connect each agent's Telegram bot in Composio from the Telegram service](done/8-telegram-composio-bot.md) | feature | 2026-11-16 |
 
 ## A task file
 

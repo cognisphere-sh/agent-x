@@ -16,6 +16,7 @@ import { Coordinator } from "../dist/coordinator-runtime/coordinator.js";
 import { Service } from "../dist/coordinator-runtime/service.js";
 import { deliverOutbox } from "../dist/coordinator-runtime/services/relay/relay.js";
 import { Scheduler, SchedulerService } from "../dist/coordinator-runtime/services/scheduler/scheduler.js";
+import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
 import { addAgent, agentSend, agentx, alive, background, cli, createAgent, editConfig, editSettings, events, inboxEvents, projectRoot, send, until } from "./project.mjs";
 
@@ -680,18 +681,21 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one"]);
 });
 
-test("Telegram is off without publicUrl, or without an agent's bot token, or when Telegram refuses the token", async (t) => {
+test("Telegram is off without publicUrl, or without an agent's bot token, or when Telegram refuses the token, or when two agents have the same bot", async (t) => {
 	const errors = t.mock.method(console, "error", () => {}).mock;
 	const telegram = await fakeTelegram(t, ["1:good"]);
 	const project = createAgent(model.port);
+	addAgent(project, "b");
 	const agentX = join(projectRoot(project), "agent-x");
+	const main = { main: { chats: [1] } };
 	const cases = [
 		[{}, "", 'it needs "publicUrl" in agentx.json'],
 		[{ publicUrl: "https://agents.example.com" }, "", "TELEGRAM_BOT_TOKEN_MAIN, the bot token of agent \"main\", is not set"],
 		[{ publicUrl: "https://agents.example.com" }, "TELEGRAM_BOT_TOKEN_MAIN=1:bad\n", "Telegram's setWebhook: Unauthorized"],
+		[{ publicUrl: "https://agents.example.com" }, "TELEGRAM_BOT_TOKEN_MAIN=1:good\nTELEGRAM_BOT_TOKEN_B=1:good\n", 'agents "main" and "b" have the same bot token', { ...main, b: { chats: [2] } }],
 	];
-	for (const [config, secrets, why] of cases) {
-		editConfig(project, (old) => ({ agents: old.agents, ...config, services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [1] } } } } }));
+	for (const [config, secrets, why, bots = main] of cases) {
+		editConfig(project, (old) => ({ agents: old.agents, ...config, services: { telegram: { apiUrl: telegram.url, agents: bots } } }));
 		writeFileSync(join(agentX, ".env.services"), secrets);
 		const coordinator = new Coordinator(agentX);
 		await coordinator.start("127.0.0.1", 0);
@@ -699,4 +703,52 @@ test("Telegram is off without publicUrl, or without an agent's bot token, or whe
 		assert.ok(!coordinator.servicesOn().includes("telegram"));
 		assert.ok(errors.calls.some((call) => String(call.arguments[0]).startsWith(`Service "telegram" is off: ${why}`)), why);
 	}
+});
+
+test("Telegram connects each agent's bot in Composio for the agent's user id, with the coordinator's key: once, again after a new token, leaving a bot a person connected; without the key, or with the agents' key, it stays on", async (t) => {
+	const errors = t.mock.method(console, "error", () => {}).mock;
+	const composio = await startFakeComposio();
+	t.after(() => composio.close());
+	const telegram = await fakeTelegram(t, ["1:main", "2:b", "3:b-new"]);
+	const project = createAgent(model.port);
+	const b = addAgent(project, "b");
+	const userId = (dir) => JSON.parse(readFileSync(join(dir, ".pi", "settings.json"), "utf8")).agentx.composio.userId;
+	const [mainId, bId] = [userId(project.agent), userId(b)];
+	const agentX = join(projectRoot(project), "agent-x");
+	editConfig(project, (old) => ({ ...old, publicUrl: "https://agents.example.com", services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [1] }, b: { chats: [2] } } } } }));
+	const start = async (key, bToken = "2:b") => {
+		writeFileSync(join(agentX, ".env.services"), `COMPOSIO_BASE_URL=${composio.url}\n${key ? `COMPOSIO_COORDINATOR_API_KEY=${key}\n` : ""}TELEGRAM_BOT_TOKEN_MAIN=1:main\nTELEGRAM_BOT_TOKEN_B=${bToken}\n`);
+		const coordinator = new Coordinator(agentX);
+		await coordinator.start("127.0.0.1", 0);
+		await coordinator.stop(true);
+		assert.ok(coordinator.servicesOn().includes("telegram"));
+	};
+	const bots = () => composio.accounts.map((account) => `${account.user_id} ${account.token} ${account.status}`).sort();
+	// A bot a person connected for b by hand, in Composio's dashboard, under an auth config that sessions do not use.
+	composio.authConfigs.push({ id: "ac_sessions_skip_it", toolkit: { slug: "telegram" }, status: "ENABLED", auth_scheme: "API_KEY", is_enabled_for_tool_router: false });
+	composio.accounts.push({ id: "ca_by_hand", user_id: bId, alias: null, status: "ACTIVE", toolkit: { slug: "telegram" }, auth_config: { id: "ac_sessions_skip_it" }, token: "by hand" });
+
+	await start(composio.coordinatorKey);
+	const webhooks = telegram.calls.filter((call) => call.method === "setWebhook").map((call) => [call.token, call.params.url]);
+	assert.deepEqual(webhooks, [["1:main", "https://agents.example.com/services/telegram/main"], ["2:b", "https://agents.example.com/services/telegram/b"]]);
+	assert.deepEqual(bots(), [`${bId} 2:b ACTIVE`, `${bId} by hand ACTIVE`, `${mainId} 1:main ACTIVE`].sort());
+	// The service's accounts are under an auth config of its own that sessions use without being told.
+	const [, made] = composio.authConfigs;
+	assert.deepEqual([made.toolkit.slug, made.auth_scheme, made.is_enabled_for_tool_router, composio.authConfigs.length], ["telegram", "API_KEY", true, 2]);
+	assert.ok(composio.accounts.filter((account) => account.token !== "by hand").every((account) => account.auth_config.id === made.id));
+	// The same tokens again: nothing changes.
+	const ids = composio.accounts.map((account) => account.id);
+	await start(composio.coordinatorKey);
+	assert.deepEqual(composio.accounts.map((account) => account.id), ids);
+	// A new token for b: the account of its old one goes, and the one connected by hand stays.
+	await start(composio.coordinatorKey, "3:b-new");
+	assert.deepEqual(bots(), [`${bId} 3:b-new ACTIVE`, `${bId} by hand ACTIVE`, `${mainId} 1:main ACTIVE`].sort());
+	assert.equal(composio.authConfigs.length, 2);
+
+	// Without the coordinator's key, or with the agents' key, which cannot connect accounts: the service is on, and says why no bot is connected.
+	await start(undefined);
+	assert.ok(errors.calls.some((call) => String(call.arguments[0]).startsWith("telegram: COMPOSIO_COORDINATOR_API_KEY is not set")));
+	await start(composio.env.COMPOSIO_API_KEY);
+	const refused = "telegram: agent main's bot is not connected in Composio, so the agent cannot answer in Telegram: Composio's GET /api/v3.1/connected_accounts: Invalid API key";
+	assert.ok(errors.calls.some((call) => String(call.arguments[0]) === refused));
 });
