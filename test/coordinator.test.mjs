@@ -239,9 +239,9 @@ test("an agent sends only to the agents its canSendTo names, which its prompt li
 
 	// Each prompt lists the agents its agent can send to, with what each does: main only b, which it names; b, without canSendTo, every other agent.
 	await until(() => events(project.agent).find((found) => found.id === back.id)?.status === "done");
-	assert.ok(model.systemPrompts.some((prompt) => prompt.includes("# Agents you can send events to") && prompt.includes("\n\n- `b`: Files invoices.\n\n# Identity")));
+	assert.ok(model.systemPrompts.some((prompt) => prompt.includes("<agentx-core-agents>\n# Agents you can send events to") && prompt.includes("\n\n- `b`: Files invoices.\n</agentx-core-agents>")));
 	await send({ ...project, agent: b }, "--thread-id", "main", "hello b");
-	await until(() => model.systemPrompts.some((prompt) => prompt.includes("\n\n- `c`\n- `main`\n\n# Identity")));
+	await until(() => model.systemPrompts.some((prompt) => prompt.includes("\n\n- `c`\n- `main`\n</agentx-core-agents>")));
 });
 
 test("a workflow sends from its babysitter thread, which gets its refusals and is the thread the receiver answers, and the receiver is told which workflow sent it", async (t) => {
@@ -277,9 +277,15 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 			once: { cron: "* * * * *", content: "once", fireOnce: true },
 			off: { cron: "* * * * *", content: "off", isActive: false },
 			hourly: { cron: "0 * * * *", content: "hourly" },
+			// A workflow's schedule may give its parameters in metadata alone; any other needs content.
+			report: { cron: "* * * * *", threadId: "workflow.report", metadata: { month: "january", pages: 2 } },
 			broken: { cron: "nope", content: "x" },
+			mute: { cron: "* * * * *", threadId: "ticks" },
 		}),
 	);
+	writeFileSync(join(main, ".pi", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "workflows/report.mjs" } }));
+	mkdirSync(join(main, ".pi", "workflows"), { recursive: true });
+	writeFileSync(join(main, ".pi", "workflows", "report.mjs"), "export default async function () {}");
 	// The agent's own: the developer's "minutely" wins.
 	writeFileSync(join(main, "storage", "knowledge", "schedules.json"), JSON.stringify({ minutely: { cron: "0 0 1 1 *", content: "mine" }, late: { cron: "0 * * * *", content: "late", catchUp: true } }));
 	const fired = (content) => inboxEvents(main).filter((mail) => mail.event.content === content);
@@ -296,6 +302,9 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 	assert.deepEqual([first.sentAt, second.sentAt], [Date.UTC(2026, 0, 1, 0, 1), Date.UTC(2026, 0, 1, 0, 2)]);
 	assert.deepEqual([first.event.threadId, first.event.metadata, first.facts], ["ticks", { from: "cron", source: "schedule" }, { "agentX-Schedule": "minutely" }]);
 	assert.deepEqual([fired("once").length, fired("off").length, fired("mine").length], [1, 0, 0]);
+	const report = inboxEvents(main).find((mail) => mail.event.threadId === "workflow.report");
+	assert.deepEqual([report.event.content, report.event.metadata], ["", { month: "january", pages: 2, source: "schedule" }]);
+	assert.ok(inboxEvents(main).some((mail) => mail.event.content.endsWith('schedule "mute" is skipped: it needs content, the text of its event, unless it runs a workflow.')));
 	// Sent as every sender's events are, the fire for a workflow the agent does not have is refused: it is reported once, and the others fire.
 	assert.deepEqual(fired("for a workflow the agent lacks"), []);
 	assert.deepEqual(

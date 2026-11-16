@@ -1,10 +1,10 @@
 # Customize an agent
 
-Everything below is in `agent-x/agents/<name>/.pi/` and is checked in. It is what you give the agent, and the agent treats it as read-only. agentx's own extensions and harness prompt come from the agentx package, not from here. Changes apply from the next session; system prompt changes from the next prompt.
+Everything below is in `agent-x/agents/<name>/.pi/` and is checked in. It is what you give the agent, and the agent treats it as read-only. agentx's own extensions and harness prompt come from the agentx package, not from here. Changes apply from the next session; system prompt changes from the next message the agent starts on.
 
 ## System prompt
 
-Add or edit `.md` files in `.pi/system_prompt/`. They follow the harness prompt in filename order. Rewrite `00-identity.md` to say who this agent is, and add sections such as `10-style.md`. Pi adds the skills list and the working directory at the end.
+Add or edit `.md` files in `.pi/system_prompt/`. Each file is a section of the prompt of its own, `agentx-identity-<file name>`, after the harness's. Start each name with an index: the files go in its order, as numbers, so `1-role.md` comes before `2-style.md`, and `9-` before `10-`. The index only orders: `1-role.md` is the section `agentx-identity-role`, so renumbering a file changes nothing the agent is sent, and two files must not differ only in their index. When you change one file, the agent's conversations get only that section again, so keep one subject per file. Rewrite `1-role.md` to say what this agent is for, and add files such as `2-style.md`. Name files with lowercase letters, digits and hyphens: any other character becomes `-` in the section's name. Pi's skills list and working directory come before these sections.
 
 ## Skills
 
@@ -134,11 +134,12 @@ A schedule sends the agent an event at the times a cron pattern names. List your
 ```json
 {
 	"daily-report": { "cron": "0 9 * * 1-5", "content": "Write the daily report.", "threadId": "reports" },
-	"new-year": { "cron": "0 0 1 1 *", "content": "Say happy new year to the team.", "fireOnce": true }
+	"new-year": { "cron": "0 0 1 1 *", "content": "Say happy new year to the team.", "fireOnce": true },
+	"monthly-invoices": { "cron": "0 8 1 * *", "threadId": "workflow.file-invoices", "metadata": { "month": "last" } }
 }
 ```
 
-`cron` is in the agent's time zone (below). Schedules fire only under `agentx serve`, and an edit applies within a second. All the keys, such as `catchUp` for fires missed while it was down: [coordinator](../architecture/coordinator-runtime/services/scheduler/README.md).
+A schedule can run a [workflow](send_events.md#workflows) instead of the model: its `threadId` is `workflow.<name>`. It then needs no `content`, and the workflow reads its `metadata` as `event.metadata`. `cron` is in the agent's time zone (below). Schedules fire only under `agentx serve`, and an edit applies within a second. All the keys, such as `catchUp` for fires missed while it was down: [coordinator](../architecture/coordinator-runtime/services/scheduler/README.md).
 
 ## Removing an agent
 

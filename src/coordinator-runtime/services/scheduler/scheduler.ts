@@ -5,7 +5,7 @@
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Cron } from "croner";
-import { checkEvent, nameRule, type NewEvent, withoutBlockTag } from "../../../agent-runtime/events/queue.js";
+import { checkEvent, nameRule, type NewEvent, withoutBlockTag, workflowPrefix } from "../../../agent-runtime/events/queue.js";
 import { deliverEvent } from "../../deliver-event.js";
 import { forEachAgent, Service, type ServiceContext } from "../../service.js";
 
@@ -153,10 +153,12 @@ function check(file: string, name: string, entry: unknown, timeZone: string | un
 	if (!nameRule.test(name)) return "a name has only letters, digits and dashes.";
 	const { cron, content, threadId, metadata, isSilent = false, isActive = true, fireOnce = false, catchUp = false } = (entry ?? {}) as Record<string, unknown>;
 	if (typeof cron !== "string") return "it needs a cron pattern, such as \"0 9 * * 1-5\".";
-	if (typeof content !== "string") return "it needs content, the text of its event.";
+	// A workflow can take its parameters from metadata alone, so its schedule needs no content.
+	const text = content ?? (typeof threadId === "string" && threadId.startsWith(workflowPrefix) ? "" : undefined);
+	if (typeof text !== "string") return "it needs content, the text of its event, unless it runs a workflow.";
 	for (const [key, value] of Object.entries({ isSilent, isActive, fireOnce, catchUp })) if (typeof value !== "boolean") return `${key} must be true or false.`;
 	if (metadata !== undefined && (typeof metadata !== "object" || metadata === null || Array.isArray(metadata))) return "metadata must be an object.";
-	const event: NewEvent = { threadId: threadId as string | undefined, content, metadata: { ...(metadata as Record<string, unknown>), source: "schedule" }, isSilent: isSilent as boolean };
+	const event: NewEvent = { threadId: threadId as string | undefined, content: text, metadata: { ...(metadata as Record<string, unknown>), source: "schedule" }, isSilent: isSilent as boolean };
 	try {
 		checkEvent(event);
 		return { file, cron: new Cron(cron, { timezone: timeZone, paused: true }), event, isActive: isActive as boolean, fireOnce: fireOnce as boolean, catchUp: catchUp as boolean, entry: JSON.stringify(entry) };

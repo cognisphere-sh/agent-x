@@ -13,7 +13,7 @@ agent-x/agents/<name>/
   .pi/                  the definition (D2)
     settings.json       Pi project settings; agentx's own are under `agentx`
     mcp.json            MCP servers
-    system_prompt/      *.md, in filename order after the harness prompt; 00-identity.md says who the agent is
+    system_prompt/      *.md, a section each after the harness's, in the order of the index before each name; 1-role.md says what the agent is for
     skills/  extensions/   the developer's
     event_router.mjs    the developer's router; the template's sends every event to main
     workflows.json  workflows/  schedules.json
@@ -57,14 +57,14 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 
 | Key | Meaning |
 |---|---|
-| `systemPrompt` | Folders whose `*.md` files follow `.pi/system_prompt/` in the system prompt. The template adds the agent's knowledge. |
+| `systemPrompt` | Folders whose `*.md` files follow `.pi/system_prompt/` in the system prompt, each a section `agentx-knowledge-<file name>`, whatever the folder. The template adds the agent's knowledge. |
 | `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). |
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
 | `timezone` | The time zone of event times and schedules. `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
 
 ## System prompt
 
-The system prompt extension builds the prompt: the harness prompt, the agents this one can send to, `.pi/system_prompt/*.md` in filename order, then the `agentx.systemPrompt` folders ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
+The system prompt extension builds the prompt: the harness's preamble, then, after Pi's own sections, a section per file: the harness's, the agents this one can send to, `.pi/system_prompt/*.md` in the order of the index before each name, then the `agentx.systemPrompt` folders ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
 
 ## Knowledge
 
@@ -72,7 +72,7 @@ The system prompt extension builds the prompt: the harness prompt, the agents th
 
 | In `storage/knowledge/` | Loaded |
 |---|---|
-| `system_prompt/*.md` | at the end of the system prompt, on every message, through `agentx.systemPrompt` |
+| `system_prompt/*.md` | at the end of the system prompt, a section per file, at the start of every run, through `agentx.systemPrompt` |
 | `skills/<name>/SKILL.md` | when a session starts, through `skills` |
 | `event_router.mjs` | for every event without a thread ([routing](../events/README.md#routing)) |
 | `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
@@ -102,7 +102,7 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 
 - The model Pi last chose in `agent-x/.pi/` is the default of every agent that sets none.
 - Knowledge is gitignored state, lost with the rest of `storage/`.
-- Whatever makes the agent write into its knowledge, an event included, lasts for every later session: its prompt text is read on every message, and its router and workflows are code that runs.
+- Whatever makes the agent write into its knowledge, an event included, lasts for every later session: its prompt text is read at the start of every run, and its router and workflows are code that runs.
 - `agentx chat mcp list` needs the project trusted once with `/trust` in an interactive session ([D6](#d6)).
 
 ## Decisions
@@ -130,8 +130,8 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 <a id="d5"></a>
 ### D5. The system prompt comes from an extension
 
-- **Decision.** agentx's system prompt extension sets the prompt in `before_agent_start`, from the harness prompt, `.pi/system_prompt/*.md` and the `agentx.systemPrompt` folders.
-- **Why.** The files are read on every prompt, so an edit applies to the next message.
+- **Decision.** agentx's system prompt extension sets the prompt in `before_agent_start`, from the harness prompt, `.pi/system_prompt/*.md` and the `agentx.systemPrompt` folders, a section per file ([D73](../pi/pi-package/README.md#d73)).
+- **Why.** The files are read at the start of every run, so an edit applies from the next run, without a restart.
 - **Rejected.** `.pi/SYSTEM.md`, one file only; `--system-prompt`, which joins the files once, at start.
 
 <a id="d6"></a>

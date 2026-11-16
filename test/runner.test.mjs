@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { once } from "node:events";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, readlinkSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { after, before, test } from "node:test";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -653,17 +653,51 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 	mkdirSync(join(knowledge, "extensions"));
 	writeFileSync(join(knowledge, "extensions", "marker.ts"), `import { writeFileSync } from "node:fs";\nexport default function (pi) { pi.on("session_start", (_event, ctx) => writeFileSync(ctx.cwd + "/storage/marker", "")); }`);
 	writeFileSync(join(knowledge, "system_prompt", "learned.md"), "LEARNED: the build runs with pnpm.");
-	// And what its developer adds, which comes first.
+	// And what its developer adds, which comes first, in the order of the index before each name.
 	writeFileSync(join(project.agent, ".pi", "system_prompt", "10-rules.md"), "DEVELOPER: answer briefly.");
+	writeFileSync(join(project.agent, ".pi", "system_prompt", "9-first.md"), "DEVELOPER: first.");
 
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
 	assert.ok(!existsSync(join(project.agent, "storage", "marker")), "the extension was not loaded");
-	// The harness's prompt, the developer's files, the agent's own under a heading that names their folder, then Pi's list of skills.
+	// The harness's preamble and Pi's list of skills, then a section per file, by index, each named for its file without the index: the harness's, the developer's, then the agent's own.
 	const prompt = model.systemPrompts.at(-1);
-	const places = ["# Harness", "DEVELOPER: answer briefly.", "# From storage/knowledge/system_prompt", "LEARNED: the build runs with pnpm.", "How to greet people."].map((part) => prompt.indexOf(part));
+	const places = [
+		"# Harness",
+		"How to greet people.",
+		"<agentx-core-tools>\n# Tools",
+		"<agentx-core-files>\n# Your files",
+		"<agentx-core-project>\n# The project",
+		"<agentx-identity-first>\nDEVELOPER: first.\n</agentx-identity-first>",
+		"<agentx-identity-rules>\nDEVELOPER: answer briefly.\n</agentx-identity-rules>",
+		"<agentx-knowledge-learned>\nLEARNED: the build runs with pnpm.\n</agentx-knowledge-learned>",
+	].map((part) => prompt.indexOf(part));
 	assert.deepEqual(places, [...places].sort((a, b) => a - b), prompt);
 	assert.ok(places[0] >= 0, prompt);
+});
+
+test("when a prompt file changes, the session records only its section again, only the removal of a file that is gone, and nothing for a file renumbered", async (t) => {
+	const { project } = setup(t);
+	const notes = join(project.agent, "storage", "knowledge", "system_prompt");
+	// A file name that Pi does not take as a section's name becomes one it does.
+	writeFileSync(join(notes, "Owner Prefs.md"), "Answer in Hindi.");
+	writeFileSync(join(notes, "old.md"), "An old note.");
+	// The index is not part of the name: two files that differ only in it share a section, in their order.
+	writeFileSync(join(notes, "2-goals.md"), "Ship it.");
+	writeFileSync(join(notes, "1-goals.md"), "Build it.");
+	assert.equal((await agentx(project, ["chat", "-p", "first"])).status, 0);
+	writeFileSync(join(notes, "Owner Prefs.md"), "Answer in English.");
+	rmSync(join(notes, "old.md"));
+	renameSync(join(notes, "2-goals.md"), join(notes, "5-goals.md"));
+	const run = await agentx(project, ["chat", "-p", "second"]);
+	assert.equal(run.status, 0, run.stderr);
+
+	const prompts = sessions(project)[0].entries.filter((entry) => entry.type === "message" && entry.message.role === "system").map((entry) => entry.message.sections);
+	assert.equal(prompts.length, 2);
+	assert.equal(prompts[0]["agentx-knowledge-old"], "<agentx-knowledge-old>\nAn old note.\n</agentx-knowledge-old>");
+	assert.equal(prompts[0]["agentx-knowledge-goals"], "<agentx-knowledge-goals>\nBuild it.\n\nShip it.\n</agentx-knowledge-goals>");
+	assert.ok(prompts[0]["agentx-core-tools"]);
+	assert.deepEqual(prompts[1], { "agentx-knowledge-owner-prefs": "<agentx-knowledge-owner-prefs>\nAnswer in English.\n</agentx-knowledge-owner-prefs>", "agentx-knowledge-old": null });
 });
 
 test("each thread keeps its sessions in a folder of its own, and opening the thread again goes on with its session", async (t) => {
@@ -686,7 +720,7 @@ test("an agent whose storage has no knowledge folder, as after a fresh clone, st
 	rmSync(join(project.agent, "storage", "knowledge"), { recursive: true });
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
-	assert.ok(!model.systemPrompts.at(-1).includes("# From storage/knowledge"));
+	assert.ok(!model.systemPrompts.at(-1).includes("<agentx-knowledge-"));
 });
 
 test("events show the machine's time, or the time zone that the agent's settings name", async (t) => {

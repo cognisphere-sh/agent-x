@@ -6,16 +6,17 @@ A schedule sends an agent an event at the times a cron pattern names. The develo
 
 ```json
 {
-	"daily-report": { "cron": "0 9 * * 1-5", "content": "Write the daily report.", "threadId": "reports", "catchUp": true }
+	"daily-report": { "cron": "0 9 * * 1-5", "content": "Write the daily report.", "threadId": "reports", "catchUp": true },
+	"monthly-invoices": { "cron": "0 8 1 * *", "threadId": "workflow.file-invoices", "metadata": { "month": "last" } }
 }
 ```
 
 | Key | Required | Meaning |
 |---|---|---|
 | `cron` | yes | Five fields, or six with seconds first, in the agent's `timezone` ([croner](https://github.com/hexagon/croner) patterns). |
-| `content` | yes | The event's text. |
+| `content` | yes, unless it runs a workflow | The event's text. A workflow's schedule without it sends empty text. |
 | `threadId` | no | A thread, or `workflow.<name>`. Without it, the routers pick. |
-| `metadata`, `isSilent` | no | As for any event; `source: schedule` is added. |
+| `metadata`, `isSilent` | no | As for any event; `source: schedule` is added. A workflow gets `metadata` as `event.metadata`, its parameters ([workflows](../../../agent-runtime/workflows/README.md#the-contract)). |
 | `isActive` | no | Default `true`; `false` pauses it. |
 | `fireOnce` | no | Fires at the next match, then never again until the entry changes. |
 | `catchUp` | no | Fires missed while `agentx serve` was down become one late fire. Otherwise they are skipped. |

@@ -28,7 +28,7 @@ my-project/ (created by init-project)
   agent-x/agents/<agent>/  one Pi agent = one directory
     .pi/                the agent's definition, its developer's alone and read-only to the agent; `agentx chat` and `agentx run` add agentx's Pi package
       settings.json mcp.json   Pi project config; agentx's own settings for the agent are under `agentx` in settings.json
-      system_prompt/*.md  the agent's prompt; follows the harness prompt and replaces Pi's default
+      system_prompt/*.md  the agent's prompt, a Pi section per file after the harness's; the harness's preamble replaces Pi's default
       skills/ extensions/ the agent's own, apart from the Pi package's; Pi loads them from here by default
       event_router.mjs  the developer's event router, asked after the agent's; a new agent's sends every event to main
       workflows.json workflows/   the developer's workflows, scripts that handle events without the model, and the scripts

@@ -150,7 +150,7 @@ function workflows(file, babysitterThread) {
 	);
 	file(
 		".pi/workflows/ok.mjs",
-		`export default async function (event, ctx) { console.log("params", event.content); process.chdir("/"); await ctx.send("note from ok", { threadId: "main" }); const loop = {}; loop.self = loop; return loop; }`,
+		`export default async function (event, ctx) { console.log("params", event.content, event.metadata.month); process.chdir("/"); await ctx.send("note from ok", { threadId: "main" }); const loop = {}; loop.self = loop; return loop; }`,
 	);
 	file(".pi/workflows/broken.mjs", `export default async function () { console.log("about to fail"); throw new Error("broken on purpose"); }`);
 	file(".pi/workflows/slow.mjs", `import { setTimeout } from "node:timers/promises"; export default async function () { await setTimeout(30_000); }`);
@@ -161,18 +161,21 @@ function workflows(file, babysitterThread) {
 	);
 }
 
-test("a workflow gets its event, logs its output, and is done without a report", async (t) => {
+test("a workflow gets its event, with its content and metadata as parameters, logs its output, and is done without a report", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	workflows(file);
-	const id = await send("--thread-id", "workflow.ok", '{"invoice": "4411"}');
+	const id = await send("--thread-id", "workflow.ok", "--meta", "month=january", '{"invoice": "4411"}');
+	// With its parameters in metadata alone, as a schedule may give them.
+	const bare = await send("--thread-id", "workflow.ok", "--meta", "month=march", "");
 	start();
-	await reach("done", id);
-	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "ok", `${id}.log`), "utf8"), 'params {"invoice": "4411"}\n');
+	await reach("done", id, bare);
+	const log = (eventId) => readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "ok", `${eventId}.log`), "utf8");
+	assert.deepEqual([log(id), log(bare)], ['params {"invoice": "4411"} january\n', "params  march\n"]);
 	const note = await until(() => events(project.agent).find((found) => found.content === "note from ok"));
 	// Delivered from the agent's outbox, as sent by the workflow from its babysitter thread, main, which the receiving thread would answer.
 	assert.deepEqual(note.metadata, { source: "workflow.ok", "agentX-FromAgent": "main", "agentX-FromThread": "main", "agentX-FromWorkflow": "ok" });
 	await reach("done", note.id);
-	assert.equal(events(project.agent).length, 2, "no report");
+	assert.equal(events(project.agent).length, 4, "no report");
 });
 
 test("a failed run is failed once and reported to main with its log, and a run past its time is killed", async (t) => {

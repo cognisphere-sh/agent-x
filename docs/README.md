@@ -34,7 +34,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D66**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D74**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -98,6 +98,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D70](architecture/coordinator-runtime/README.md#d70) | Private routes need the API token; a public route checks its caller itself; people sign in to the web app | coordinator-runtime |
 | [D71](architecture/coordinator-runtime/services/composio/README.md#d71) | One Composio webhook for the project, which finds the agent by its Composio user id | coordinator-runtime/services/composio |
 | [D72](architecture/coordinator-runtime/services/telegram/README.md#d72) | Telegram messages come in through a service; the agent answers with Composio's Telegram tools | coordinator-runtime/services/telegram |
+| [D73](architecture/agent-runtime/pi/pi-package/README.md#d73) | Each prompt file is a section of the system prompt of its own | agent-runtime/pi/pi-package |
 
 ## User guides
 

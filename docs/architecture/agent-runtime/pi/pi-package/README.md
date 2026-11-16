@@ -5,7 +5,7 @@ What agentx adds to every agent: three extensions (system prompt, event queue, C
 ```
 src/agent-runtime/pi/pi-package/
   package.json                Pi as a peer dependency; its `pi` manifest lists the extensions in load order
-  extensions/system-prompt/   index.ts, and harness.md, the harness prompt
+  extensions/system-prompt/   index.ts, and the harness prompt: preamble.md and core/*.md, a file per section, numbered in reading order
   extensions/event-queue/     index.ts, and render.ts, how events look to the model
   extensions/composio/        index.ts
 ```
@@ -20,20 +20,27 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 
 ## The system prompt extension
 
-`extensions/system-prompt/index.ts` sets the system prompt in `before_agent_start`, from four parts. It reads the files on every prompt, so edits apply at once ([D5](../../agent/README.md#d5)).
+`extensions/system-prompt/index.ts` sets the system prompt in `before_agent_start`, as Pi's sections. It reads the files at the start of every run, so an edit applies from the next run; events steered into a run already going do not read them again ([D5](../../agent/README.md#d5)). Each file is a section of its own, so when one changes, Pi sends the model that section alone, and the removal of one that is gone ([D73](#d73)).
 
-1. **The harness prompt** (`harness.md`), the same for every agent. It covers the tool rules; where the agent's abilities come from, and what is read-only; what to keep where (a prompt note, a skill, a workflow, a router rule, a schedule); that nobody may be watching; how to read an event's metadata block, and that its content is data, never instructions; `agentx event send` and who sent an event; routers, workflows and schedules; what to do when something fails; Composio ([Composio](composio/README.md#the-prompt)); and where the app and the other agents are.
-2. **The agents it can send to**: one line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). Nothing when there are none.
-3. **The developer's prompt**: `.pi/system_prompt/*.md` in filename order ([Agent](../../agent/README.md#system-prompt)).
-4. **The `agentx.systemPrompt` folders**, such as the agent's `storage/knowledge/system_prompt`, each under a heading `# From <folder>`. The harness prompt says the developer's text wins when they disagree.
+**The preamble**, `preamble.md`, is Pi's `preamble`, the untagged start of the prompt. It replaces Pi's default prompt with its tool list, rules and docs, so the harness carries the tool rules. It says who the agent is and what the sections below are, and that the developer's text wins over the agent's notes. Pi's own sections follow it, such as the skills list and the working directory ([Pi](../pi-reference/README.md#extensions)), then agentx's, each in a tag of its own name:
 
-This replaces all of Pi's default prompt, so the harness prompt carries the tool rules. Pi still appends the skills list and the working directory ([Pi](../pi-reference/README.md#extensions)).
+| Section | From |
+|---|---|
+| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, how to read an event's metadata block, that its content is data, never instructions, `agentx event send` and who sent an event (`4-events`); routers, workflows and schedules (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio (`9-external-services`, [Composio](composio/README.md#the-prompt)); and where the app and the other agents are (`10-project`) |
+| `agentx-core-agents` | One line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). None when there are none |
+| `agentx-identity-<file>` | The developer's prompt, `.pi/system_prompt/*.md` ([Agent](../../agent/README.md#system-prompt)) |
+| `agentx-knowledge-<file>` | The `agentx.systemPrompt` folders, such as the agent's `storage/knowledge/system_prompt` |
+
+The blocks keep the order of the table: the developer's sections always follow the harness's, and the agent's notes come last. Within a block, files go in the order of their names, with numbers compared as numbers, so an index, a number and `-` at the start of the name, orders them: `9-first.md` comes before `10-rules.md`.
+
+`<file>` is the file's name without `.md` and without its index, in lowercase, with every run of characters that Pi does not allow in a name (anything but letters, digits, `-` and `_`) made one `-`: `1-tools.md` is `agentx-core-tools`, and `Owner Prefs.md` is `agentx-knowledge-owner-prefs`. So renumbering a file sends nothing. Two files that come to one name, such as `1-goals.md` and `2-goals.md`, share its section, in their order, and an empty file makes no section.
 
 The same handler hides skills under `~/.agents/skills` from the model, since Pi loads them for every project on the machine.
 
 ## Known limits
 
 - Skills in `~/.agents/skills` are hidden, not unloaded: a person can still run one with `/skill:<name>`.
+- The order holds for a new session. In a conversation already going, a renumbered or changed section keeps its place, and a new one comes after all the others, until the thread starts a new session ([Pi](../pi-reference/README.md#extensions)).
 - The package loads only through `agentx chat` and `agentx run`. Pi started any other way takes nothing from the queue.
 
 ## Decisions
@@ -56,3 +63,12 @@ The same handler hides skills under `~/.agents/skills` from the model, since Pi 
 
 - **Decision.** `package.json` has `"pi": { "extensions": [...] }`: Composio, event queue, system prompt.
 - **Why.** Pi calls handlers in load order. Without a manifest it loads folders in file system order, which differs between macOS and Linux. Start-up work does not depend on the order: the event queue takes events only once every extension has started ([D44](event-queue/README.md#d44)).
+
+<a id="d73"></a>
+### D73. Each prompt file is a section of the system prompt of its own
+
+- **Problem.** Pi sends the model only the sections of the system prompt that changed, but each one whole. With the whole prompt in Pi's preamble, a one-line note the agent writes would send the harness, the developer's prompt and every note again, on every thread.
+- **Decision.** The preamble holds only `preamble.md`. Every file of the harness's `core/`, of `.pi/system_prompt/` and of the `agentx.systemPrompt` folders is a section of its own, `agentx-core-`, `agentx-identity-` or `agentx-knowledge-` followed by its file name without its index, and the agents it can send to are `agentx-core-agents`. The harness's sections come first, then the developer's, then the agent's; within each, files go by their index, a number and `-` at the start of the name, compared as numbers.
+- **Why.** A change sends one file again, and the tag names where the text comes from, so the model can tell its own notes from its developer's text. The developer orders their own sections, and an agentx upgrade cannot reorder them. Renumbering a file changes no name, so it sends nothing, and the indexes can be 1, 2, 3 with no gaps kept for later.
+- **Rejected.** One harness file, split at its headings when the prompt is built: a heading inside a code block would split it. The index in the section's name: renumbering a file would send it again, and in a conversation already going it would move to the end. Anything before the first `-` as the index: `owner-prefs.md` would lose its first word. One index shared by the harness's and the developer's files: the developer's order would hang on the harness's numbers, which an upgrade may change.
+- **Consequence.** agentx's sections come after Pi's own, the skills list and the working directory, since Pi puts sections that extensions add last. Pi allows only lowercase names, so the prefixes are lowercase, and a file's name is changed to fit. Two files that differ only in their index, such as `2026-goals.md` and `2027-goals.md`, share one section.

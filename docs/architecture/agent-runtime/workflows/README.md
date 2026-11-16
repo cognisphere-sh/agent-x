@@ -38,12 +38,12 @@ The script's default export takes the event and a context. Its types come with t
 ```js
 /** @type {import("agent-x").Workflow} */
 export default async function run(event, ctx) {
-	const { invoice } = JSON.parse(event.content); // the content is the workflow's input
+	const { invoice } = JSON.parse(event.content); // the content and event.metadata are the workflow's input
 	await ctx.send(`Filed invoice ${invoice}.`, { threadId: "main" });
 }
 ```
 
-- `event` is `{ id, content, metadata, createdAt }`. Its files are in its inbox folder, and the content's last line names them.
+- `event` is `{ id, content, metadata, createdAt }`. Its content and metadata are the workflow's parameters: what a sender gives with `--meta` or `metadata`, or a schedule in its `metadata`, is in `event.metadata`, with facts such as `source`. Its files are in its inbox folder, and the content's last line names them.
 - `ctx.send(content, { threadId, agent, key, metadata, files })` sends an event through `sendEvent`, into the agent's outbox ([Events](../events/README.md#sending-and-delivering)), with `source: workflow.<name>`. `files` are paths from the agent directory. It goes out from the babysitter thread, as the workflow: a refusal or an answer then reaches the babysitter thread, not the workflow's own thread, which would run it.
 - Returning means the run worked; throwing means it failed.
 - It runs in a child process with the agent's environment ([functions](../functions/README.md)).

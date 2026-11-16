@@ -51,5 +51,5 @@ export interface WorkflowContext {
 	send(content: string, options?: SendOptions): Promise<string>;
 }
 
-/** The default export of a workflow's script. Returning means success, throwing means failure. The event's content is its parameters. */
+/** The default export of a workflow's script. Returning means success, throwing means failure. The event's content and metadata are its parameters. */
 export type Workflow = (event: Event, ctx: WorkflowContext) => void | Promise<void>;

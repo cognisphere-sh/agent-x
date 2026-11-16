@@ -79,7 +79,7 @@ export default async function run(event, ctx) {
 }
 ```
 
-Run it by hand with `agentx event deliver --thread-id workflow.file-invoice '{"invoice": "4411"}'`, or let a router send events to it.
+Run it by hand with `agentx event deliver --thread-id workflow.file-invoice '{"invoice": "4411"}'`, or let a router or a [schedule](customize_an_agent.md#schedules) send events to it. Its parameters are the event's content and metadata: `--meta month=last` arrives as `event.metadata.month`.
 
 - Returning means it worked; throwing means it failed. It may take up to `timeoutSeconds`, 600 by default.
 - What it prints goes to `storage/workspace/workflow-logs/<workflow>/<event id>.log`.
