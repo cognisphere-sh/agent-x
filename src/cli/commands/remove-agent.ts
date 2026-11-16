@@ -21,8 +21,11 @@ export async function removeAgent(cwd: string, args: string[]): Promise<void> {
 	const config = projectConfig(agentX);
 	const listed = Object.hasOwn(config.agents, name);
 	if (!listed && !existsSync(root) && !existsSync(storage)) throw new Error(`This project has no agent "${name}".`);
-	// A heartbeat newer than three beats means the agent is running.
-	if (Date.now() - lastBeat(storage) < 3 * heartbeatMs) throw new Error(`Agent "${name}" is running. Stop agentx serve, or its agentx run, first.`);
+	// A heartbeat newer than three beats means the agent is running. Checked again after the question, which may wait a long time.
+	const refuseIfRunning = () => {
+		if (Date.now() - lastBeat(storage) < 3 * heartbeatMs) throw new Error(`Agent "${name}" is running. Stop agentx serve, or its agentx run, first.`);
+	};
+	refuseIfRunning();
 	const what = [...[root, storage].filter((path) => existsSync(path)), ...(listed ? [`its entry in ${configFile(agentX)}`] : [])].map((line) => `  ${line}`).join("\n");
 	if (!values.yes) {
 		console.log(`Removing agent "${name}" deletes, with its sessions and what it learned:\n${what}`);
@@ -30,6 +33,7 @@ export async function removeAgent(cwd: string, args: string[]): Promise<void> {
 			console.log("Nothing deleted.");
 			return;
 		}
+		refuseIfRunning();
 	}
 	// The folder's storage is a link, which is removed, not followed; the state it leads to goes next.
 	rmSync(root, { recursive: true, force: true });

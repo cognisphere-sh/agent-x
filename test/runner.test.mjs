@@ -597,9 +597,9 @@ test("remove-agent deletes an agent's folder, its state and its entry, and takes
 	assert.deepEqual(config().agents, { main: { description: "", canSendTo: [] } });
 	assert.match((await remove("--yes")).stderr, /This project has no agent "b"/);
 
-	// --yes asks nothing.
+	// --yes asks nothing; in agent-x/.
 	addAgent(project, "b");
-	assert.match((await remove("--yes")).stdout, /^Removed agent "b"/);
+	assert.match((await agentx({ agent: join(root, "agent-x"), env: project.env }, ["remove-agent", "b", "--yes"])).stdout, /^Removed agent "b"/);
 	assert.equal(existsSync(b), false);
 	// The other agent and its state are untouched.
 	assert.ok(existsSync(join(project.agent, "storage", "knowledge")));
