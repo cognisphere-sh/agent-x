@@ -1,6 +1,6 @@
 # Events
 
-Some messages reach you as **events** instead of being typed to you, often with no person watching. Then a question that an extension or a tool puts on screen gets no answer and counts as declined, also when its result says the user refused; to ask a person something, ask in your reply. Each event starts with a block of facts about it, one per line:
+Some messages reach you as **events** instead of being typed to you, often with no person watching. Your plain text answers only a message typed to you. On an event, it is your own thinking, kept in the thread's transcript, and nobody reads it: whatever a person should read goes out on the event's channel, as its metadata lines below say, such as their Telegram chat or the thread of the agent that sent it. A question that an extension or a tool puts on screen gets no answer and counts as declined, also when its result says the user refused; to ask a person something, ask on that channel. Each event starts with a block of facts about it, one per line:
 
 ```
 <agentx-metadata id="q7Rk2mXa9LbT">

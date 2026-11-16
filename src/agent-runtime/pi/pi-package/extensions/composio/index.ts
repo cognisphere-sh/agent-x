@@ -19,12 +19,19 @@ const defaults = {
 	workbench: { enable: false },
 };
 
-/** The session policy: agentx's defaults, with what the agent's settings give in their place, key by key also inside an object, so `{ "manage_connections": { "enable": false } }` keeps the rest of that default. */
+/** The session policy: agentx's defaults, with what the agent's settings give in their place, key by key also inside an object, so `{ "manage_connections": { "enable": false } }` keeps the rest of that default; `"*"` in `toolkits.enable` enables every toolkit. */
 function policy(session: Record<string, unknown> = {}): Record<string, unknown> {
 	const merged: Record<string, unknown> = { ...defaults, ...session };
 	for (const [name, value] of Object.entries(defaults)) {
 		const given = session[name];
 		if (typeof given === "object" && given !== null && !Array.isArray(given)) merged[name] = { ...value, ...given };
+	}
+	// Composio knows no "*"; it allows every toolkit when the policy has no `enable` list. The rest of `toolkits`, such as `disable`, still goes.
+	const toolkits = { ...(session.toolkits as Record<string, unknown> | undefined) };
+	if (Array.isArray(toolkits.enable) && toolkits.enable.includes("*")) {
+		delete toolkits.enable;
+		if (Object.keys(toolkits).length > 0) merged.toolkits = toolkits;
+		else delete merged.toolkits;
 	}
 	return merged;
 }

@@ -33,14 +33,14 @@ A tool runs only when the session's policy allows its toolkit and the user id ha
 ```
 
 - `userId` is the agent's identity in Composio ([D38](#d38)). `init-agent` writes `<agent>@<project>`. It never changes, also when the agent is renamed.
-- `session` is the body of Composio's request that creates a session, in Composio's names ([configuring sessions](https://docs.composio.dev/docs/configuring-sessions)). It goes over agentx's defaults key by key, also inside an object.
+- `session` is the body of Composio's request that creates a session, in Composio's names ([configuring sessions](https://docs.composio.dev/docs/configuring-sessions)), with one addition of agentx's: `"*"` in `toolkits.enable` ([D76](#d76)). It goes over agentx's defaults key by key, also inside an object.
 
 | Key | agentx's default | Why |
 |---|---|---|
 | `manage_connections` | `{ "enable": true, "enable_connection_removal": false }` | The agent may ask for connections, but may not delete an account. |
 | `workbench` | `{ "enable": false }` | No remote sandbox: the agent has its own shell. |
 
-`toolkits` has no default in agentx: without it, Composio allows every toolkit in its catalog. The [agent template](../../../agent/README.md#pisettingsjson) enables eight, the services an agent most often needs ([D76](#d76)). A person approving the Connect Link gates each account.
+`toolkits` has no default in agentx: without it, Composio allows every toolkit in its catalog. `"toolkits": { "enable": ["*"] }` says the same in the settings: the extension sends no `enable` list, and keeps the rest of `toolkits`, such as `disable`. The [agent template](../../../agent/README.md#pisettingsjson) enables eight, the services an agent most often needs ([D76](#d76)). A person approving the Connect Link gates each account.
 
 A developer limits the agent with `toolkits.enable` (only these toolkits), `toolkits.disable` (all but these), `manage_connections.enable: false` (no new connections; the agent sends the person to its developer), or `connected_accounts` (pins the account per toolkit).
 
@@ -110,6 +110,6 @@ Composio's tool descriptions already say how to use them. The harness prompt's "
 ### D76. The agent's settings name its toolkits; agentx's code names none
 
 - **Problem.** Which services may an agent use when its developer has not chosen?
-- **Decision.** The extension sends no `toolkits` of its own, so Composio allows every toolkit. The agent template's `.pi/settings.json` enables eight common ones.
-- **Why.** Which services an agent may use is its developer's choice, and the agent directory is where a developer's choices live. A developer reads the list in the agent's settings and edits it there.
+- **Decision.** The extension sends no `toolkits` of its own, so Composio allows every toolkit. The agent template's `.pi/settings.json` enables eight common ones. `"*"` in `toolkits.enable` enables every toolkit; Composio has no such value, so the extension leaves the `enable` list out.
+- **Why.** Which services an agent may use is its developer's choice, and the agent directory is where a developer's choices live. A developer reads the list in the agent's settings and edits it there, and `"*"` says "all of them" there instead of by a missing key.
 - **Consequence.** An agent whose settings name no toolkits may use the whole catalog; a person approving each Connect Link still gates each account.

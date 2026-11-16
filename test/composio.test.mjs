@@ -75,8 +75,8 @@ test("a thread keeps its Composio session, and gets a new one when the settings 
 	assert.equal(composio.created.length, 1);
 
 	// The agent's own policy goes to Composio, over agentx's defaults.
-	// A key it gives replaces agentx's, also inside an object. Without `toolkits`, none is sent, so Composio allows every toolkit.
-	setSession(project, { manage_connections: { enable: false }, tags: { enabled: ["readOnlyHint"] } });
+	// A key it gives replaces agentx's, also inside an object. With "*" among the enabled toolkits, no `toolkits` is sent, so Composio allows every toolkit.
+	setSession(project, { manage_connections: { enable: false }, tags: { enabled: ["readOnlyHint"] }, toolkits: { enable: ["gmail", "*"] } });
 	await run();
 	assert.equal(composio.created.length, 2);
 	assert.deepEqual(composio.created[1], {

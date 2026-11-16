@@ -83,7 +83,7 @@ A new agent's settings enable eight services: Gmail, Google Calendar, Drive, She
 }
 ```
 
-`toolkits.enable` lists the services (Composio's slugs, such as `github` or `slack`); `manage_connections.enable: false` stops the agent from asking for connections. A change applies from each thread's next start. Details: [Composio](../architecture/agent-runtime/pi/pi-package/composio/README.md).
+`toolkits.enable` lists the services (Composio's slugs, such as `github` or `slack`), or `["*"]` for all of them; `manage_connections.enable: false` stops the agent from asking for connections. A change applies from each thread's next start. Details: [Composio](../architecture/agent-runtime/pi/pi-package/composio/README.md).
 
 ## Packages
 

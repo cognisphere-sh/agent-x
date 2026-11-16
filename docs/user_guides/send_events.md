@@ -118,7 +118,7 @@ The export is failing again
 
 The `agentX-` lines come from agentx; the others are your facts. Times use the machine's time zone, unless the agent's settings name one ([customize an agent](customize_an_agent.md#time-zone)).
 
-Nobody may be watching when an event runs, so the agent treats an on-screen question from a tool as declined, and asks in its reply instead.
+Nobody may be watching when an event runs, so the agent answers and asks on the event's channel, such as the Telegram chat it came from, and treats an on-screen question from a tool as declined.
 
 ## The answer
 
