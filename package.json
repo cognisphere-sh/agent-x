@@ -5,7 +5,8 @@
 	"type": "module",
 	"bin": {
 		"agentx": "dist/cli/agentx.js",
-		"agent-x": "dist/cli/agentx.js"
+		"agent-x": "dist/cli/agentx.js",
+		"agentx-browser": "dist/agent-runtime/browser/browser-command.js"
 	},
 	"types": "dist/index.d.ts",
 	"files": [
@@ -16,12 +17,13 @@
 		"templates"
 	],
 	"scripts": {
-		"build": "tsc && node -e \"require('node:fs').chmodSync('dist/cli/agentx.js', 0o755)\"",
+		"build": "tsc && node -e \"for (const bin of ['dist/cli/agentx.js', 'dist/agent-runtime/browser/browser-command.js']) require('node:fs').chmodSync(bin, 0o755)\"",
 		"check": "tsc --noEmit",
 		"test": "pnpm run build && node --test \"test/*.test.mjs\""
 	},
 	"dependencies": {
 		"@earendil-works/pi-coding-agent": "1.5.2",
+		"agent-browser": "0.43.0",
 		"croner": "11.0.0"
 	},
 	"devDependencies": {

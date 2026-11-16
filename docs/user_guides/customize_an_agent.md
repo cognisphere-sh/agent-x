@@ -8,7 +8,7 @@ Add or edit `.md` files in `.pi/system_prompt/`. Each file is a section of the p
 
 ## Skills
 
-Add `.pi/skills/<skill-name>/SKILL.md`:
+Every agent has agentx's own skills too, such as its [browser](give_an_agent_a_browser.md). Add one of the agent's own as `.pi/skills/<skill-name>/SKILL.md`:
 
 ```markdown
 ---

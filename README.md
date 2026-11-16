@@ -26,7 +26,8 @@ src/
     events/               The queue (SQLite), the inbox and outbox, sending, and the router loop.
     workflows/            Events handled by a script.
     functions/            Calls a router or workflow in a child process; their types; a workflow's Composio tools.
-    pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent.
+    pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent: extensions and skills.
+    browser/              The agent's browser: agentx-browser, agent-browser on its profiles.
   coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services, agentx's and the project's own.
     services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots).
 test/                     The queue, and end to end agentx run, agentx serve and Composio, against a fake model and a fake Composio.

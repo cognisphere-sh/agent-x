@@ -20,7 +20,7 @@ agent-x/agents/<name>/
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
     knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json
     sessions/<thread>/  the thread's Pi sessions
-    workspace/          the agent's files; workflow-logs/, router-logs/, inbox/, outbox/
+    workspace/          the agent's files; workflow-logs/, router-logs/, inbox/, outbox/, browser/ (its browser profiles)
     event_queue.db      the event queue
     heartbeat           the time agentx run last saw all its loops working
     schedule-state.json what the coordinator fired of each schedule

@@ -1,16 +1,17 @@
 # Pi package
 
-What agentx adds to every agent: three extensions (system prompt, event queue, Composio) and the harness prompt. It ships inside the `agent-x` npm package as `src/agent-runtime/pi/pi-package/`, so it is the same for every agent and apart from the agent's own files ([D11](#d11)).
+What agentx adds to every agent: three extensions (system prompt, event queue, Composio), the harness prompt, and its skills. It ships inside the `agent-x` npm package as `src/agent-runtime/pi/pi-package/`, so it is the same for every agent and apart from the agent's own files ([D11](#d11)).
 
 ```
 src/agent-runtime/pi/pi-package/
-  package.json                Pi as a peer dependency; its `pi` manifest lists the extensions in load order
+  package.json                Pi as a peer dependency; its `pi` manifest lists the extensions in load order, and the skills folder
   extensions/system-prompt/   index.ts, and the harness prompt: preamble.md and core/*.md, a file per section, numbered in reading order
   extensions/event-queue/     index.ts, and render.ts, how events look to the model
   extensions/composio/        index.ts, and policy.ts, the policy of the agent's Composio sessions, which its workflows use too
+  skills/browser/             SKILL.md: the agent's browser, with agentx-browser
 ```
 
-Pi loads the extensions the manifest lists, in that order ([D42](#d42)). The other two have their own docs: [event queue](event-queue/README.md), [Composio](composio/README.md). Something new, an extension, skill or prompt template, must be listed in the manifest too.
+Pi loads the extensions the manifest lists, in that order, and the skills in `skills/` ([D42](#d42)). The other two have their own docs: [event queue](event-queue/README.md), [Composio](composio/README.md). Something new, an extension, skill or prompt template, must be listed in the manifest too.
 
 ## Loading
 
@@ -26,7 +27,7 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 
 | Section | From |
 |---|---|
-| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send` and who sent an event (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio (`9-external-services`, [Composio](composio/README.md#the-prompt)); and where the app and the other agents are (`10-project`) |
+| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send` and who sent an event (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio, the main way into external services, before the browser (`9-external-services`, [Composio](composio/README.md#the-prompt)); and where the app and the other agents are (`10-project`) |
 | `agentx-core-agents` | One line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). None when there are none |
 | `agentx-identity-<file>` | The developer's prompt, `.pi/system_prompt/*.md` ([Agent](../../agent/README.md#system-prompt)) |
 | `agentx-knowledge-<file>` | The `agentx.systemPrompt` folders, such as the agent's `storage/knowledge/system_prompt` |
@@ -36,6 +37,14 @@ The blocks keep the order of the table: the developer's sections always follow t
 `<file>` is the file's name without `.md` and without its index, in lowercase, with every run of characters that Pi does not allow in a name (anything but letters, digits, `-` and `_`) made one `-`: `1-tools.md` is `agentx-core-tools`, and `Owner Prefs.md` is `agentx-knowledge-owner-prefs`. So renumbering a file sends nothing. Two files that come to one name, such as `1-goals.md` and `2-goals.md`, share its section, in their order, and an empty file makes no section.
 
 The same handler hides skills under `~/.agents/skills` from the model, since Pi loads them for every project on the machine.
+
+## Skills
+
+Each folder of `skills/` with a `SKILL.md` is a skill of every agent. Pi lists its name and description in the system prompt beside the agent's own skills, and the model reads the file when a task needs it.
+
+| Skill | Teaches |
+|---|---|
+| `browser` | The agent's [browser](../../browser/README.md), for a task that Composio, a command line tool or another tool cannot do, or that the person asks a browser for: `agentx-browser` and agent-browser's own guide, and profiles |
 
 ## Known limits
 
@@ -61,7 +70,7 @@ The same handler hides skills under `~/.agents/skills` from the model, since Pi 
 <a id="d42"></a>
 ### D42. The package's manifest lists its extensions in the order they load
 
-- **Decision.** `package.json` has `"pi": { "extensions": [...] }`: Composio, event queue, system prompt.
+- **Decision.** `package.json` has `"pi": { "extensions": [...], "skills": ["skills"] }`: Composio, event queue, system prompt, then the skills folder, which a manifest must list too, since Pi then loads only what it lists.
 - **Why.** Pi calls handlers in load order. Without a manifest it loads folders in file system order, which differs between macOS and Linux. Start-up work does not depend on the order: the event queue takes events only once every extension has started ([D44](event-queue/README.md#d44)).
 
 <a id="d73"></a>

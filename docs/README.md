@@ -26,6 +26,7 @@ New here: [quick start](user_guides/quick_start.md).
 | [agent-runtime/pi/pi-package/event-queue](architecture/agent-runtime/pi/pi-package/event-queue/README.md) | Handing a thread's events to Pi |
 | [agent-runtime/pi/pi-package/composio](architecture/agent-runtime/pi/pi-package/composio/README.md) | Access to external services through Composio |
 | [agent-runtime/pi/pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) | Pi behavior agentx relies on |
+| [agent-runtime/browser](architecture/agent-runtime/browser/README.md) | The agent's browser: `agentx-browser` and its profiles |
 | [coordinator-runtime](architecture/coordinator-runtime/README.md) | `agentx serve`: runs every agent and the services, reports health, serves the services' requests |
 | [coordinator-runtime/services/relay](architecture/coordinator-runtime/services/relay/README.md) | Core service: delivers the events agents send, from outboxes into inboxes |
 | [coordinator-runtime/services/scheduler](architecture/coordinator-runtime/services/scheduler/README.md) | Core service: fires each agent's schedules |
@@ -103,6 +104,8 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D75](architecture/coordinator-runtime/README.md#d75) | A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process | coordinator-runtime |
 | [D76](architecture/agent-runtime/pi/pi-package/composio/README.md#d76) | The agent's settings name its toolkits; agentx's code names none | agent-runtime/pi/pi-package/composio |
 | [D77](architecture/coordinator-runtime/services/telegram/README.md#d77) | The Telegram service connects each bot in Composio with the coordinator's own Composio key | coordinator-runtime/services/telegram |
+| [D78](architecture/agent-runtime/browser/README.md#d78) | An agent's browser is the agent-browser agentx pins, run with `agentx-browser` | agent-runtime/browser |
+| [D79](architecture/agent-runtime/browser/README.md#d79) | A profile is a Chrome profile in the agent's storage, and one browser | agent-runtime/browser |
 | [D82](architecture/agent-runtime/functions/README.md#d82) | A workflow runs Composio tools with `ctx.composio`, in a session of its run with the agent's policy | agent-runtime/functions |
 
 ## User guides
@@ -114,6 +117,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [send_events.md](user_guides/send_events.md) | Run an agent, give it events and files, route them, write workflows |
 | [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram |
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
+| [give_an_agent_a_browser.md](user_guides/give_an_agent_a_browser.md) | The agent's browser: setting it up, and its profiles |
 | [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |
 | [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
 

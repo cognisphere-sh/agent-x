@@ -683,6 +683,8 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 	].map((part) => prompt.indexOf(part));
 	assert.deepEqual(places, [...places].sort((a, b) => a - b), prompt);
 	assert.ok(places[0] >= 0, prompt);
+	// agentx's own skills, from its Pi package, are listed beside the agent's.
+	assert.match(prompt, /Use a web browser that stays signed in\./);
 });
 
 test("when a prompt file changes, the session records only its section again, only the removal of a file that is gone, and nothing for a file renumbered", async (t) => {

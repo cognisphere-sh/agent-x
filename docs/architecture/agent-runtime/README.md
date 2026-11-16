@@ -29,6 +29,9 @@ src/agent-runtime/
     pi-launch.ts         how Pi is started
     pi-runner.ts         class PiRunner: a Pi process per thread with events
     pi-package/          what Pi loads into every agent
+  browser/
+    agent-browser.ts     runBrowser: agent-browser on one of the agent's profiles
+    browser-command.ts   agentx-browser, the agent's browser command
 ```
 
 | Module | Covers |
@@ -43,6 +46,7 @@ src/agent-runtime/
 | [pi/pi-package/event-queue](pi/pi-package/event-queue/README.md) | The extension that hands a thread's events to Pi |
 | [pi/pi-package/composio](pi/pi-package/composio/README.md) | Access to external services through Composio |
 | [pi/pi-reference](pi/pi-reference/README.md) | The Pi behavior all of this relies on |
+| [browser](browser/README.md) | The agent's browser: `agentx-browser` and its profiles |
 
 ## Open questions
 

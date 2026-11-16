@@ -6,6 +6,7 @@
 		"@earendil-works/pi-coding-agent": "*"
 	},
 	"pi": {
-		"extensions": ["extensions/composio/index.ts", "extensions/event-queue/index.ts", "extensions/system-prompt/index.ts"]
+		"extensions": ["extensions/composio/index.ts", "extensions/event-queue/index.ts", "extensions/system-prompt/index.ts"],
+		"skills": ["skills"]
 	}
 }

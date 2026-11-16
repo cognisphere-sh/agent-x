@@ -1,6 +1,7 @@
 allowBuilds:
   '@google/genai': false
   protobufjs: false
+  agent-browser: false
 minimumReleaseAgeExclude:
   - '@earendil-works/pi-agent-core@1.5.2'
   - '@earendil-works/pi-ai@1.5.2'

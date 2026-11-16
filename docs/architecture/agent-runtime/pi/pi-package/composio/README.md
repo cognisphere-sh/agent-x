@@ -62,7 +62,7 @@ Each call gives up after 10 seconds. The first event already sees the tools, bec
 
 ## The prompt
 
-Composio's tool descriptions already say how to use them. The harness prompt's "External services" section adds only what is agentx's: how to give a Connect Link; without `COMPOSIO_MANAGE_CONNECTIONS`, send the person to the developer; `[Session Restriction]` means only the developer can allow the service; never ask for secrets; use Composio only through the tools and, in a workflow, `ctx.composio`, never Composio's API with the key. The "Workflows" section says how a workflow uses `ctx.composio`: find the tool and its arguments with the meta tools first, and connect accounts from a thread, since a workflow has nobody to show a Connect Link to.
+Composio's tool descriptions already say how to use them. The harness prompt's "External services" section adds only what is agentx's: Composio is the agent's main way into external services, and the [browser](../../../browser/README.md) is for a task that Composio, a command line tool or another tool cannot do, or that the person asks a browser for; how to give a Connect Link; without `COMPOSIO_MANAGE_CONNECTIONS`, send the person to the developer; `[Session Restriction]` means only the developer can allow the service; never ask for secrets; use Composio only through the tools and, in a workflow, `ctx.composio`, never Composio's API with the key. The "Workflows" section says how a workflow uses `ctx.composio`: find the tool and its arguments with the meta tools first, and connect accounts from a thread, since a workflow has nobody to show a Connect Link to.
 
 ## The key
 
