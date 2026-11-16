@@ -7,7 +7,7 @@ src/agent-runtime/pi/pi-package/
   package.json                Pi as a peer dependency; its `pi` manifest lists the extensions in load order
   extensions/system-prompt/   index.ts, and the harness prompt: preamble.md and core/*.md, a file per section, numbered in reading order
   extensions/event-queue/     index.ts, and render.ts, how events look to the model
-  extensions/composio/        index.ts
+  extensions/composio/        index.ts, and policy.ts, the policy of the agent's Composio sessions, which its workflows use too
 ```
 
 Pi loads the extensions the manifest lists, in that order ([D42](#d42)). The other two have their own docs: [event queue](event-queue/README.md), [Composio](composio/README.md). Something new, an extension, skill or prompt template, must be listed in the manifest too.
@@ -26,7 +26,7 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 
 | Section | From |
 |---|---|
-| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send` and who sent an event (`4-events`); routers, workflows and schedules (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio (`9-external-services`, [Composio](composio/README.md#the-prompt)); and where the app and the other agents are (`10-project`) |
+| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send` and who sent an event (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio (`9-external-services`, [Composio](composio/README.md#the-prompt)); and where the app and the other agents are (`10-project`) |
 | `agentx-core-agents` | One line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). None when there are none |
 | `agentx-identity-<file>` | The developer's prompt, `.pi/system_prompt/*.md` ([Agent](../../agent/README.md#system-prompt)) |
 | `agentx-knowledge-<file>` | The `agentx.systemPrompt` folders, such as the agent's `storage/knowledge/system_prompt` |

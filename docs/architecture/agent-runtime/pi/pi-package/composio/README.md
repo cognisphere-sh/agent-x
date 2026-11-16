@@ -1,6 +1,6 @@
 # Composio
 
-Every agent gets [Composio](https://docs.composio.dev)'s tools, which act in external services (Gmail, GitHub, Slack and about a thousand more) through the agent's own connected accounts. The Composio extension (`extensions/composio/index.ts`) gives each thread a Composio session and hands its MCP server to Pi.
+Every agent gets [Composio](https://docs.composio.dev)'s tools, which act in external services (Gmail, GitHub, Slack and about a thousand more) through the agent's own connected accounts. The Composio extension (`extensions/composio/index.ts`) gives each thread a Composio session and hands its MCP server to Pi. The agent's workflows run the same tools with `ctx.composio`, in a session of their own with the same policy (`extensions/composio/policy.ts`, [functions](../../../functions/README.md#composio-in-a-workflow)).
 
 ## Composio in brief
 
@@ -62,7 +62,7 @@ Each call gives up after 10 seconds. The first event already sees the tools, bec
 
 ## The prompt
 
-Composio's tool descriptions already say how to use them. The harness prompt's "External services" section adds only what is agentx's: how to give a Connect Link; without `COMPOSIO_MANAGE_CONNECTIONS`, send the person to the developer; `[Session Restriction]` means only the developer can allow the service; never ask for secrets; never call Composio's API with the key.
+Composio's tool descriptions already say how to use them. The harness prompt's "External services" section adds only what is agentx's: how to give a Connect Link; without `COMPOSIO_MANAGE_CONNECTIONS`, send the person to the developer; `[Session Restriction]` means only the developer can allow the service; never ask for secrets; use Composio only through the tools and, in a workflow, `ctx.composio`, never Composio's API with the key. The "Workflows" section says how a workflow uses `ctx.composio`: find the tool and its arguments with the meta tools first, and connect accounts from a thread, since a workflow has nobody to show a Connect Link to.
 
 ## The key
 

@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import type { RouterContext, SendOptions, WorkflowContext } from "./contracts.js";
 import type { Job, Outcome } from "./function-call.js";
 import { sendEvent } from "../events/send-event.js";
+import { composioTool } from "./composio-tool.js";
 
 // The agent directory: function-call.ts starts this process in it, and the code may change directory.
 const agentRoot = process.cwd();
@@ -18,7 +19,9 @@ process.once("message", async (job: Job) => {
 		const module = await import(pathToFileURL(job.file).href);
 		if (typeof module.default !== "function") throw new Error(`${job.file} has no default export function.`);
 		const ctx: RouterContext | WorkflowContext =
-			job.kind === "router" ? { workflows: job.workflows } : { workflow: job.workflow, send: async (content, options) => send(job, content, options) };
+			job.kind === "router"
+				? { workflows: job.workflows }
+				: { workflow: job.workflow, send: async (content, options) => send(job, content, options), composio: (tool, args) => composioTool(agentRoot, tool, args) };
 		const result = await module.default(job.event, ctx);
 		// Only the router's answer is used, and a workflow's may not survive the trip: the channel carries JSON.
 		outcome = { result: job.kind === "router" ? (result ?? null) : null };

@@ -25,7 +25,7 @@ src/
     supervisor/           agentx run: three loops, their limits, stopping, and the agent's process the coordinator starts.
     events/               The queue (SQLite), the inbox and outbox, sending, and the router loop.
     workflows/            Events handled by a script.
-    functions/            Calls a router or workflow in a child process; their types.
+    functions/            Calls a router or workflow in a child process; their types; a workflow's Composio tools.
     pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent.
   coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services, agentx's and the project's own.
     services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots).

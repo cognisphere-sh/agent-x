@@ -1,4 +1,4 @@
-// A stand-in for Composio on 127.0.0.1: its session routes, and each session's MCP endpoint with two meta tools, so tests run real Pi sessions against it;
+// A stand-in for Composio on 127.0.0.1: its session routes, each session's execute route, and each session's MCP endpoint with two meta tools, so tests run real Pi sessions against it;
 // and the auth config and connected account routes the coordinator calls, which take only the coordinator's key.
 // The MCP endpoint answers JSON-RPC over HTTP POST with plain JSON, as the Streamable HTTP transport allows, and refuses GET, as Composio's does.
 
@@ -16,14 +16,15 @@ const results = {
 
 /**
  * Starts the fake on a free port. `env` is what a Pi process needs to use it. `created` collects the body of each session it creates,
- * `sessions` holds the ids of those it still has, `mcpKeys` collects the x-api-key of each MCP request. `delayMs` delays session routes; `refuse` makes them answer 401.
+ * `sessions` holds the ids of those it still has, `mcpKeys` collects the x-api-key of each MCP request. `executed` collects each tool a session's execute route ran,
+ * as `{ sessionId, tool, arguments }`: it answers the tool's slug and arguments as its data, and `FAILING_TOOL` fails. `delayMs` delays session routes; `refuse` makes them answer 401.
  * `authConfigs` and `accounts` hold the auth configs and connected accounts the coordinator's key made, an account with the bot token it was given as
  * `token`. `reset()` forgets all of that.
  */
 export async function startFakeComposio() {
 	const fake = {
 		reset() {
-			Object.assign(fake, { created: [], sessions: new Set(), mcpKeys: [], delayMs: 0, refuse: false, authConfigs: [], accounts: [] });
+			Object.assign(fake, { created: [], sessions: new Set(), mcpKeys: [], executed: [], delayMs: 0, refuse: false, authConfigs: [], accounts: [] });
 		},
 	};
 	fake.reset();
@@ -58,6 +59,13 @@ export async function startFakeComposio() {
 			}
 			const id = /\/api\/v3\.1\/tool_router\/session\/([\w-]+)$/.exec(path)?.[1];
 			if (request.method === "GET" && id && fake.sessions.has(id)) return send(200, session(id));
+			const executeIn = /\/api\/v3\.1\/tool_router\/session\/([\w-]+)\/execute$/.exec(path)?.[1];
+			if (request.method === "POST" && executeIn && fake.sessions.has(executeIn)) {
+				const { tool_slug, arguments: args } = JSON.parse(body);
+				fake.executed.push({ sessionId: executeIn, tool: tool_slug, arguments: args });
+				if (tool_slug === "FAILING_TOOL") return send(200, { result_type: "failed", data: {}, error: "the fake tool failed", log_id: "log_fake" });
+				return send(200, { result_type: "completed", data: { ran: tool_slug, arguments: args }, error: null, log_id: "log_fake" });
+			}
 			send(404, { error: { message: "Not found" } });
 		});
 	});

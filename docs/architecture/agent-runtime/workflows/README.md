@@ -48,6 +48,7 @@ export default run;
 
 - `event` is `{ id, content, metadata, createdAt }`. Its content and metadata are the workflow's parameters: what a sender gives with `--meta` or `metadata`, or a schedule in its `metadata`, is in `event.metadata`, with facts such as `source`. Its files are in its inbox folder, and the content's last line names them.
 - `ctx.send(content, { threadId, agent, key, metadata, files })` sends an event through `sendEvent`, into the agent's outbox ([Events](../events/README.md#sending-and-delivering)), with `source: workflow.<name>`. `files` are paths from the agent directory. It goes out from the babysitter thread, as the workflow: a refusal or an answer then reaches the babysitter thread, not the workflow's own thread, which would run it.
+- `ctx.composio(tool, args)` runs one Composio tool as the agent, with its accounts and policy, and resolves to the tool's data; it throws when the tool does not complete ([functions](../functions/README.md#composio-in-a-workflow)).
 - Returning means the run worked; throwing means it failed.
 - It runs in a child process with the agent's environment ([functions](../functions/README.md)).
 

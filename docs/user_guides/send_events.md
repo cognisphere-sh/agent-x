@@ -93,6 +93,7 @@ Run it by hand with `agentx event deliver --thread-id workflow.file-invoice '{"i
 - What it prints goes to `storage/workspace/workflow-logs/<workflow>/<event id>.log`.
 - A failed run is not run again. Its babysitter thread (`babysitterThread`, `main` by default) gets an event that says what failed and where the log is.
 - `ctx.send(text, { agent, threadId, key, metadata, files })` sends an event, as the agent's own sends go ([below](#when-the-agent-sends)), from the babysitter thread, with `source: workflow.<name>`.
+- `ctx.composio(tool, args)` runs one Composio tool as the agent, with its connected accounts and the toolkits its settings allow, and resolves to the tool's data, such as `await ctx.composio("TELEGRAM_SEND_MESSAGE", { chat_id, text })`. It throws when the tool fails or needs a person, so connect the agent's accounts before a workflow needs them ([functions](../architecture/agent-runtime/functions/README.md#composio-in-a-workflow)).
 
 ## When the agent sends
 

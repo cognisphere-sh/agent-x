@@ -1,4 +1,4 @@
-// End-to-end tests of the Composio extension: real Pi sessions in a scratch project, against a fake Composio and the fake model.
+// End-to-end tests of Composio: the extension in real Pi sessions, and workflows' ctx.composio under `agentx run`, in a scratch project, against a fake Composio and the fake model.
 
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -162,6 +162,53 @@ test("the project's agent-x/.env gives every agent its keys, and a variable alre
 	assert.equal((await agentx(project, ["chat", "--thread-id", "other", "-p", "hello"])).status, 0);
 	assert.equal(unavailable(before), "Composio tools are unavailable in this session: Composio could not be reached: fetch failed.");
 	assert.equal(composio.created.length, 1);
+});
+
+/** Gives the agent the developer's workflows `scripts`, by name, each the body of its default export, and runs each once under `agentx run`. Resolves to their events once all are settled. */
+async function runWorkflows(t, project, scripts) {
+	const listed = Object.fromEntries(Object.keys(scripts).map((name) => [name, { description: `The test's ${name}.`, script: `workflows/${name}.ts` }]));
+	writeFileSync(join(project.agent, ".pi", "workflows.json"), JSON.stringify(listed));
+	for (const [name, body] of Object.entries(scripts)) writeFileSync(join(project.agent, ".pi", "workflows", `${name}.ts`), `export default async function (event, ctx) {\n${body}\n}\n`);
+	const queue = new Queue(project.agent);
+	t.after(() => queue.close());
+	const ids = Object.keys(scripts).map((name) => queue.enqueue({ threadId: `workflow.${name}`, content: "" }));
+	const server = runner(project);
+	t.after(() => server.stop());
+	const settled = () => ids.map((id) => events(project.agent).find((event) => event.id === id));
+	await until(() => settled().every((event) => event.status === "done" || event.status === "failed"));
+	return settled();
+}
+
+test("a workflow runs Composio tools with ctx.composio, in one session per run made with the agent's user id and policy, and a tool that fails fails the run", async (t) => {
+	const project = setup();
+	setSession(project, { toolkits: { enable: ["gmail"] } });
+	const [mail, failing] = await runWorkflows(t, project, {
+		// Two calls at once, which share the run's session.
+		mail: `const results = await Promise.all([ctx.composio("GMAIL_SEND_EMAIL", { recipient_email: "a@example.com" }), ctx.composio("COMPOSIO_SEARCH_TOOLS")]);
+(await import("node:fs")).writeFileSync("storage/workspace/results.json", JSON.stringify(results));`,
+		failing: `await ctx.composio("FAILING_TOOL");`,
+	});
+
+	assert.equal(mail.status, "done", mail.error);
+	assert.deepEqual(JSON.parse(readFileSync(join(project.agent, "storage", "workspace", "results.json"), "utf8")), [
+		{ ran: "GMAIL_SEND_EMAIL", arguments: { recipient_email: "a@example.com" } },
+		{ ran: "COMPOSIO_SEARCH_TOOLS", arguments: {} },
+	]);
+	assert.deepEqual([failing.status, failing.error], ["failed", "Composio tool FAILING_TOOL failed: the fake tool failed (log log_fake)"]);
+	// A session per run, with the policy the agent's threads get.
+	const policy = { ...defaults, toolkits: { enable: ["gmail"] }, user_id: "main@project" };
+	assert.deepEqual(composio.created, [policy, policy]);
+	const sessionOf = (tool) => composio.executed.find((executed) => executed.tool === tool).sessionId;
+	assert.equal(composio.executed.length, 3);
+	assert.equal(sessionOf("GMAIL_SEND_EMAIL"), sessionOf("COMPOSIO_SEARCH_TOOLS"));
+	assert.notEqual(sessionOf("GMAIL_SEND_EMAIL"), sessionOf("FAILING_TOOL"));
+});
+
+test("without COMPOSIO_API_KEY, a workflow's ctx.composio fails the run and says why", async (t) => {
+	const project = setup(false);
+	const [run] = await runWorkflows(t, project, { mail: `await ctx.composio("GMAIL_SEND_EMAIL", {});` });
+	assert.deepEqual([run.status, run.error], ["failed", "Composio is not available: COMPOSIO_API_KEY is not set where the agent runs."]);
+	assert.equal(composio.created.length, 0);
 });
 
 test("a developer's extension that registers an MCP server after awaiting in session_start still has its tools in the first queued event", async (t) => {

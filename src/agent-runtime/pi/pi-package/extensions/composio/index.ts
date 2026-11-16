@@ -5,36 +5,13 @@
 // When anything is missing or fails, such as COMPOSIO_API_KEY, the session starts without Composio tools and the system prompt says why.
 
 import type { CustomEntry, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { policy } from "./policy.js";
 
 // The custom entry in the thread's Pi session that records its Composio session, and the system prompt section that says why Composio is unavailable.
 const customType = "agentx-composio";
 const section = "composio";
 // A session start waits for Composio; a Composio that does not answer must not hold the session.
 const timeoutMs = 10_000;
-
-// agentx's defaults for a session's policy: the agent may ask a person to connect accounts but may not delete one, and gets no remote sandbox,
-// because it has its own shell and workspace. No `toolkits`: Composio then allows every toolkit, and a new agent's template names a few.
-const defaults = {
-	manage_connections: { enable: true, enable_connection_removal: false },
-	workbench: { enable: false },
-};
-
-/** The session policy: agentx's defaults, with what the agent's settings give in their place, key by key also inside an object, so `{ "manage_connections": { "enable": false } }` keeps the rest of that default; `"*"` in `toolkits.enable` enables every toolkit. */
-function policy(session: Record<string, unknown> = {}): Record<string, unknown> {
-	const merged: Record<string, unknown> = { ...defaults, ...session };
-	for (const [name, value] of Object.entries(defaults)) {
-		const given = session[name];
-		if (typeof given === "object" && given !== null && !Array.isArray(given)) merged[name] = { ...value, ...given };
-	}
-	// Composio knows no "*"; it allows every toolkit when the policy has no `enable` list. The rest of `toolkits`, such as `disable`, still goes.
-	const toolkits = { ...(session.toolkits as Record<string, unknown> | undefined) };
-	if (Array.isArray(toolkits.enable) && toolkits.enable.includes("*")) {
-		delete toolkits.enable;
-		if (Object.keys(toolkits).length > 0) merged.toolkits = toolkits;
-		else delete merged.toolkits;
-	}
-	return merged;
-}
 
 interface Settings {
 	agentx?: { composio?: { userId?: string; session?: Record<string, unknown> } };

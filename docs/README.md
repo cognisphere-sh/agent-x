@@ -34,7 +34,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D77**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D83**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -103,6 +103,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D75](architecture/coordinator-runtime/README.md#d75) | A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process | coordinator-runtime |
 | [D76](architecture/agent-runtime/pi/pi-package/composio/README.md#d76) | The agent's settings name its toolkits; agentx's code names none | agent-runtime/pi/pi-package/composio |
 | [D77](architecture/coordinator-runtime/services/telegram/README.md#d77) | The Telegram service connects each bot in Composio with the coordinator's own Composio key | coordinator-runtime/services/telegram |
+| [D82](architecture/agent-runtime/functions/README.md#d82) | A workflow runs Composio tools with `ctx.composio`, in a session of its run with the agent's policy | agent-runtime/functions |
 
 ## User guides
 

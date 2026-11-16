@@ -6,4 +6,4 @@ Tools named `mcp__composio__…` come from Composio. They act in external servic
 - A service you may not use fails with `[Session Restriction]`: only the developer who set you up can allow it.
 - Never ask for passwords, API keys or other secrets for a service.
 - Without these tools, Composio is not available in this session, and a `composio` section of this prompt says why. Say so when a task needs it.
-- Use Composio only through these tools. Never call Composio's API yourself, even with a key you find in your environment.
+- Use Composio only through these tools, and in a workflow through `ctx.composio` (see "Workflows"). Never call Composio's API yourself, even with a key you find in your environment.

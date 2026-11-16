@@ -49,6 +49,11 @@ export interface WorkflowContext {
 	 * and reports one it cannot deliver on the workflow's babysitter thread, which gets the answers too.
 	 */
 	send(content: string, options?: SendOptions): Promise<string>;
+	/**
+	 * Runs one Composio tool, such as `GMAIL_SEND_EMAIL`, with its arguments, as the agent: its connected accounts and the policy its threads get. Resolves to the tool's data;
+	 * throws when Composio is not set up, or the tool fails or needs a person, such as an account to connect or an approval.
+	 */
+	composio(tool: string, args?: Record<string, unknown>): Promise<Record<string, unknown>>;
 }
 
 /** The default export of a workflow's script. Returning means success, throwing means failure. The event's content and metadata are its parameters. */

@@ -49,7 +49,7 @@ flowchart TD
   MGR -. "spawns agent-process" .-> SUP
   SUP --> ER["events/event-router"] & PR["pi/pi-runner"] & WR["workflows/workflow-runner"]
   ER & WR --> FN["functions/"]
-  FN --> SEND
+  FN --> SEND & PKG
   WR --> SEND
   PR --> LAUNCH
   PR -. "spawns Pi, which loads" .-> PKG["pi/pi-package"]
@@ -71,10 +71,10 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
 | Events | `src/agent-runtime/events/` | The queue (SQLite), the inbox and outbox (`mailbox.ts`), `sendEvent`, and the EventRouter loop, the only writer of new events to the queue | functions, workflows, storage | [events](architecture/agent-runtime/events/README.md) |
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |
-| Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types | agent env, send-event | [functions](architecture/agent-runtime/functions/README.md) |
+| Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types; a workflow's `ctx.composio` | agent env, send-event, Composio's policy | [functions](architecture/agent-runtime/functions/README.md) |
 | Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
 | Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio | queue, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
-| Composio | `pi-package/extensions/composio/` | Each agent's access to external services | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
+| Composio | `pi-package/extensions/composio/` | Each agent's access to external services, and the policy its workflows' sessions get too | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
 | Pi reference | | What agentx relies on in Pi | | [pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) |
 | Coordinator | `src/coordinator-runtime/` | `agentx serve`: an AgentManager per agent, the services, agentx's and the project's own from `agent-x/services/`, the API server with its routes to report and control the agents, and the services' routes under `/services/<name>/`; `deliverEvent`, the only code that writes an inbox | storage, project config, mailbox, workflows | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
 | Relay | `src/coordinator-runtime/services/relay/` | Core service: each agent's outbox into the inboxes it names, or a refusal back to the sending thread | service, deliverEvent, mailbox, project config | [relay](architecture/coordinator-runtime/services/relay/README.md) |
@@ -113,7 +113,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Built | Planned |
 |---|---|
 | CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `event send`, `event deliver` | `agentx upgrade` |
-| `agentx run`: router loop, Pi runner, workflows, heartbeat | Sandboxes |
+| `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Sandboxes |
 | `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | Composio's triggers, made for each agent by its service |
 | Pi package: harness prompt, event queue, Composio | The web app's use of the API: agent controls, events from people, answers back |
 | Each agent's state in `agent-x/storage/` | |
