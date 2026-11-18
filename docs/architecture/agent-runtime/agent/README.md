@@ -43,7 +43,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 	"extensions": [],
 	"skills": ["../storage/knowledge/skills"],
 	"prompts": [],
-	"packages": [],
+	"packages": ["npm:pi-web-access@0.48.0", "npm:pi-doc-reader@0.3.2"],
 	"agentx": {
 		"timezone": null,
 		"systemPrompt": ["../storage/knowledge/system_prompt"],
@@ -57,7 +57,13 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 ```
 
 - Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` by itself ([Pi](../pi/pi-reference/README.md#config-locations)). `extensions` and `skills` add more folders, resolved from `.pi/`.
-- `packages` takes Pi packages. Pi installs missing ones on start, into `.pi/npm/` and `.pi/git/`, which are gitignored.
+- `packages` takes Pi packages. Pi installs missing ones on start, into `.pi/npm/` and `.pi/git/`, which are gitignored. The template lists two, each at an exact version ([D83](#d83)):
+
+| Package | What it gives the agent |
+|---|---|
+| [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Web search and reading pages, PDFs and videos without a browser, with no key needed. Tools: `web_search`, `fetch_content`, `get_search_content`, `source_check` |
+| [`pi-doc-reader`](https://www.npmjs.com/package/pi-doc-reader) | `read` opens PDF, DOCX, XLSX and PPTX files |
+
 - `agentx` holds agentx's own settings for the agent ([D36](#d36)). The agent's `description` and `canSendTo` are in the project's [`agentx.json`](../../coordinator-runtime/README.md#d63).
 
 | Key | Meaning |
@@ -109,6 +115,8 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 - Knowledge is gitignored state, lost with the rest of `storage/`.
 - Whatever makes the agent write into its knowledge, an event included, lasts for every later session: its prompt text is read at the start of every run, and its router and workflows are code that runs.
 - `agentx chat mcp list` needs the project trusted once with `/trust` in an interactive session ([D6](#d6)).
+- The first session of an agent, and the first after a clone, installs the template's packages from npm: up to half a minute. Without the network, or with `PI_OFFLINE` set, Pi starts without them.
+- pi-web-access reads its search providers' keys from `agent-x/.pi/web-search.json`, shared by every agent of the project.
 
 ## Decisions
 
@@ -181,3 +189,11 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 - **Why.** Definition and state are apart: a deploy replaces one and keeps the other, and a server backs up one folder. Inside the agent nothing changes, in or out of a sandbox. The folder is inside `agent-x/`, so routers and workflows in `storage/knowledge/` find the project's packages.
 - **Rejected.** Paths that name `agent-x/storage/<agent>/` everywhere, which would differ inside a sandbox; a central folder outside `agent-x/`, which would lose the project's packages.
 - **Consequence.** Until sandboxes, `storage/..` holds every agent's state, one step up.
+
+<a id="d83"></a>
+### D83. A new agent lists Pi packages, at exact versions, in its own settings
+
+- **Problem.** Every agent needs to search and read the web, and read office documents and PDFs. A developer should still be able to change or drop each package.
+- **Decision.** The template's `.pi/settings.json` lists `pi-web-access` and `pi-doc-reader` in `packages`, each at an exact version. Pi installs them on the agent's first start.
+- **Why.** The settings file is the developer's ([D4](#d4)), so changing the versions or removing a line is enough to override them. Pi never updates an exact version, and on start installs it again when the installed one differs, so each session starts on the versions the settings name.
+- **Rejected.** Adding them to agentx's Pi package, which loads in every agent and which a developer cannot leave out. Listing them in the shared `agent-x/.pi/settings.json`, which is gitignored and written by Pi ([D17](#d17)).

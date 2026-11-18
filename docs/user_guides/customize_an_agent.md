@@ -93,6 +93,8 @@ Pi packages bundle extensions, skills, prompt templates and themes, from npm, gi
 "packages": ["npm:@example/pi-tools@1.0.0"]
 ```
 
+A new agent lists two: `pi-web-access`, which searches and reads the web, and `pi-doc-reader`, which lets `read` open PDF and office files ([what each gives](../architecture/agent-runtime/agent/README.md#pisettingsjson)). Change a version, or remove a line to leave a package out. Keys for more search providers go in `agent-x/.pi/web-search.json`.
+
 Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (gitignored). `agentx chat install -l <package> --approve` adds the entry for you; `--approve` is needed because Pi changes a project's packages only when it trusts the project. Without `-l`, the package goes to `agent-x/.pi`, which is not checked in and loads in every agent of the project.
 
 ## Workflows

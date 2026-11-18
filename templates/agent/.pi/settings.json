@@ -2,7 +2,7 @@
 	"extensions": [],
 	"skills": ["../storage/knowledge/skills"],
 	"prompts": [],
-	"packages": [],
+	"packages": ["npm:pi-web-access@0.48.0", "npm:pi-doc-reader@0.3.2"],
 	"agentx": {
 		"timezone": null,
 		"systemPrompt": ["../storage/knowledge/system_prompt"],

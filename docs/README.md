@@ -107,6 +107,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D78](architecture/agent-runtime/browser/README.md#d78) | An agent's browser is the agent-browser agentx pins, run with `agentx-browser` | agent-runtime/browser |
 | [D79](architecture/agent-runtime/browser/README.md#d79) | A profile is a Chrome profile in the agent's storage, and one browser | agent-runtime/browser |
 | [D82](architecture/agent-runtime/functions/README.md#d82) | A workflow runs Composio tools with `ctx.composio`, in a session of its run with the agent's policy | agent-runtime/functions |
+| [D83](architecture/agent-runtime/agent/README.md#d83) | A new agent lists Pi packages, at exact versions, in its own settings | agent-runtime/agent |
 | [D84](architecture/coordinator-runtime/services/telegram/README.md#d84) | The agent asks a question with fixed answers on inline buttons, which the service closes at the first tap | coordinator-runtime/services/telegram |
 
 ## User guides
