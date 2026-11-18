@@ -1,6 +1,6 @@
 # Telegram
 
-An optional [service](../../README.md#services) of the coordinator: it gives agents Telegram bots, one per agent. A message a person sends an agent's bot, from a chat the agent lists, goes into the agent's inbox; the agent answers with Composio's Telegram tools, through the same bot, which the service connects in Composio for the agent ([D72](#d72), [D77](#d77)). Code: `src/coordinator-runtime/services/telegram/`: `telegram.ts`, and `composio-bot.ts`, which connects a bot in Composio.
+An optional [service](../../README.md#services) of the coordinator: it gives agents Telegram bots, one per agent. A message a person sends an agent's bot, from a chat the agent lists, goes into the agent's inbox, and so does a tap on a button the agent put under its message; the agent answers with Composio's Telegram tools, through the same bot, which the service connects in Composio for the agent ([D72](#d72), [D77](#d77)). Code: `src/coordinator-runtime/services/telegram/`: `telegram.ts`, and `composio-bot.ts`, which connects a bot in Composio.
 
 ## Setup
 
@@ -18,7 +18,7 @@ An optional [service](../../README.md#services) of the coordinator: it gives age
 - **`COMPOSIO_COORDINATOR_API_KEY`**, the coordinator's Composio key, with which the service connects each bot ([below](#the-bot-in-composio)). It is a scoped key of the agents' Composio project with **Auth configs** and **Connected accounts** (read and write), unlike the agents' `COMPOSIO_API_KEY`, which may only make sessions. `COMPOSIO_BASE_URL` points it elsewhere, such as at a fake in the tests.
 - **Answers.** A new agent's settings enable Composio's Telegram toolkit; the agent answers with `TELEGRAM_SEND_MESSAGE`, with the event's `chat` as `chat_id`.
 
-`onStart` checks the config, and calls Telegram's `setWebhook` for each bot, with `<publicUrl>/services/telegram/<agent>`, only `message` updates, and the bot's secret token: an HMAC-SHA256 of the bot token, so it needs no setting of its own and only the token's holder can make it. Without `publicUrl`, an agent the coordinator does not run, a listed agent without `chats` or its token, two agents with the same token (a bot has one webhook, so the second would take the first's messages), or a token Telegram refuses, the service is off. Then it connects each bot in Composio.
+`onStart` checks the config, and calls Telegram's `setWebhook` for each bot, with `<publicUrl>/services/telegram/<agent>`, only `message` and `callback_query` updates, and the bot's secret token: an HMAC-SHA256 of the bot token, so it needs no setting of its own and only the token's holder can make it. Without `publicUrl`, an agent the coordinator does not run, a listed agent without `chats` or its token, two agents with the same token (a bot has one webhook, so the second would take the first's messages), or a token Telegram refuses, the service is off. Then it connects each bot in Composio.
 
 ## The bot in Composio
 
@@ -37,7 +37,7 @@ Messages come in without Composio, so a failure here leaves the service on, with
 `POST /services/telegram/<agent>`, public:
 
 1. **Checks** that the agent has a bot and that `X-Telegram-Bot-Api-Secret-Token` is the bot's secret token. Otherwise 404, or 401.
-2. **Ignores**, with 200, an update that is not a message, a message from a chat the agent does not list, with a log line, and a message with no text and no file, such as a pin or a member who joined, which would cost a model run for nothing.
+2. **Ignores**, with 200, an update that is neither a message nor a [tap](#button-taps), a message from a chat the agent does not list, with a log line, and a message with no text and no file, such as a pin or a member who joined, which would cost a model run for nothing.
 3. **Downloads** the message's files into the event: the largest size of a photo, and a document, audio, video, voice note, video note, animation or sticker, each by the name Telegram gives it, such as `file_3.jpg`, with a number first should two have the same name. A file the Bot API will not give, such as one over 20 MB, is said in the content instead, so the message still arrives and holds up none after it.
 4. **Delivers** with `context.deliver`, with no thread, so the agent's routers pick one:
    - key `telegram:<update_id>`, so an update Telegram sends again is one event;
@@ -45,7 +45,16 @@ Messages come in without Composio, so a failure here leaves the service on, with
    - metadata `source: telegram`, `chat` (its id), `chat-type`, `from` (`@username`, or the sender's name), `from-id` and `message-id`, with the fact `agentX-Service: telegram`.
 5. **Answers** 200 with the event's id once it is in the inbox, and 503 when it cannot be written, so Telegram sends it again.
 
-The harness prompt tells the agent that an event with `agentX-Service: telegram` is a person's message, and to answer in its `chat` with Composio's Telegram tools.
+## Button taps
+
+The agent asks a question with fixed answers on inline buttons, which it sends with `TELEGRAM_SEND_MESSAGE`'s `reply_markup` ([D84](#d84)). A tap on one comes as a `callback_query` update to the same route, which the service:
+
+1. **Answers** with `answerCallbackQuery` at once, so the button stops spinning. A second answer, to an update Telegram sends again, is refused, which does no harm.
+2. **Ignores**, with 200, a tap on a message Telegram no longer gives (its `date` is 0), and one from a chat the agent does not list, with a log line.
+3. **Delivers** it as a message: key `telegram:<update_id>`, content the button's text, metadata as a message's with `button`, the button's `callback_data`, and `message-id` the message the button is on. 503 when it cannot be written.
+4. **Takes the buttons off** the message, so each question is answered once, and adds `✅ <from>: <button>` under its text, keeping its formatting, so the chat shows the choice. A message without text, such as a photo, or one too long to add to, only loses its buttons; when that fails too, a log line says the question can be answered again.
+
+The harness prompt tells the agent that an event with `agentX-Service: telegram` is a person's message or tap, to answer in its `chat` with Composio's Telegram tools, and to put the answers to a question with fixed answers on inline buttons.
 
 ## Known limits
 
@@ -57,6 +66,7 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 - Until sandboxes, an agent can read `COMPOSIO_COORDINATOR_API_KEY` as it reads any file of its OS user, and with it change any agent's Composio accounts.
 - Answers depend on Composio: without the agents' `COMPOSIO_API_KEY`, or when the bot could not be connected, the agent gets the message but cannot answer in Telegram.
 - A bot that fails to connect in Composio is tried again only at the next start of `agentx serve`.
+- Every inline button answers once: the service takes a message's buttons off at the first tap, so buttons that stay, such as a menu, are not possible. Two taps at the same moment, before the buttons are off, are two events.
 
 ## Decisions
 
@@ -75,3 +85,11 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 - **Decision.** At start the service connects each bot for the agent's user id with `COMPOSIO_COORDINATOR_API_KEY`, a key with Auth configs and Connected accounts, in `agent-x/.env.services`, under a Telegram auth config that sessions use without naming it (`is_enabled_for_tool_router`), which it makes when the project has none. The account's alias, made from the token, marks it as the service's: the service replaces only its own accounts, and only when the token changes.
 - **Why.** The token is set up once, in `agent-x/.env.services`. A Composio key covers the whole project, so a key that can connect accounts stays with the coordinator, never in an agent's process ([Composio](../../../agent-runtime/pi/pi-package/composio/README.md#the-key)). A failure to connect stops no message from coming in.
 - **Rejected.** Giving the agents' `COMPOSIO_API_KEY` these rights: every agent could change every agent's accounts, even in a sandbox. A session that names the Telegram auth config, with its id written by the coordinator into the agent's storage, put in the agent's settings, or looked up by the Composio extension: a file the coordinator and the extension share, an id that differs per Composio project in checked-in settings, or more rights for every agent's key, where the auth config's own setting needs none. Deleting and connecting the bot at every start: each start would change the account's id for nothing.
+
+<a id="d84"></a>
+### D84. The agent asks a question with fixed answers on inline buttons, which the service closes at the first tap
+
+- **Problem.** A person answers a question with a few fixed answers faster with a tap than by typing, and the agent should learn the answer once.
+- **Decision.** The harness prompt has the agent put the answers on inline buttons, with `TELEGRAM_SEND_MESSAGE`'s `reply_markup`. The service takes `callback_query` updates too: it answers each tap, delivers it as an event with the button's text as content, then takes the message's buttons off and adds the choice under its text. The prompt rules out polls.
+- **Why.** The buttons sit under the question, the chat shows the choice, and nobody answers twice. Only the service holds the bot token and gets the tap, so only it can answer the tap in time, before the button spins on, and close the question at once instead of waiting on a model run.
+- **Rejected.** A reply keyboard, whose tap is a plain message, so it needs no change to the service: the keyboard sits under the input instead of the question, and the tap is a message in the chat. Polls: a `poll_answer` names no chat, so the service would have to know which chat each poll went to. Every option of the old harness's Telegram plugin, such as several answers, a question for one person or buttons that stay: no agent needs them yet.

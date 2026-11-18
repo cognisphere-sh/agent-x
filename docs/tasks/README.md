@@ -28,6 +28,7 @@ A task that is dropped is deleted, together with its row below.
 | [Connect each agent's Telegram bot in Composio from the Telegram service](done/8-telegram-composio-bot.md) | feature | 2026-11-16 |
 | [Give every agent a browser that stays signed in](done/9-agent-browser.md) | feature | 2026-11-16 |
 | [Keep the model for what needs judgement, and let workflows run Composio tools](done/10-workflow-composio.md) | feature | 2026-11-16 |
+| [Ask with Telegram buttons, and let the person choose among services that can do a task](done/11-telegram-buttons-service-choice.md) | feature | 2026-11-18 |
 
 ## A task file
 

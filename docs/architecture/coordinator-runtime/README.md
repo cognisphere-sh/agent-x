@@ -18,7 +18,7 @@ src/coordinator-runtime/
     relay/           core: deliverOutbox, an agent's outbox into the inboxes it names
     scheduler/       core: class Scheduler, one agent's schedules
     composio/        core: Composio's webhook, each trigger event into its agent's inbox
-    telegram/        optional: each listed agent's Telegram bot, its chats' messages into the agent's inbox
+    telegram/        optional: each listed agent's Telegram bot, its chats' messages and button taps into the agent's inbox
 ```
 
 ```mermaid
@@ -33,7 +33,7 @@ flowchart LR
   D -. "refused: event on the sending thread" .-> IA["storage/a/workspace/inbox"]
   S -- "due: event" --> IA
   CO["Composio"] -- "signed trigger event" --> CW -- "event, data.json" --> IA
-  TGM["Telegram"] -- "message, with the bot's secret token" --> TW["telegram service (optional): POST /services/telegram/&lt;agent&gt;"] -- "event, files" --> IA
+  TGM["Telegram"] -- "message or button tap, with the bot's secret token" --> TW["telegram service (optional): POST /services/telegram/&lt;agent&gt;"] -- "event, files" --> IA
 ```
 
 The coordinator finds the agents when it starts: those `agent-x/agentx.json` lists that have a folder in `agent-x/agents/` ([D63](#d63)). It logs a listed agent without a folder and a folder that is not listed, and runs neither. It makes an agent's storage when it is missing, and skips an agent whose `storage` is a folder of its own. Adding or removing an agent means starting `agentx serve` again.
@@ -76,7 +76,7 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 | [relay](services/relay/README.md) | core | Each second, and once more when the agents have stopped, delivers every agent's outbox. |
 | [scheduler](services/scheduler/README.md) | core | Each second, fires every agent's schedules that are due; not while the coordinator stops. |
 | [composio](services/composio/README.md) | core | Composio's webhook: each signed trigger event into the inbox of the agent with its Composio user id. On when `COMPOSIO_WEBHOOK_SECRET` is set. |
-| [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start, and connects the bot in Composio for the agent's user id; each message from a chat the agent lists, with its files, into its inbox. |
+| [telegram](services/telegram/README.md) | optional | Sets each listed agent's bot webhook at start, and connects the bot in Composio for the agent's user id; each message from a chat the agent lists, with its files, and each tap on a button the agent put under its message, into its inbox. |
 
 - **Core, optional and the project's own.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). The project's own start last, each when `agentx.json` lists it, so they stop first. A name that neither agentx nor `agent-x/services/` has is logged and skipped.
 - **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.

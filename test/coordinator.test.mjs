@@ -649,7 +649,7 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	const server = await serve(t, project, "TELEGRAM_BOT_TOKEN_MAIN=1:main-token\n");
 	assert.match(server.output(), /with services relay, scheduler, telegram/);
 	const [webhook] = telegram.calls;
-	assert.deepEqual([webhook.method, webhook.params.url, webhook.params.allowed_updates], ["setWebhook", "https://agents.example.com/services/telegram/main", ["message"]]);
+	assert.deepEqual([webhook.method, webhook.params.url, webhook.params.allowed_updates], ["setWebhook", "https://agents.example.com/services/telegram/main", ["message", "callback_query"]]);
 	const secret = webhook.params.secret_token;
 	const post = async (path, update, token = secret) =>
 		(await fetch(`${server.address}/services/telegram/${path}`, { method: "POST", body: JSON.stringify(update), headers: { "x-telegram-bot-api-secret-token": token } })).status;
@@ -679,6 +679,38 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	assert.match(server.output(), /telegram: a message to agent main from chat 222, which it does not list, is dropped\./);
 	await sleep(1500);
 	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one"]);
+});
+
+test("Telegram: a tap on an inline button goes into the agent's inbox as the button's text, and the service answers the tap and takes the message's buttons off, adding the choice to its text", async (t) => {
+	const project = createAgent(model.port);
+	const telegram = await fakeTelegram(t, ["1:main-token"]);
+	editConfig(project, (config) => ({ ...config, publicUrl: "https://agents.example.com", services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [111] } } } } }));
+	const server = await serve(t, project, "TELEGRAM_BOT_TOKEN_MAIN=1:main-token\n");
+	const secret = telegram.calls[0].params.secret_token;
+	const post = async (update) => (await fetch(`${server.address}/services/telegram/main`, { method: "POST", body: JSON.stringify(update), headers: { "x-telegram-bot-api-secret-token": secret } })).status;
+	const keyboard = { inline_keyboard: [[{ text: "Gmail", callback_data: "gmail" }, { text: "Outlook", callback_data: "outlook" }]] };
+	const tap = (id, message) => ({ update_id: id, callback_query: { id: `tap-${id}`, from: { id: 5, username: "ana" }, data: "outlook", message: { message_id: 9, date: 1, chat: { id: 111, type: "private" }, reply_markup: keyboard, ...message } } });
+	const calls = (method) => telegram.calls.filter((call) => call.method === method).map((call) => call.params);
+
+	assert.equal(await post(tap(1, { text: "Which mail?", entities: [{ type: "bold", offset: 0, length: 5 }] })), 200);
+	const got = await until(() => events(project.agent).find((found) => found.metadata.source === "telegram"));
+	assert.equal(got.content, "Outlook");
+	const { chat, from, "from-id": fromId, "message-id": messageId, button } = got.metadata;
+	assert.deepEqual([chat, from, fromId, messageId, button], [111, "@ana", 5, 9, "outlook"]);
+	assert.deepEqual(calls("editMessageText"), [{ chat_id: 111, message_id: 9, reply_markup: { inline_keyboard: [] }, text: "Which mail?\n\n✅ @ana: Outlook", entities: [{ type: "bold", offset: 0, length: 5 }] }]);
+
+	// A photo has no text to add to: it only loses its buttons. A tap from a chat main does not list, or on a message Telegram no longer gives: no event.
+	assert.equal(await post(tap(2, { caption: "This one?" })), 200);
+	await until(() => calls("editMessageReplyMarkup").length === 1);
+	assert.deepEqual(calls("editMessageReplyMarkup"), [{ chat_id: 111, message_id: 9, reply_markup: { inline_keyboard: [] } }]);
+	assert.equal(await post(tap(3, { text: "Which?", chat: { id: 222, type: "private" } })), 200);
+	assert.equal(await post(tap(4, { text: "Which?", date: 0 })), 200);
+	assert.match(server.output(), /telegram: a tap to agent main from chat 222, which it does not list, is dropped\./);
+	// Every tap is answered, so its button stops spinning.
+	assert.deepEqual(calls("answerCallbackQuery").map((params) => params.callback_query_id), ["tap-1", "tap-2", "tap-3", "tap-4"]);
+	await sleep(1500);
+	assert.equal(events(project.agent).filter((found) => found.metadata.source === "telegram").length, 2);
+	assert.equal(calls("editMessageText").length, 1);
 });
 
 test("Telegram is off without publicUrl, or without an agent's bot token, or when Telegram refuses the token, or when two agents have the same bot", async (t) => {

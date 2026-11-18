@@ -31,11 +31,11 @@ New here: [quick start](user_guides/quick_start.md).
 | [coordinator-runtime/services/relay](architecture/coordinator-runtime/services/relay/README.md) | Core service: delivers the events agents send, from outboxes into inboxes |
 | [coordinator-runtime/services/scheduler](architecture/coordinator-runtime/services/scheduler/README.md) | Core service: fires each agent's schedules |
 | [coordinator-runtime/services/composio](architecture/coordinator-runtime/services/composio/README.md) | Core service: Composio's webhook, each trigger event to its agent |
-| [coordinator-runtime/services/telegram](architecture/coordinator-runtime/services/telegram/README.md) | Optional service: each agent's Telegram bot, its chats' messages to the agent |
+| [coordinator-runtime/services/telegram](architecture/coordinator-runtime/services/telegram/README.md) | Optional service: each agent's Telegram bot, its chats' messages and button taps to the agent |
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D83**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D85**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -107,6 +107,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D78](architecture/agent-runtime/browser/README.md#d78) | An agent's browser is the agent-browser agentx pins, run with `agentx-browser` | agent-runtime/browser |
 | [D79](architecture/agent-runtime/browser/README.md#d79) | A profile is a Chrome profile in the agent's storage, and one browser | agent-runtime/browser |
 | [D82](architecture/agent-runtime/functions/README.md#d82) | A workflow runs Composio tools with `ctx.composio`, in a session of its run with the agent's policy | agent-runtime/functions |
+| [D84](architecture/coordinator-runtime/services/telegram/README.md#d84) | The agent asks a question with fixed answers on inline buttons, which the service closes at the first tap | coordinator-runtime/services/telegram |
 
 ## User guides
 

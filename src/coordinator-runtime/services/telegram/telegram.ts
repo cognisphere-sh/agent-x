@@ -1,6 +1,7 @@
 // The Telegram service, an optional one: each agent that `services.telegram` in agentx.json lists gets a Telegram bot. At start it points each bot's
 // webhook at the bot's route, and connects the bot in Composio for the agent's Composio user id; each message from a chat the agent lists goes into its
-// inbox, with the message's files downloaded into the event. The agent answers with Composio's Telegram tools, which send as its bot.
+// inbox, with the message's files downloaded into the event, and so does a tap on an inline button, after which the service takes the message's buttons
+// off. The agent answers with Composio's Telegram tools, which send as its bot.
 
 import { createHmac } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -27,15 +28,35 @@ interface Bot {
 	userId?: string;
 }
 
+// A Telegram user, as the service reads one.
+interface User {
+	id: number;
+	username?: string;
+	first_name?: string;
+	last_name?: string;
+}
+
 // The parts of a Telegram message the service reads.
 interface Message {
 	message_id?: number;
+	// 0 in a tap on a message Telegram no longer gives.
+	date?: number;
 	chat: { id: number; type?: string };
-	from?: { id: number; username?: string; first_name?: string; last_name?: string };
+	from?: User;
 	text?: string;
+	entities?: unknown[];
 	caption?: string;
 	photo?: { file_id: string }[];
+	reply_markup?: { inline_keyboard?: { text: string; callback_data?: string }[][] };
 	[kind: string]: unknown;
+}
+
+// The parts of a tap on an inline button the service reads: the button's `callback_data`, and the message it is on.
+interface Tap {
+	id: string;
+	from: User;
+	message?: Message;
+	data?: string;
 }
 
 // The kinds of file a message can carry, besides photos, which come in several sizes.
@@ -50,7 +71,7 @@ export class TelegramService extends Service {
 			method: "POST",
 			path: ":agent",
 			access: "public",
-			summary: "Telegram's updates for the agent's bot, with the bot's secret token; a message from a chat the agent lists goes into its inbox.",
+			summary: "Telegram's updates for the agent's bot, with the bot's secret token; a message or a button tap from a chat the agent lists goes into its inbox.",
 			handle: (request) => this.receive(request),
 		},
 	];
@@ -79,7 +100,7 @@ export class TelegramService extends Service {
 			if (sharing !== undefined) throw new Error(`agents "${sharing.agent}" and "${agent}" have the same bot token; each agent needs a bot of its own.`);
 			const secret = createHmac("sha256", token).update("agentx webhook").digest("base64url");
 			const bot = { agent, token, chats: chats.map(String), secret, userId: composioUserId(running.root) };
-			await this.call(bot, "setWebhook", { url: `${context.publicUrl.replace(/\/$/, "")}/services/telegram/${agent}`, secret_token: bot.secret, allowed_updates: ["message"] });
+			await this.call(bot, "setWebhook", { url: `${context.publicUrl.replace(/\/$/, "")}/services/telegram/${agent}`, secret_token: bot.secret, allowed_updates: ["message", "callback_query"] });
 			this.bots.set(agent, bot);
 		}
 		// Messages come in without Composio, so a bot that cannot be connected is logged, and the service stays on.
@@ -99,18 +120,16 @@ export class TelegramService extends Service {
 		}
 	}
 
-	// 200 for a message delivered and for an update to ignore; 503 when the event cannot be written, so Telegram sends it again.
+	// 200 for a message or tap delivered and for an update to ignore; 503 when the event cannot be written, so Telegram sends it again.
 	private async receive({ params, headers, body }: ApiRequest): Promise<ApiResponse> {
 		const bot = this.bots.get(params.agent);
 		if (bot === undefined) return { status: 404, body: { error: `Agent "${params.agent}" has no Telegram bot.` } };
 		if (!sameText(String(headers["x-telegram-bot-api-secret-token"] ?? ""), bot.secret)) return { status: 401, body: { error: "The request does not carry the bot's secret token." } };
-		const update = JSON.parse(body.toString("utf8")) as { update_id?: number; message?: Message };
+		const update = JSON.parse(body.toString("utf8")) as { update_id?: number; message?: Message; callback_query?: Tap };
+		if (update.callback_query !== undefined) return this.tap(bot, update.update_id, update.callback_query);
 		const message = update.message;
 		if (message === undefined) return { status: 200, body: { ignored: "not a message" } };
-		if (!bot.chats.includes(String(message.chat.id))) {
-			console.error(`telegram: a message to agent ${bot.agent} from chat ${message.chat.id}, which it does not list, is dropped.`);
-			return { status: 200, body: { ignored: "a chat the agent does not list" } };
-		}
+		if (!listed(bot, message, "message")) return { status: 200, body: { ignored: "a chat the agent does not list" } };
 		const attached = attachments(message);
 		// Joins, pins, locations and the like carry nothing for the agent to read, and would each cost a model run.
 		if (!message.text && !message.caption && attached.length === 0) return { status: 200, body: { ignored: "no text and no file" } };
@@ -118,13 +137,12 @@ export class TelegramService extends Service {
 		try {
 			const { files, failures } = await this.download(bot, attached, folder);
 			const { from } = message;
-			const sender = from?.username ? `@${from.username}` : [from?.first_name, from?.last_name].filter(Boolean).join(" ");
 			const delivered = this.context.deliver(
 				bot.agent,
 				{
 					key: `telegram:${update.update_id}`,
 					content: withoutBlockTag([message.text ?? message.caption ?? "", ...failures].filter(Boolean).join("\n\n")),
-					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(sender), "from-id": from?.id, "message-id": message.message_id },
+					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(senderName(from)), "from-id": from?.id, "message-id": message.message_id },
 				},
 				files,
 			);
@@ -135,6 +153,37 @@ export class TelegramService extends Service {
 		} finally {
 			rmSync(folder, { recursive: true, force: true });
 		}
+	}
+
+	// Delivers a tap on an inline button: its content the button's text, its `button` the button's `callback_data`, and its `message-id` the message
+	// the button is on. Then takes the message's buttons off, so each question is answered once.
+	private async tap(bot: Bot, updateId: number | undefined, tap: Tap): Promise<ApiResponse> {
+		// Stops the button's spinner. Telegram refuses a second answer, such as to an update it sends again, which does no harm.
+		await this.call(bot, "answerCallbackQuery", { callback_query_id: tap.id }).catch(() => undefined);
+		const { message } = tap;
+		if (!message?.date) return { status: 200, body: { ignored: "a tap on a message Telegram no longer gives" } };
+		if (!listed(bot, message, "tap")) return { status: 200, body: { ignored: "a chat the agent does not list" } };
+		const choice = message.reply_markup?.inline_keyboard?.flat().find((button) => button.callback_data === tap.data)?.text ?? tap.data ?? "";
+		const sender = senderName(tap.from);
+		let delivered: string;
+		try {
+			delivered = this.context.deliver(bot.agent, {
+				key: `telegram:${updateId}`,
+				content: withoutBlockTag(choice),
+				metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(sender), "from-id": tap.from.id, "message-id": message.message_id, button: withoutBlockTag(tap.data ?? "") },
+			});
+		} catch (error) {
+			console.error(`telegram: update ${updateId} for agent ${bot.agent} was not delivered, and Telegram sends it again: ${(error as Error).message}`);
+			return { status: 503, body: { error: "The tap could not be delivered." } };
+		}
+		// The choice goes under the message's text, so the chat shows it. A message without text, such as a photo, or one too long to add to, only loses its buttons.
+		const target = { chat_id: message.chat.id, message_id: message.message_id, reply_markup: { inline_keyboard: [] } };
+		const text = `${message.text}\n\n✅ ${sender}: ${choice}`;
+		const edited = message.text !== undefined && (await this.call(bot, "editMessageText", { ...target, text, entities: message.entities }).then(() => true, () => false));
+		if (!edited) {
+			await this.call(bot, "editMessageReplyMarkup", target).catch((error: Error) => console.error(`telegram: the buttons of message ${message.message_id} in chat ${message.chat.id} were not taken off, so it can be answered again: ${error.message}`));
+		}
+		return { status: 200, body: { event: delivered } };
 	}
 
 	// Downloads the message's files into `folder`. One that cannot be, such as one over the Bot API's 20 MB, is said in `failures` instead, so the
@@ -172,4 +221,16 @@ export class TelegramService extends Service {
 function attachments(message: Message): string[] {
 	const files = [message.photo?.at(-1), ...fileKinds.map((kind) => message[kind] as { file_id?: unknown } | undefined)];
 	return [...new Set(files.flatMap((file) => (typeof file?.file_id === "string" ? [file.file_id] : [])))];
+}
+
+// Whether the message, or the message of a tap, is from a chat the agent lists; logs one that is not, which is dropped.
+function listed(bot: Bot, message: Message, what: "message" | "tap"): boolean {
+	if (bot.chats.includes(String(message.chat.id))) return true;
+	console.error(`telegram: a ${what} to agent ${bot.agent} from chat ${message.chat.id}, which it does not list, is dropped.`);
+	return false;
+}
+
+// How the event names a sender: `@username`, or the name.
+function senderName(from: User | undefined): string {
+	return from?.username ? `@${from.username}` : [from?.first_name, from?.last_name].filter(Boolean).join(" ");
 }
