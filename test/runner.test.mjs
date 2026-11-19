@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
 import { Coordinator } from "../dist/coordinator-runtime/coordinator.js";
 import { startFakeModel } from "./fake-model.mjs";
-import { addAgent, agentx, alive, asAgent, cli, createAgent, editConfig, editSettings, events, holder, inboxEvents, onlySession, onQueueFile, open, projectRoot, scratch, sessions, until } from "./project.mjs";
+import { addAgent, agentx, alive, asAgent, asSent, cli, createAgent, editConfig, editSettings, events, holder, inboxEvents, onlySession, onQueueFile, open, projectRoot, scratch, sessions, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -132,7 +132,10 @@ test("a one-shot agentx chat answers its own prompt and leaves the thread's queu
 	const cli = await agentx(project, ["chat", "-p", "[sleep 2] typed"]);
 	assert.equal(cli.status, 0, cli.stderr);
 	// Two model calls, both for the typed prompt alone: the tool call, then the answer, which is what gets printed.
-	assert.deepEqual(model.requests.slice(calls), [["[sleep 2] typed"], ["[sleep 2] typed"]]);
+	assert.deepEqual(
+		model.requests.slice(calls).map((users) => users.map(asSent)),
+		[["[sleep 2] typed"], ["[sleep 2] typed"]],
+	);
 	assert.equal(cli.stdout.trim(), `reply ${calls + 2}`);
 	assert.equal(event(id).status, "queued");
 	assert.deepEqual(sessions(project)[0].users.map((user) => user.text), ["[sleep 2] typed"]);
@@ -320,8 +323,8 @@ test("an event that arrives while a thread's session is closing waits for it and
 	assert.deepEqual([first, second, third].map((id) => event(id).attempts), [1, 1, 1]);
 	const session = onlySession(project);
 	assert.deepEqual(session.roles, ["system", "user", "assistant", "user", "assistant", "user", "assistant"]);
-	// Each model call saw the whole conversation so far: nothing was answered from an older copy of the session.
-	assert.deepEqual(model.requests.slice(-3).map((users) => users.length), [1, 2, 3]);
+	// Each model call saw the whole conversation so far: nothing was answered from an older copy of the session. Its events count; the messages that end episodes do not.
+	assert.deepEqual(model.requests.slice(-3).map((users) => users.filter((user) => asSent(user).startsWith("<agentx-metadata")).length), [1, 2, 3]);
 	// The second session was opened only after the first had closed.
 	assert.deepEqual(server.output().match(/main: session (opened|closed)/g).slice(0, 3), ["main: session opened", "main: session closed", "main: session opened"]);
 });
@@ -651,10 +654,24 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 	const { project } = setup(t);
 	const knowledge = join(project.agent, "storage", "knowledge");
 	assert.deepEqual(readdirSync(knowledge).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
-	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, and give it a Composio user id beside the template's toolkits.
+	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, give it a Composio user id beside the template's toolkits, and
+	// list the runner's and memory's settings at their defaults.
 	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
 	const toolkits = { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] };
-	assert.deepEqual([settings.extensions, settings.skills, settings.agentx], [[], ["../storage/knowledge/skills"], { timezone: null, systemPrompt: ["../storage/knowledge/system_prompt"], composio: { userId: "main@project", session: { toolkits } } }]);
+	assert.deepEqual(
+		[settings.extensions, settings.skills, settings.agentx],
+		[
+			[],
+			["../storage/knowledge/skills"],
+			{
+				timezone: null,
+				systemPrompt: ["../storage/knowledge/system_prompt"],
+				runner: { maxThreads: 4, stallSeconds: 600, routerSeconds: 60 },
+				composio: { userId: "main@project", session: { toolkits } },
+				memory: { compaction: { enabled: true, foldNudgeEvery: 0.1, keepEpisodes: 10 } },
+			},
+		],
+	);
 
 	// What an agent can write for itself: a skill and a note for its system prompt. An extension it puts in its knowledge is not loaded.
 	mkdirSync(join(knowledge, "skills", "greet"));

@@ -7,7 +7,7 @@ import { after, before, test } from "node:test";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
 import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
-import { agentx, createAgent, editSettings, events, onlySession, runner, until } from "./project.mjs";
+import { agentx, asSent, createAgent, editSettings, events, onlySession, runner, until } from "./project.mjs";
 
 // agentx's default policy, and the toolkits a new agent's settings enable: copies, so a test pins exactly what goes to Composio.
 const defaults = {
@@ -119,7 +119,7 @@ test("without COMPOSIO_API_KEY an agent has no Composio tools, the system prompt
 		assert.deepEqual(composioTools(before), []);
 		assert.equal(unavailable(before), "Composio tools are unavailable in this session: COMPOSIO_API_KEY is not set where the agent runs.");
 		// The conversation holds what was typed, and nothing about Composio.
-		assert.deepEqual(model.requests[before], sent);
+		assert.deepEqual(model.requests[before].map(asSent), sent);
 	}
 	assert.equal(composio.created.length, 0);
 });

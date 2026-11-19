@@ -4,7 +4,7 @@ Everything below is in `agent-x/agents/<name>/.pi/` and is checked in. It is wha
 
 ## System prompt
 
-Add or edit `.md` files in `.pi/system_prompt/`. Each file is a section of the prompt of its own, `agentx-identity-<file name>`, after the harness's. Start each name with an index: the files go in its order, as numbers, so `1-role.md` comes before `2-style.md`, and `9-` before `10-`. The index only orders: `1-role.md` is the section `agentx-identity-role`, so renumbering a file changes nothing the agent is sent, and two files must not differ only in their index. When you change one file, the agent's conversations get only that section again, so keep one subject per file. Rewrite `1-role.md` to say what this agent is for, and add files such as `2-style.md`. Name files with lowercase letters, digits and hyphens: any other character becomes `-` in the section's name. Pi's skills list and working directory come before these sections.
+Add or edit `.md` files in `.pi/system_prompt/`. Each file is a section of the prompt of its own, `agentx-identity-<file name>`, after the harness's. Start each name with an index: the files go in its order, as numbers, so `1-role.md` comes before `2-style.md`, and `9-` before `10-`. The index only orders: `1-role.md` is the section `agentx-identity-role`, so renumbering a file changes nothing the agent is sent, and two files must not differ only in their index. When you change one file, the agent's conversations get only that section again, so keep one subject per file. Rewrite `1-role.md` to say what this agent is for, and add files such as `2-style.md`. Name files with lowercase letters, digits and hyphens: any other character becomes `-` in the section's name. Pi's working directory and the agent's skills come before these sections.
 
 ## Skills
 
@@ -14,10 +14,14 @@ Every agent has agentx's own skills too, such as its [browser](give_an_agent_a_b
 ---
 name: release-notes
 description: Write release notes from a list of changes.
+metadata:
+  version: 1
 ---
 
 Steps the agent follows...
 ```
+
+Each skill is a section of the agent's prompt of its own, with its name, description, version and file; the agent reads the file when a task needs it. A new skill, or a change to one, shows from the agent's next run. When you change a skill, raise its version and say what changed at the top of a `CHANGELOG.md` next to it: the agent's conversations see the new version, and read the changelog. The agent does the same with its own skills.
 
 ## Extensions
 
@@ -172,6 +176,28 @@ Events tell the agent when they were sent and what time it is. A new agent's `.p
 	"timezone": "Asia/Kolkata"
 }
 ```
+
+## Context
+
+The agent knows its model and context window, and keeps its context small itself ([context](../architecture/agent-runtime/pi/pi-package/context/README.md)):
+
+- An episode is the agent's work from an event to its last answer, with an id of its own. The agent sees where each starts and ends, and how many tokens it used.
+- When an episode ends and the episodes since the last request used a tenth of the window, the agent is asked to fold earlier episodes it no longer needs into summaries it writes, and gets one turn for it. The request says how, and leaves its context with that turn. It can read any episode back.
+- When the context nears the window's end, older episodes are summarized for it, and the last ten stay as they are, as many as fit in Pi's `compaction.keepRecentTokens`.
+
+To change how often it is asked, or how many episodes a compaction keeps:
+
+```json
+"agentx": {
+	"memory": {
+		"compaction": { "foldNudgeEvery": 40000, "keepEpisodes": 3 }
+	}
+}
+```
+
+`foldNudgeEvery` is a count of tokens when it is a whole number, and a share of the window when it is a fraction, such as `0.2`.
+
+`"enabled": false` turns folds off, and Pi compacts as it does by itself.
 
 ## What the agent learns
 

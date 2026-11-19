@@ -4,19 +4,16 @@
 // Then come agentx's sections, each in a tag of its own: core/*.md, the harness's rules, as agentx-core-<file>, and the agents this one
 // may send events to as agentx-core-agents; the agent's .pi/system_prompt/*.md, which its developer wrote, as agentx-identity-<file>;
 // and the folders its settings list under agentx.systemPrompt, which is how what the agent wrote for itself gets in, as agentx-knowledge-<file>.
-// Pi puts them after its own sections, such as the skills list and the working directory.
-// Skills from ~/.agents/skills are taken off that list: Pi loads them for every project, and they are not part of the agent.
+// Pi puts them after its own sections, such as the working directory, and after the skills extension's.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { canSendTo } from "../../../../project-config.js";
 
 const preamble = fileURLToPath(new URL("preamble.md", import.meta.url));
 const core = fileURLToPath(new URL("core", import.meta.url));
-const homeSkills = join(homedir(), ".agents", "skills") + sep;
 
 // agentx's own settings for an agent are under `agentx` in the agent's .pi/settings.json. Pi keeps keys it does not know and hands them to extensions.
 interface Settings {
@@ -63,6 +60,5 @@ export default function (pi: ExtensionAPI) {
 			// Two files with one name, such as `1-goals.md` and `2-goals.md`, share a section, in their order, rather than one hiding the other. Pi leaves out an empty one.
 			options.sections[name] = options.sections[name] ? `${options.sections[name]}\n\n${text}` : text;
 		}
-		options.skills = options.skills?.filter((skill) => !skill.filePath.startsWith(homeSkills));
 	});
 }

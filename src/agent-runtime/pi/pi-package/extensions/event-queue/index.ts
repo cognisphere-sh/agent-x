@@ -29,8 +29,9 @@ export default function (pi: ExtensionAPI) {
 	let sentAt = 0;
 	// How many of the session's entries were searched for delivered events. Entries from before this session started belong to earlier deliveries.
 	let seen = 0;
-	// Why the run failed, as Pi judged it; set at the end of each run.
-	let failure: string | undefined;
+	// Whether the run's events are settled: at its first settle, before any turn that another extension continues the run with, such as the context
+	// extension's turn to fold. Nothing joins the run after it: what comes in meanwhile starts the next run.
+	let settled = false;
 	// The time zone for the time shown on events: `agentx.timezone` in the agent's .pi/settings.json, or the machine's when that is null or missing.
 	let timeZone: string | undefined;
 
@@ -191,22 +192,25 @@ export default function (pi: ExtensionAPI) {
 	// Not when the run is being aborted: Pi would save the message and never show it to the model.
 	pi.on("turn_end", async (event, ctx) => {
 		if (!holds(ctx)) return;
-		if (event.outcome === "completed" && !ctx.signal?.aborted && takesEvents(ctx)) await deliver(ctx, true);
+		if (event.outcome === "completed" && !ctx.signal?.aborted && takesEvents(ctx) && !settled) await deliver(ctx, true);
 	});
 
-	// Not sent for an aborted run.
+	// The run is over but for turns that other extensions may add: its events are settled now, done or failed as Pi judged it. Not sent for an aborted run.
+	// One still on its way into Pi is settled by the run it starts or joins.
 	pi.on("agent_before_settle", (event, ctx) => {
+		if (settled) return;
+		settled = true;
 		const last = ctx.sessionManager.getLeafEntry();
 		const reason = last?.type === "message" && last.message.role === "assistant" ? last.message.errorMessage : undefined;
-		failure = event.outcome === "error" ? (reason ?? "The run failed.") : undefined;
+		queue?.settle(threadId, event.outcome === "error" ? { error: reason ?? "The run failed." } : "done");
 	});
 
-	// Settles the events of the run. One still on its way into Pi is settled by the run it starts or joins.
+	// Settles the events of an aborted run, which has no settle before.
 	pi.on("agent_settled", (event) => {
 		// Nobody is there to abort a worker's run. What aborts it is Pi closing the session, when agentx run stops or dies or the process is told to end.
-		if (event.aborted && isWorker()) queue?.fail(threadId, "The session was closed during the run.");
-		else queue?.settle(threadId, event.aborted ? "cancelled" : failure === undefined ? "done" : { error: failure });
-		failure = undefined;
+		if (!settled && event.aborted && isWorker()) queue?.fail(threadId, "The session was closed during the run.");
+		else if (!settled) queue?.settle(threadId, event.aborted ? "cancelled" : "done");
+		settled = false;
 	});
 
 	pi.on("session_shutdown", () => {

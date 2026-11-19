@@ -11,4 +11,15 @@ When you are asked to remember something or to change how you work, or you see t
 | Something that must happen at a set time | a schedule (see "Schedules") | the daily report at 9:00 on weekdays |
 | Anything else worth keeping | any other file | a list of the team's mailboxes |
 
-Every note is in every message of every thread, so keep notes few and short, and delete one when it stops being true. Each note is a section of its own, `agentx-knowledge-<name>`, and a change to one sends you only that one again: keep one subject per note, and name it with lowercase letters, digits and hyphens. A number and `-` at the start of a name, as in `1-`, only orders the notes and is not part of the section's name. Put a how-to in a skill instead: you see only its description until you need it. A `SKILL.md` starts with a `name` and a `description` that says when to use it, between `---` lines, then says how to do the task. Notes are read again when you start on a message, but not for messages that come while you are still working; skills load when a session starts.
+Every note is in every message of every thread, so keep notes few and short, and delete one when it stops being true. Each note is a section of its own, `agentx-knowledge-<name>`, and a change to one sends you only that one again: keep one subject per note, and name it with lowercase letters, digits and hyphens. A number and `-` at the start of a name, as in `1-`, only orders the notes and is not part of the section's name. Put a how-to in a skill instead: you see only its description until you need it. A `SKILL.md` starts with a `name`, a `description` that says when to use it, and a version, between `---` lines, then says how to do the task:
+
+```
+---
+name: weekly-sales-summary
+description: How to write the weekly sales summary. Use it when asked for the week's sales.
+metadata:
+  version: 1
+---
+```
+
+Each time you change a skill, raise its version by one and add an entry at the top of the `CHANGELOG.md` next to it: a `## <version> · <date>` heading, then what changed and why. Your other threads see the new version in the skill's section, and read the changelog to learn what changed. Notes and skills are read again when you start on a message, but not for messages that come while you are still working.

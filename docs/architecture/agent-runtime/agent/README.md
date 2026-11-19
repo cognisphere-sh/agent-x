@@ -47,10 +47,14 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 	"agentx": {
 		"timezone": null,
 		"systemPrompt": ["../storage/knowledge/system_prompt"],
+		"runner": { "maxThreads": 4, "stallSeconds": 600, "routerSeconds": 60 },
 		"composio": {
 			"session": {
 				"toolkits": { "enable": ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] }
 			}
+		},
+		"memory": {
+			"compaction": { "enabled": true, "foldNudgeEvery": 0.1, "keepEpisodes": 10 }
 		}
 	}
 }
@@ -64,7 +68,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 | [`pi-web-access`](https://github.com/nicobailon/pi-web-access) | Web search and reading pages, PDFs and videos without a browser, with no key needed. Tools: `web_search`, `fetch_content`, `get_search_content`, `source_check` |
 | [`pi-doc-reader`](https://www.npmjs.com/package/pi-doc-reader) | `read` opens PDF, DOCX, XLSX and PPTX files |
 
-- `agentx` holds agentx's own settings for the agent ([D36](#d36)). The agent's `description` and `canSendTo` are in the project's [`agentx.json`](../../coordinator-runtime/README.md#d63).
+- `agentx` holds agentx's own settings for the agent ([D36](#d36)). The template lists each with its default value, so a developer sees what there is to change. The agent's `description` and `canSendTo` are in the project's [`agentx.json`](../../coordinator-runtime/README.md#d63).
 
 | Key | Meaning |
 |---|---|
@@ -72,10 +76,11 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 | `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). The template enables eight toolkits; `init-agent` adds the user id. |
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
 | `timezone` | The time zone of event times and schedules. `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
+| `memory` | `compaction`: folds, fold nudges and summaries ([context](../pi/pi-package/context/README.md#settings)). |
 
 ## System prompt
 
-The system prompt extension builds the prompt: the harness's preamble, then, after Pi's own sections, a section per file: the harness's, the agents this one can send to, `.pi/system_prompt/*.md` in the order of the index before each name, then the `agentx.systemPrompt` folders ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
+The system prompt extension builds the prompt: the harness's preamble, then, after Pi's own sections and a section per skill, a section per file: the harness's, the agents this one can send to, `.pi/system_prompt/*.md` in the order of the index before each name, then the `agentx.systemPrompt` folders ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
 
 ## Knowledge
 
@@ -84,7 +89,7 @@ The system prompt extension builds the prompt: the harness's preamble, then, aft
 | In `storage/knowledge/` | Loaded |
 |---|---|
 | `system_prompt/*.md` | at the end of the system prompt, a section per file, at the start of every run, through `agentx.systemPrompt` |
-| `skills/<name>/SKILL.md` | when a session starts, through `skills` |
+| `skills/<name>/SKILL.md` | a section per skill, at the start of every run, through `skills` ([skills](../pi/pi-package/README.md#the-skills-extension)) |
 | `event_router.ts` | for every event without a thread ([routing](../events/README.md#routing)) |
 | `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
 | `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |

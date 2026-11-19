@@ -19,7 +19,10 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 ## Skills discovery
 
 - `~/.agents/skills` loads for every project. Only user-level settings can exclude it.
-- Each skill has a `filePath`. A `before_agent_start` handler can replace `event.systemPromptOptions.skills`, the list Pi adds to the prompt.
+- Each skill has a `filePath`. A `before_agent_start` handler can replace `event.systemPromptOptions.skills`, the list Pi adds to the prompt. With an empty list Pi writes no `skills` section (`buildSystemPrompt` in `src/core/system-prompt.ts`).
+- Pi reads the skills once, when the session starts, and again only on `/reload`. `/skill:<name>` looks the skill up in that list, not in the prompt's, and puts the file's text in the message as a `<skill>` block (`_expandSkillCommand` in `src/core/agent-session.ts`).
+- `--no-skills` drops the skills of the settings and of the packages they list; `--skill` paths stay (`src/core/resource-loader.ts`).
+- Pi exports its loader, `loadSkillsFromDir({ dir, source })`, and `parseFrontmatter`. The loader skips a `SKILL.md` without a description, with a diagnostic naming its path, and only warns about a bad name.
 - `.agents/skills` in `cwd` and its parents, up to the git root, loads when the project is trusted (`src/core/package-manager.ts`).
 
 ## CLI
@@ -59,7 +62,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - `pi.sendUserMessage()` does not run extension commands, and does not expand templates and skills unless told to. What it sends goes through `input` handlers, and a handler that returns `handled` drops the input with no run.
 - With no usable model set, `ctx.model` is not empty. It is a placeholder for a model of a provider Pi does not know, so `ctx.modelRegistry.getProvider(ctx.model.provider)` is undefined. `ctx.modelRegistry.getApiKeyAndHeaders(model)` tells whether Pi can log in for a model, and why not when it cannot. Before a run, Pi itself refuses a prompt when there is no model, or no login for its provider (`_preparePrompt` in `src/core/agent-session.ts`).
 - `ctx.mode` is `tui`, `rpc`, `json` or `print`: the mode the host bound the extensions with, and `print` if the host does not say. `ctx.hasUI` is true when the host bound a UI, as the terminal UI and RPC mode do (`setUIContext` in `src/core/extensions/runner.ts`).
-- Print mode writes the run's last assistant message to stdout. It binds no shutdown handler, so `ctx.shutdown()` does nothing. Pi sets the exit code only when the run failed, and keeps a code an extension has set (`src/modes/print-mode.ts`, `src/main.ts`).
+- Print mode writes the run's last message to stdout when it is an assistant message, and nothing when an extension added one after it. It binds no shutdown handler, so `ctx.shutdown()` does nothing. Pi sets the exit code only when the run failed, and keeps a code an extension has set (`src/modes/print-mode.ts`, `src/main.ts`).
 
 ## Packages
 
@@ -85,6 +88,22 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
 - Every session start (start-up, `/new`, `/resume`, `/fork`, `/reload`) emits `session_start`, then, once all its handlers have finished, `resources_discover`, if any extension handles it. Nothing follows at start-up: the mode then waits for input (RPC, terminal) or sends its prompt (print) (`bindExtensions` in `src/core/agent-session.ts`). `session_start` fires whether or not a message comes.
 - `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.
+- `pi.registerTool` takes `parameters` as any JSON Schema; a TypeBox schema is one. Its `execute(id, params, signal, onUpdate, ctx)` gets the extension context. A thrown error reaches the model as an error result.
+
+## Context and compaction
+
+Sources: `docs/extensions.md`, `docs/compaction.md`, `docs/session-format.md`, `src/core/agent-session.ts`, `src/core/compaction/compaction.ts`.
+
+- A `turn_end` handler sees the entries proposed so far in `event.entries` and returns the whole list: `custom`, `custom_message`, `context_edit` and `compaction` drafts. Pi checks them together after every handler has run and appends them in order; one bad draft drops them all. `event.toolResults` holds the turn's tool results, with their `details`.
+- A `context_edit` entry with `replacement: null` omits its target, and one with `replacement: { content }` replaces the target's content, a user, assistant, tool result or custom message entry, from the model's context from then on. The session file keeps the target. `ctx.sessionManager.buildSessionProjection()` gives the entries as the model sees them: each with its source entry and its messages, none for an omitted one. `sessionEntryToContextMessages(entry)`, exported from Pi's index, gives an entry's messages as they were written. A replacement with string content on an assistant or tool result message becomes one text part. Pi checks each edit's target against the whole branch, so applying edits costs their number times the branch's length.
+- A `custom_message` draft becomes a user-role message for the model. It runs no input handlers.
+- `pi.appendEntry` in `before_agent_start` lands before the run's first message, the prompt that started it. A `message` that the handler returns lands after it, and after any messages queued for the next turn (`_prepareRun` in `src/core/agent-session.ts`).
+- `input` comes for a prompt, typed or from RPC, and for `pi.sendUserMessage`, before Pi makes it a message; `streamingBehavior` is undefined, and `ctx.isIdle()` true, only when it will start a run. A handler that returns `{ action: "transform", text }` changes the text Pi makes the message, and Pi expands a `/skill:` or prompt template command only when that text starts with it. A run that `pi.sendMessage(..., { triggerTurn: true })` starts has no `input`.
+- Pi writes a run's system message, when the prompt is new or changed, before the run's first message, and a message written into the session earlier comes before it. Providers take only a system message at the very start of the context as the system prompt; a later one is sent as an update of its sections (`openai-responses-shared.ts` in `@earendil-works/pi-ai`).
+- `agent_before_settle` comes once a run is over, after Pi's retries, and takes the same drafts as `turn_end`. Drafts alone start no model call; only `continue: true` does, when the context then does not end with an assistant message. The continuation is another low-level run without `before_agent_start`, and `agent_before_settle` comes again after it.
+- `ctx.getContextUsage()` is the last model response's token count plus Pi's estimate of the messages after it, a quarter of their length. After a compaction it is `null` until the next response. With `context_edit` entries in the context, Pi's own threshold check uses its estimate of the whole context instead.
+- Pi compacts by itself when the context passes the window less `compaction.reserveTokens` (default 16384): before a prompt, ahead of `before_agent_start`, and between turns. `session_before_compact` gets `reason` (`manual`, `threshold`, `overflow`) and `preparation`: `messagesToSummarize` and `turnPrefixMessages`, without omitted entries, `firstKeptEntryId`, which keeps `compaction.keepRecentTokens` (default 20000) and never splits a tool call from its result, `tokensBefore` and `previousSummary`. Pi sends the event only when its own cut leaves something to summarize (`prepareCompaction`), and also for `/compact`. `preparation.settings` holds the compaction settings in effect. A handler that returns `{ compaction: { summary, firstKeptEntryId, tokensBefore, usage, details } }` replaces Pi's compaction, its `firstKeptEntryId` too, which Pi does not check: the context keeps the entries from that one on. One that returns nothing leaves Pi's. Pi's own cut can be on an entry the model does not see, such as a refused answer.
+- `ctx.modelRegistry.complete(model, { systemPrompt, messages }, options)` calls any configured model with its login, and returns the assistant message.
 
 ## MCP servers
 

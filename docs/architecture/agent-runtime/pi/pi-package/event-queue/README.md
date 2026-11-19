@@ -4,7 +4,7 @@ The extension in every Pi session that hands a Pi thread's [events](../../../eve
 
 ## The event queue extension
 
-It claims the thread's events, sends them to Pi, records the session entry each became, and settles them when the run ends. The thread is the session's folder, `storage/sessions/<thread>/`. It works the same under `agentx chat` and `agentx run` ([D23](../../README.md#d23)), apart from [workers](#workers).
+It claims the thread's events, sends them to Pi, records the session entry each became, and settles them when the run ends, at its first settle. The thread is the session's folder, `storage/sessions/<thread>/`. It works the same under `agentx chat` and `agentx run` ([D23](../../README.md#d23)), apart from [workers](#workers).
 
 | When | What it does |
 |---|---|
@@ -13,7 +13,7 @@ It claims the thread's events, sends them to Pi, records the session entry each 
 | every second | Checks the lease. If Pi is idle, claims the queued events and sends them as one user message, which starts a run. A worker with no work left ends the session. |
 | `context` (before every model call) | Writes the session entry id of each new user message to the events it holds. |
 | `turn_end` | Claims the events that may be steered and sends them as a steer, which Pi adds before the next model call. |
-| `agent_before_settle`, `agent_settled` | Notes whether the run failed, then settles its events. |
+| `agent_before_settle`, `agent_settled` | Settles the run's events at its first `agent_before_settle`, done or failed as Pi judged the run, before any turn that another extension adds after it, such as the [context extension's](../context/README.md#fold-nudges) turn to fold; `turn_end` steers nothing into that turn. An aborted run, which has no `agent_before_settle`, is settled at `agent_settled`. |
 | `input` | Refuses input in a session without the lease. |
 | `session_shutdown` | Stops the timer, gives up the lease, closes the queue. |
 
@@ -35,7 +35,7 @@ The Pi runner starts Pi with `--agentx-worker`, a flag this extension registers,
 
 ## What the model sees
 
-`render` turns one delivery's events into one user message: for each event, a metadata block, then its content.
+`render` turns one delivery's events into one user message: for each event, a metadata block, then its content. A message that starts an episode then gets the episode's line first, from the [context extension](../context/README.md#episodes).
 
 ```
 <agentx-metadata id="q7Rk2mXa9LbT">

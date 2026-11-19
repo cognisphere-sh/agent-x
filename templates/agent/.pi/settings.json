@@ -6,10 +6,14 @@
 	"agentx": {
 		"timezone": null,
 		"systemPrompt": ["../storage/knowledge/system_prompt"],
+		"runner": { "maxThreads": 4, "stallSeconds": 600, "routerSeconds": 60 },
 		"composio": {
 			"session": {
 				"toolkits": { "enable": ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] }
 			}
+		},
+		"memory": {
+			"compaction": { "enabled": true, "foldNudgeEvery": 0.1, "keepEpisodes": 10 }
 		}
 	}
 }

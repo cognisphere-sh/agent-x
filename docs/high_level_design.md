@@ -75,8 +75,9 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |
 | Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types; a workflow's `ctx.composio` | agent env, send-event, Composio's policy | [functions](architecture/agent-runtime/functions/README.md) |
 | Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
-| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio | queue, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
+| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions | queue, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
 | Composio | `pi-package/extensions/composio/` | Each agent's access to external services, and the policy its workflows' sessions get too | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
+| Context | `pi-package/extensions/context/` | The agent's model and window, its episodes and the tokens each used, the episodes it folds when a fold nudge asks, and the compaction that keeps the last episodes | | [context](architecture/agent-runtime/pi/pi-package/context/README.md) |
 | Pi reference | | What agentx relies on in Pi | | [pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) |
 | Browser | `src/agent-runtime/browser/` | `agentx-browser`, the agent's browser command: the agent-browser agentx pins, on one of the agent's profiles in `storage/workspace/browser/` | agent env, storage, project config | [browser](architecture/agent-runtime/browser/README.md) |
 | Coordinator | `src/coordinator-runtime/` | `agentx serve`: an AgentManager per agent, the services, agentx's and the project's own from `agent-x/services/`, the API server with its routes to report and control the agents, and the services' routes under `/services/<name>/`; `deliverEvent`, the only code that writes an inbox | storage, project config, mailbox, workflows | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
@@ -118,6 +119,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `event send`, `event deliver` | `agentx upgrade` |
 | `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Sandboxes |
 | `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | Composio's triggers, made for each agent by its service |
-| Pi package: harness prompt, event queue, Composio, the browser skill | The web app's use of the API: agent controls, events from people, answers back |
-| Each agent's state in `agent-x/storage/` | |
+| Pi package: harness prompt, event queue, Composio, skills as sections with versions, the browser skill | The web app's use of the API: agent controls, events from people, answers back |
+| Each agent's state in `agent-x/storage/` | Memory: episodic search, then dream, task logs and sub-agents; hints later |
 | The agent's browser: `agentx-browser` and its profiles | |
+| The agent's context: its model and window, episodes and the tokens of each, folds of episodes, fold nudges, compactions that keep the last episodes | |

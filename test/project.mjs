@@ -156,7 +156,11 @@ export function scratch(t, port) {
 	};
 }
 
-/** The agent's sessions as { thread, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. `contents` is what was typed or queued: each user message without its metadata block. */
+/** A user message's text as it was typed or queued: without the line that starts an episode, which the context extension puts first. */
+export const asSent = (text) => text.replace(/^Episode \S+ started\.\n\n/, "");
+
+/** The agent's sessions as { thread, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. A user's `text` is as sent
+ * (see `asSent`), and `contents` is what was typed or queued: each user message without its metadata block. */
 export function sessions({ agent }) {
 	// One folder per thread, storage/sessions/<thread>/, with the thread's session files.
 	const directory = join(agent, "storage", "sessions");
@@ -165,7 +169,7 @@ export function sessions({ agent }) {
 		.map(({ thread, file }) => {
 			const entries = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
 			const text = (content) => (typeof content === "string" ? content : content.map((part) => part.text ?? "").join("\n"));
-			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: text(entry.message.content) }));
+			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: asSent(text(entry.message.content)) }));
 			return {
 				thread,
 				entries,
