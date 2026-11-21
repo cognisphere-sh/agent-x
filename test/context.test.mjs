@@ -1,13 +1,12 @@
-// End-to-end tests of the skills and context extensions: real Pi sessions, under `agentx chat -p` and `agentx run`, and the fake model, which can call any tool.
+// End-to-end tests of the skills, episode and context extensions: real Pi sessions, under `agentx chat -p` and `agentx run`, and the fake model, which can call any tool.
 
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
-import { startedEpisode } from "../dist/agent-runtime/pi/pi-package/extensions/context/episodes.js";
 import { startFakeModel } from "./fake-model.mjs";
-import { agentx, alive, editSettings, holder, onlySession, scratch, until } from "./project.mjs";
+import { agentx, editSettings, episodeOf, isEnd, onlySession, scratch, text, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -26,10 +25,7 @@ function setup(t, settings = {}) {
 	const run = async (content) => {
 		const id = queue.enqueue({ threadId: "main", content });
 		await base.reach("done", id);
-		await until(() => {
-			const episode = episodeOf(base.project, base.event(id).entryId);
-			return entriesOf(base.project, "custom_message", "agentx-episode-end").some((end) => end.content.startsWith(`Episode ${episode} ended.`));
-		});
+		await until(() => episodeOf(base.project, base.event(id).entryId));
 		return id;
 	};
 	return { ...base, queue, run };
@@ -46,31 +42,25 @@ async function chat(project, prompt) {
 	assert.equal(run.status, 0, run.stderr);
 }
 
-// Ends the thread's Pi process and sets Pi to compact before the next one's first prompt, keeping `keepRecentTokens`: its threshold, the window less the
-// reserve, is below the context. Pi asks the extension only when its own cut leaves something to summarize.
-async function compactNext(project, keepRecentTokens) {
-	const pi = holder(project.agent, "main");
-	await until(() => !alive(pi));
-	editSettings(project.agent, (settings) => ({ ...settings, compaction: { reserveTokens: 127_990, keepRecentTokens } }));
-}
-
 const entriesOf = (project, type, customType) => onlySession(project).entries.filter((entry) => entry.type === type && (customType === undefined || entry.customType === customType));
 const messages = (project, role) => onlySession(project).entries.filter((entry) => entry.type === "message" && entry.message.role === role);
-const text = (entry) => (typeof entry.message.content === "string" ? entry.message.content : entry.message.content.map((part) => part.text ?? "").join("\n"));
-// The episode a session entry starts, from the line its text starts with.
-const started = (entry) => (entry.type === "message" && entry.message.role === "user" ? startedEpisode(text(entry)) : undefined);
-// The id of the episode that session entry `entryId` is in: the one the last first message up to it starts.
-const episodeOf = (project, entryId) => {
-	const entries = onlySession(project).entries;
-	return started(entries.slice(0, entries.findIndex((entry) => entry.id === entryId) + 1).findLast(started));
-};
-// What a fold may omit of an episode: its messages and custom messages, from its first message up to the next episode's.
+const isUser = (entry) => entry.type === "message" && entry.message.role === "user";
+const ends = (project) => onlySession(project).entries.filter(isEnd);
+// What a fold may omit of an episode: its messages and custom messages, from the first user message after the end before it up to its own end.
+const omissible = (entry) => entry.type === "custom_message" || (entry.type === "message" && ["user", "assistant", "toolResult"].includes(entry.message.role));
 const episodeEntries = (project, id) => {
 	const entries = onlySession(project).entries;
-	const start = entries.findIndex((entry) => started(entry) === id);
-	const next = entries.findIndex((entry, index) => index > start && started(entry));
-	const omissible = (entry) => entry.type === "custom_message" || (entry.type === "message" && ["user", "assistant", "toolResult"].includes(entry.message.role));
-	return entries.slice(start, next < 0 ? undefined : next).filter(omissible);
+	const end = entries.findIndex((entry) => isEnd(entry) && entry.details.id === id);
+	const previous = entries.slice(0, end).findLastIndex(isEnd);
+	const start = entries.findIndex((entry, at) => at > previous && isUser(entry));
+	return entries.slice(start, end + 1).filter(omissible);
+};
+// A fold nudge and its turn, up to the next user message.
+const turnOf = (project, nudge) => {
+	const entries = onlySession(project).entries;
+	const at = entries.findIndex((entry) => entry.id === nudge.id);
+	const next = entries.findIndex((entry, index) => index > at && isUser(entry));
+	return entries.slice(at, next < 0 ? undefined : next).filter(omissible);
 };
 const omitted = (project) => entriesOf(project, "context_edit").flatMap((edit) => (edit.replacement === null ? [edit.targetId] : []));
 const replaced = (project) => entriesOf(project, "context_edit").filter((edit) => edit.replacement !== null);
@@ -94,7 +84,6 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(prompt, /<agentx-skill-browser>/);
 	assert.ok(!prompt.includes("<available_skills>"), "Pi's list is gone");
 	assert.ok(!prompt.includes("machine-wide"));
-	assert.match(prompt, /<agentx-model>\n# Your model\n\nYou run on `fake\/fake-model`, with a context window of 128K tokens and up to 4.1K tokens of output\.\n<\/agentx-model>/);
 
 	// A new version and a new skill show from the next run, without /reload: only their sections are sent again.
 	writeSkill(skills, "greet", "name: greet\ndescription: How to greet people.\nmetadata:\n  version: 2");
@@ -106,21 +95,25 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(patch["agentx-skill-farewell"], /\nversion: none\n/);
 });
 
-test("an episode has an id of its own, given by the line its first message starts with, after the system message, and an end message with its tokens; episode_read gives it back, and fold folds only when a fold nudge asks", async (t) => {
+test("an episode ends with a message that gives its id and the tokens it added: what its last answer read and wrote, less what its first read, and its event; episode_read gives it back, and fold folds only when a fold nudge asks", async (t) => {
 	const { project, event, run } = setup(t);
-	const alpha = await run("the alpha task");
+	const alpha = await run("[bash echo alpha]");
 	const a = episodeOf(project, event(alpha).entryId);
 	assert.ok(a && a !== alpha, "an episode's id is its own");
 	const first = messages(project, "user").find((entry) => entry.id === event(alpha).entryId);
-	assert.ok(text(first).startsWith(`Episode ${a} started.\n\n<agentx-metadata id="${alpha}">`), text(first));
-	assert.equal(onlySession(project).entries.find((entry) => entry.type === "message" || entry.type === "custom_message").message?.role, "system");
-	const [end] = entriesOf(project, "custom_message", "agentx-episode-end");
-	assert.match(end.content, new RegExp(`^Episode ${a} ended\\. It used about \\d+ tokens of your context\\.$`));
+	assert.ok(text(first).startsWith(`<agentX-metadata id="${alpha}">`), text(first));
+	const [call, answer] = messages(project, "assistant").map((entry) => entry.message);
+	const read = ({ usage }) => usage.input + usage.cacheRead + usage.cacheWrite;
+	assert.ok(read(call) > 0, "the fake model reports usage");
+	const tokens = read(answer) + answer.usage.output - read(call) + Math.ceil(text(first).length / 4);
+	const [end] = ends(project);
+	assert.deepEqual(end.details, { id: a, tokens });
+	assert.match(end.content, new RegExp(`^Episode ${a} ended\\. It used about \\S+ tokens of your context\\.$`));
 
 	await run(`[tool episode_read ${JSON.stringify({ episode: a })}]`);
 	assert.match(
 		text(messages(project, "toolResult").at(-1)),
-		new RegExp(`^## Episode ${a}\\n\\nEpisode ${a} started\\.\\n\\n<agentx-metadata id="${alpha}">[\\s\\S]*\\nthe alpha task\\n\\n### You\\n\\nreply \\d+\\n\\n> Episode ${a} ended\\.`),
+		new RegExp(`^## Episode ${a}\\n\\nThread \`main\`, from .+\\.\\n\\n<agentX-metadata id="${alpha}">[\\s\\S]*\\n### Tool call: bash\\n[\\s\\S]*\\n### You\\n\\nreply \\d+$`),
 	);
 	const b = episodeOf(project, event(await run("the beta task")).entryId);
 	await run(`[tool fold ${JSON.stringify({ ranges: [{ from: a, to: b, summary: "x" }] })}]`);
@@ -132,11 +125,11 @@ test("each attempt at an event is an episode of its own", async (t) => {
 	const { project, queue, reach } = setup(t);
 	const id = queue.enqueue({ threadId: "main", content: "[fail] this" });
 	await reach("failed", id);
-	const ids = messages(project, "user").map(started);
-	assert.equal(new Set(ids).size, 3, ids.join(", "));
+	await until(() => ends(project).length === 3);
+	assert.equal(new Set(ends(project).map((end) => end.details.id)).size, 3);
 });
 
-test("once the episodes since the last fold nudge used more than foldNudgeEvery, an episode's end brings a fold nudge, which says how to fold, and a turn to fold; then the fold nudge and that turn leave the context", async (t) => {
+test("once the episodes since the last fold nudge added more than foldNudgeEvery, as their end messages give, an episode's end brings a fold nudge, which says how to fold, and a turn to fold; then the fold nudge and that turn leave the context", async (t) => {
 	const { project, event, run } = setup(t, { agentx: { memory: { compaction: { foldNudgeEvery: 1 } } } });
 	const alpha = await run("the alpha task");
 	// With no episode besides the newest there is nothing to fold, so no fold nudge.
@@ -148,22 +141,24 @@ test("once the episodes since the last fold nudge used more than foldNudgeEvery,
 	const [nudge] = foldNudges(project);
 	assert.match(nudge.content, /^Your context holds about \S+ of 128K tokens\. Fold the earlier episodes /);
 	assert.match(nudge.content, /\n- Do not name the episodes it covers: its tag lists them\.\n/);
+	assert.match(nudge.content, /\n- Fold long explorations, multi-step processes and executions once they are over, [^\n]+: the summary keeps only what was learned and the information that matters, not the steps\.\n/);
 	const entries = onlySession(project).entries;
 	const answer = entries.slice(entries.findIndex((entry) => entry.id === nudge.id)).find((entry) => entry.type === "message" && entry.message.role === "assistant");
 	assert.ok(omitted(project).includes(answer.id));
 
-	// The next fold nudge folds. The summary takes the place of the episode's first message, the event's, and the rest of it, its end message too, the fold call
-	// and the fold nudge leave the context.
+	// The next fold nudge folds. The summary takes the place of the episode's first message, the event's, and the rest of it, its end message too, the fold
+	// nudge and its turn leave the context.
 	const [a, b] = [alpha, beta].map((id) => episodeOf(project, event(id).entryId));
 	const folded = episodeEntries(project, a);
 	foldAtNudge([{ from: a, to: b, summary: "Finished the first job." }]);
-	const gamma = await run("the gamma task");
+	await run("the gamma task");
 	await foldNudged(project, 2);
 	const [summary] = replaced(project);
 	assert.equal(summary.targetId, event(alpha).entryId);
-	assert.match(summary.replacement.content, new RegExp(`^<agentx-folded episodes="${a}">\\nFolded: 1 episode \\(${a}\\), about \\d+ tokens\\. \`episode_read\` [^\\n]+\\n\\nFinished the first job\\.\\n</agentx-folded>$`));
-	const turn = episodeEntries(project, episodeOf(project, event(gamma).entryId)).filter((entry) => entry.type === "message" && entry.message.role !== "user");
-	assert.ok([...folded.slice(1), ...turn.slice(1)].every((entry) => omitted(project).includes(entry.id)), JSON.stringify(entriesOf(project, "context_edit")));
+	assert.match(summary.replacement.content, new RegExp(`^<agentx-folded episodes="${a}">\\nFolded: 1 episode \\(${a}\\)\\. \`episode_read\` [^\\n]+\\n\\nFinished the first job\\.\\n</agentx-folded>$`));
+	const turn = turnOf(project, foldNudges(project)[1]);
+	assert.ok(turn.some((entry) => entry.type === "message" && entry.message.role === "toolResult"));
+	assert.ok([...folded.slice(1), ...turn].every((entry) => omitted(project).includes(entry.id)), JSON.stringify(entriesOf(project, "context_edit")));
 
 	// A turn to fold that fails leaves its event done. The next episode's first request has the summary, and neither the folded event nor a fold nudge.
 	model.answerWhen("Fold the earlier episodes", "[fail]");
@@ -204,7 +199,7 @@ test("a fold whose ranges overlap or name an event is refused, and an event that
 	assert.ok(!omitted(project).includes(event(late).entryId));
 });
 
-test("a steered event joins its episode; one fold folds two ranges, and a range that takes in part of an earlier fold replaces all of it", async (t) => {
+test("a steered event joins its episode; one fold folds two ranges; a range that cuts an earlier fold is refused, and one that takes in all of it replaces its summary", async (t) => {
 	const { project, queue, event, reach, run } = setup(t, { agentx: { memory: { compaction: { foldNudgeEvery: 1 } } } });
 	const first = queue.enqueue({ threadId: "main", content: "[sleep 2] the first job" });
 	await until(() => event(first).entryId);
@@ -212,7 +207,7 @@ test("a steered event joins its episode; one fold folds two ranges, and a range 
 	await reach("done", first, steered);
 	const e1 = episodeOf(project, event(first).entryId);
 	assert.equal(episodeOf(project, event(steered).entryId), e1);
-	await until(() => entriesOf(project, "custom_message", "agentx-episode-end").length === 1);
+	await until(() => ends(project).length === 1);
 	const e3 = episodeOf(project, event(await run("the third job")).entryId);
 	const fourth = await run("the fourth job");
 	const e4 = episodeOf(project, event(fourth).entryId);
@@ -233,78 +228,18 @@ test("a steered event joins its episode; one fold folds two ranges, and a range 
 			[event(fourth).entryId, `<agentx-folded episodes="${e4}">`],
 		],
 	);
-	// The third episode alone is part of the first fold, so the fold takes in all of it, and its summary is replaced.
-	foldAtNudge([{ from: e3, to: e4, summary: "All of the first and third jobs." }]);
+	// The third episode alone cuts the first fold.
+	foldAtNudge([{ from: e3, to: e4, summary: "x" }]);
 	await run("the seventh job");
 	await foldNudged(project, 5);
+	assert.match(text(messages(project, "toolResult").at(-1)), new RegExp(`The range from episode ${e3} cuts the earlier fold of episodes ${e1} to ${e3}`));
+	// Both earlier folds, whole, in one range: its summary takes the place of the first.
+	foldAtNudge([{ from: e1, to: e5, summary: "All of the first, third and fourth jobs." }]);
+	await run("the eighth job");
+	await foldNudged(project, 6);
 	const last = replaced(project).at(-1);
 	assert.equal(last.targetId, event(first).entryId);
-	assert.match(last.replacement.content, new RegExp(`^<agentx-folded episodes="${e1} ${e3}">\\n[^\\n]+\\n\\nAll of the first and third jobs\\.\\n</agentx-folded>$`));
-});
-
-test("when Pi compacts, the last episodes stay and everything before them is summarized in the form of a fold, the agent's fold summaries too", async (t) => {
-	const { project, event, run } = setup(t, { agentx: { memory: { compaction: { keepEpisodes: 1, foldNudgeEvery: 1 } } } });
-	const alpha = await run("the alpha task");
-	const beta = await run("the beta task");
-	const [a, b] = [alpha, beta].map((id) => episodeOf(project, event(id).entryId));
-	await foldNudged(project, 1);
-	foldAtNudge([{ from: a, to: b, summary: "Finished the first job." }]);
-	const gamma = await run("the gamma task");
-	await foldNudged(project, 2);
-	// Room for the newest episode, with its end message, but not for the one before it.
-	const size = Number(/about (\d+) tokens/.exec(entriesOf(project, "custom_message", "agentx-episode-end").at(-1).content)[1]);
-	await compactNext(project, size + 40);
-	const before = model.requests.length;
-	await run("the delta task");
-	const [compaction] = entriesOf(project, "compaction");
-	assert.deepEqual(compaction.details, { agentx: true });
-	assert.equal(compaction.firstKeptEntryId, event(gamma).entryId);
-	assert.match(compaction.summary, new RegExp(`^<agentx-folded episodes="${a} ${b}">\\nFolded: 2 episodes \\(${a}, ${b}\\), about \\d+ tokens\\. [^\\n]+\\n\\nreply \\d+\\n</agentx-folded>$`));
-	// The summary was asked of everything before the kept episode: the fold's summary, and the episode after it.
-	const asked = model.requests.slice(before).find((users) => users[0].startsWith("The conversation to add to it"))[0];
-	assert.ok(asked.includes(`<agentx-folded episodes="${a}">`) && asked.includes("the beta task") && !asked.includes("[tool fold"), asked);
-});
-
-test("when not even the newest episode fits in keepRecentTokens, the compaction cuts inside it where Pi does; the episode keeps its id and can still be folded", async (t) => {
-	const { project, event, run } = setup(t, { compaction: { keepRecentTokens: 30 }, agentx: { memory: { compaction: { foldNudgeEvery: 1 } } } });
-	const [a, b] = [await run("the alpha task"), await run("the beta task")].map((id) => episodeOf(project, event(id).entryId));
-	// The model refuses the context after the episode's tool call, as too long: Pi compacts once, and asks again. The call and its result are more than
-	// keepRecentTokens, so Pi's cut keeps them and not the event before them.
-	model.answerWhen("39\n40", "[overflow]");
-	const gamma = await run("[bash seq 1 40]");
-	const g = episodeOf(project, event(gamma).entryId);
-	const [compaction] = entriesOf(project, "compaction");
-	assert.deepEqual(compaction.details, { agentx: true });
-	assert.match(compaction.summary, new RegExp(`^<agentx-folded episodes="${a} ${b} ${g}">\\nFolded: 2 episodes \\(${a}, ${b}\\), and the start of episode ${g}, whose latest messages follow, about \\d+ tokens\\.`));
-	// Its first message is in the summarized part, yet its end message names it.
-	assert.match(entriesOf(project, "custom_message", "agentx-episode-end").at(-1).content, new RegExp(`^Episode ${g} ended\\.`));
-
-	// What is left of it folds, its summary in place of the first of its messages the model still sees.
-	// Gamma's end brought no fold nudge: after the compaction it is the only episode the model sees. Delta's brings the second.
-	const d = episodeOf(project, event(await run("the delta task")).entryId);
-	await foldNudged(project, 2);
-	foldAtNudge([{ from: g, to: d, summary: "Ran the command." }]);
-	await run("the epsilon task");
-	await until(() => replaced(project).length === 1);
-	const [summary] = replaced(project);
-	assert.notEqual(summary.targetId, event(gamma).entryId);
-	assert.ok(episodeEntries(project, g).some((entry) => entry.id === summary.targetId));
-	// On a model's message, Pi keeps the summary as a text part.
-	const content = summary.replacement.content;
-	assert.match(typeof content === "string" ? content : content.map((part) => part.text).join(""), new RegExp(`^<agentx-folded episodes="${g}">\\n`));
-});
-
-test("a summary cut off at the token limit is not kept: Pi compacts as it does by itself", async (t) => {
-	const { project, run } = setup(t, { agentx: { memory: { compaction: { keepEpisodes: 1 } } } });
-	await run("the alpha task");
-	await run("the beta task");
-	await compactNext(project, 1);
-	// The next request is the extension's summary call, before the next Pi process's first prompt.
-	model.cutNext();
-	await run("the gamma task");
-	// Later compactions, as the context passes the low threshold again, are the extension's.
-	const [first] = entriesOf(project, "compaction");
-	assert.equal(first.details?.agentx, undefined, JSON.stringify(first));
+	assert.match(last.replacement.content, new RegExp(`^<agentx-folded episodes="${e1} ${e3} ${e4}">\\n[^\\n]+\\n\\nAll of the first, third and fourth jobs\\.\\n</agentx-folded>$`));
 });
 
 test("with compaction turned off in its settings, fold folds nothing", async (t) => {

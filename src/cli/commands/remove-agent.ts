@@ -3,12 +3,12 @@
 
 import { existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { createInterface } from "node:readline";
 import { parseArgs } from "node:util";
 import { nameRule } from "../../agent-runtime/events/queue.js";
 import { configFile, projectConfig, saveProjectConfig } from "../../agent-runtime/project-config.js";
 import { centralStorage, heartbeatMs, lastBeat } from "../../agent-runtime/storage.js";
 import { projectAgentX } from "../agent-root.js";
+import { confirmed } from "../confirmed.js";
 
 /** Runs `agentx remove-agent <name> [--yes]` in the project whose root, agent-x/ or agent-x/agents/ is `cwd`; without --yes, asks first. */
 export async function removeAgent(cwd: string, args: string[]): Promise<void> {
@@ -42,15 +42,4 @@ export async function removeAgent(cwd: string, args: string[]): Promise<void> {
 	for (const entry of Object.values(config.agents)) if (Array.isArray(entry.canSendTo)) entry.canSendTo = entry.canSendTo.filter((other) => other !== name);
 	saveProjectConfig(agentX, config);
 	console.log(`Removed agent "${name}":\n${what}`);
-}
-
-// Whether the person answers yes to `question`. Input that ends unanswered, as with Ctrl-C or when nothing can be typed, is a no.
-async function confirmed(question: string): Promise<boolean> {
-	const input = createInterface({ input: process.stdin, output: process.stdout });
-	const answer = await new Promise<string>((resolve) => {
-		input.once("close", () => resolve(""));
-		input.question(question, resolve);
-	});
-	input.close();
-	return /^y(es)?$/i.test(answer.trim());
 }

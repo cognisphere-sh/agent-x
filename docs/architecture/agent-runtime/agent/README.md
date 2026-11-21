@@ -18,7 +18,7 @@ agent-x/agents/<name>/
     event_router.ts     the developer's router; the template's sends every event to main
     workflows.json  workflows/  schedules.json
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
-    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json
+    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json, and memory/index.db, the index of its episodes
     sessions/<thread>/  the thread's Pi sessions
     workspace/          the agent's files; workflow-logs/, router-logs/, inbox/, outbox/, browser/ (its browser profiles)
     event_queue.db      the event queue
@@ -33,6 +33,7 @@ An agent's runtime state is in `agent-x/storage/<name>/`, and the agent reaches 
 - `init-agent` makes the folder and the link (`ensureStorage` in `src/agent-runtime/storage.ts`). `agentx run`, `chat`, `event` and `serve` make them again when missing, as after a fresh clone.
 - A `storage` that is already there, a link or a folder of its own, is used as it is; agentx never moves or deletes one. But `agentx serve` does not run an agent whose `storage` is not its central folder, and `agentx event deliver` refuses one, since both reach the agent through the central folder.
 - `agentx remove-agent <name>` deletes an agent with its state, after asking ([CLI](../../cli/README.md#commands)).
+- `agentx remove-thread <thread-id>` deletes a thread's sessions and its episodes in the memory index, after asking ([CLI](../../cli/README.md#commands)).
 
 ## .pi/settings.json
 
@@ -54,7 +55,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 			}
 		},
 		"memory": {
-			"compaction": { "enabled": true, "foldNudgeEvery": 0.1, "keepEpisodes": 10 }
+			"compaction": { "enabled": true, "foldNudgeEvery": 0.1 }
 		}
 	}
 }

@@ -9,7 +9,7 @@ export function render(events: Event[], timeZone?: string): string {
 		.map((event) =>
 			[
 				// The queue refuses an event whose text holds this tag, so only the harness writes one.
-				`<agentx-metadata id="${event.id}">`,
+				`<agentX-metadata id="${event.id}">`,
 				`agentX-ThreadId: ${event.threadId}`,
 				`agentX-SentTime: ${dayDateTime(event.createdAt, timeZone)}`,
 				`agentX-CurrentTime: ${now}`,
@@ -19,7 +19,7 @@ export function render(events: Event[], timeZone?: string): string {
 				// The event's metadata, one fact per line: the sender's, and any `agentX-` fact the harness added, such as agentX-RouterError,
 				// which no sender may name. A line break in a value could fake a line of the harness.
 				...Object.entries(event.metadata).map(([name, value]) => `${name}: ${(typeof value === "string" ? value : JSON.stringify(value)).replace(/\s*[\r\n\u2028\u2029]+\s*/g, " ")}`),
-				"</agentx-metadata>",
+				"</agentX-metadata>",
 				event.content,
 			].join("\n"),
 		)
@@ -28,11 +28,21 @@ export function render(events: Event[], timeZone?: string): string {
 
 /** The ids of the queued events in a text that `render` produced, read from the opening tags of their metadata blocks. */
 export function eventIds(text: string): string[] {
-	return [...text.matchAll(/<agentx-metadata id="([\w-]+)">/g)].map((match) => match[1]);
+	return [...text.matchAll(/<agentX-metadata id="([\w-]+)">/g)].map((match) => match[1]);
 }
 
-// "Wednesday 2026-11-11 21:59:54 GMT+5:30".
-function dayDateTime(time: number, timeZone?: string): string {
+/** `zone`, the agent's `agentx.timezone`, when Node knows it; otherwise undefined, for the machine's. */
+export function knownTimeZone(zone: string | null | undefined): string | undefined {
+	try {
+		new Intl.DateTimeFormat("en-US", { timeZone: zone ?? undefined });
+		return zone ?? undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** A time as the agent reads it, in `timeZone` or the machine's: "Wednesday 2026-11-11 21:59:54 GMT+5:30". */
+export function dayDateTime(time: number, timeZone?: string): string {
 	const parts = new Intl.DateTimeFormat("en-US", {
 		weekday: "long",
 		year: "numeric",

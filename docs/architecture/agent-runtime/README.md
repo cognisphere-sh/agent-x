@@ -7,6 +7,7 @@ src/agent-runtime/
   agent-env.ts           the environment of the agent's processes
   storage.ts             where the agent's state is, and the storage link
   project-config.ts      agent-x/agentx.json: the project's agents
+  sqlite.ts              opens a SQLite file that several processes share: the queue, the memory index
   supervisor/            agentx run
     run-agent.ts         runAgent: runs the agent until it is stopped
     agent-process.ts     the agent's process that the coordinator starts

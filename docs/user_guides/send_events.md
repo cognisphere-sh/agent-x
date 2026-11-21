@@ -106,14 +106,14 @@ An agent may send only to the agents its `canSendTo` lists ([customize an agent]
 Each event starts with a block of facts, then your text:
 
 ```
-<agentx-metadata id="q7Rk2mXa9LbT">
+<agentX-metadata id="q7Rk2mXa9LbT">
 agentX-ThreadId: support
 agentX-SentTime: Wednesday 2026-11-11 21:58:10 GMT+5:30
 agentX-CurrentTime: Wednesday 2026-11-11 21:59:54 GMT+5:30
 agentX-IsRetry: false
 source: cli
 from: ops
-</agentx-metadata>
+</agentX-metadata>
 The export is failing again
 ```
 

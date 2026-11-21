@@ -25,7 +25,9 @@ New here: [quick start](user_guides/quick_start.md).
 | [agent-runtime/pi/pi-package](architecture/agent-runtime/pi/pi-package/README.md) | What agentx adds to every agent, and the system prompt |
 | [agent-runtime/pi/pi-package/event-queue](architecture/agent-runtime/pi/pi-package/event-queue/README.md) | Handing a thread's events to Pi |
 | [agent-runtime/pi/pi-package/composio](architecture/agent-runtime/pi/pi-package/composio/README.md) | Access to external services through Composio |
-| [agent-runtime/pi/pi-package/context](architecture/agent-runtime/pi/pi-package/context/README.md) | The model and its window, episodes and the tokens of each, folds of episodes, fold nudges, and compactions that keep the last episodes |
+| [agent-runtime/pi/pi-package/episodes](architecture/agent-runtime/pi/pi-package/episodes/README.md) | Episodes, each of Pi's runs, ended by a message with its id and the tokens it added |
+| [agent-runtime/pi/pi-package/context](architecture/agent-runtime/pi/pi-package/context/README.md) | Folds of episodes, which the agent writes when a fold nudge asks |
+| [agent-runtime/pi/pi-package/memory](architecture/agent-runtime/pi/pi-package/memory/README.md) | Episodic memory: the index of every thread's episodes, searched by keyword and read back |
 | [agent-runtime/pi/pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) | Pi behavior agentx relies on |
 | [agent-runtime/browser](architecture/agent-runtime/browser/README.md) | The agent's browser: `agentx-browser` and its profiles |
 | [coordinator-runtime](architecture/coordinator-runtime/README.md) | `agentx serve`: runs every agent and the services, reports health, serves the services' requests |
@@ -36,7 +38,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D90**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D96**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -111,10 +113,15 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D83](architecture/agent-runtime/agent/README.md#d83) | A new agent lists Pi packages, at exact versions, in its own settings | agent-runtime/agent |
 | [D84](architecture/coordinator-runtime/services/telegram/README.md#d84) | The agent asks a question with fixed answers on inline buttons, which the service closes at the first tap | coordinator-runtime/services/telegram |
 | [D85](architecture/agent-runtime/pi/pi-package/README.md#d85) | Each skill is a section of the system prompt of its own, with its version, read again on every run | agent-runtime/pi/pi-package |
-| [D86](architecture/agent-runtime/pi/pi-package/context/README.md#d86) | The episode is the unit of folds, with an id of its own, given by the line its first message starts with, and by its end message | agent-runtime/pi/pi-package/context |
-| [D87](architecture/agent-runtime/pi/pi-package/context/README.md#d87) | A fold puts the summary in place of the first message the model sees of its range, omits the rest and the `fold` call, and takes in whole earlier folds | agent-runtime/pi/pi-package/context |
-| [D88](architecture/agent-runtime/pi/pi-package/context/README.md#d88) | A compaction keeps the last episodes, or Pi's cut inside the newest, and summarizes all before in the form of a fold | agent-runtime/pi/pi-package/context |
+| [D86](architecture/agent-runtime/pi/pi-package/episodes/README.md#d86) | The episode is the unit of folds and of memory, ended by a message that gives its id and the tokens it added | agent-runtime/pi/pi-package/episodes |
+| [D87](architecture/agent-runtime/pi/pi-package/context/README.md#d87) | A fold puts the summary in place of the first message the model sees of its range, omits the rest and the `fold` call, and takes in earlier folds whole or not at all | agent-runtime/pi/pi-package/context |
 | [D89](architecture/agent-runtime/pi/pi-package/context/README.md#d89) | The agent folds only when a fold nudge asks, after an episode ends, with one turn of its own and the instructions in the fold nudge, which then leave the context | agent-runtime/pi/pi-package/context |
+| [D90](architecture/agent-runtime/pi/pi-package/memory/README.md#d90) | One SQLite index of every thread's episodes per agent, with FTS5, built from the session files | agent-runtime/pi/pi-package/memory |
+| [D91](architecture/agent-runtime/pi/pi-package/memory/README.md#d91) | Each session indexes only its own episodes, when a run settles, from the last end message it indexed | agent-runtime/pi/pi-package/memory |
+| [D92](architecture/agent-runtime/pi/pi-package/memory/README.md#d92) | A search matches any of its words, each a phrase of its own, with one hit per episode | agent-runtime/pi/pi-package/memory |
+| [D93](architecture/coordinator-runtime/services/telegram/README.md#d93) | An album is one event, gathered after each part is answered | coordinator-runtime/services/telegram |
+| [D94](architecture/cli/README.md#d94) | A person removes a thread with `agentx remove-thread`, which takes its episodes out of the memory index too, and only while the thread is idle | cli |
+| [D95](architecture/agent-runtime/pi/pi-package/episodes/README.md#d95) | An episode's tokens come from the model's usage: what its last answer used, less what its first answer read, plus its event | agent-runtime/pi/pi-package/episodes |
 
 ## User guides
 

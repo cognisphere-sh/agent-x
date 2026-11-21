@@ -11,7 +11,9 @@
 			"extensions/event-queue/index.ts",
 			"extensions/skills/index.ts",
 			"extensions/system-prompt/index.ts",
-			"extensions/context/index.ts"
+			"extensions/episodes/index.ts",
+			"extensions/context/index.ts",
+			"extensions/memory/index.ts"
 		],
 		"skills": ["skills"]
 	}

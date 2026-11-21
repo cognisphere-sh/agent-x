@@ -9,7 +9,7 @@
 import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Queue, workflowPrefix } from "../../../../events/queue.js";
-import { eventIds, render } from "./render.js";
+import { eventIds, knownTimeZone, render } from "./render.js";
 
 // How often an idle session looks for events, and every session checks that it still holds its thread. Pi has no event for "a queued event arrived"; a timer is how an extension waits.
 const tickMs = 1000;
@@ -135,14 +135,10 @@ export default function (pi: ExtensionAPI) {
 		const folder = ctx.sessionManager.getSessionDir();
 		threadId = folder ? basename(folder) : "";
 		seen = ctx.sessionManager.getEntries().length;
-		timeZone = (pi.getSettings() as { agentx?: { timezone?: string | null } }).agentx?.timezone ?? undefined;
-		try {
-			new Intl.DateTimeFormat("en-US", { timeZone });
-		} catch {
-			// A zone that Node does not know would fail every delivery.
-			say(ctx, `Unknown time zone "${timeZone}" in agentx.timezone of .pi/settings.json, so events show the machine's time. Use a name such as "Asia/Kolkata".`);
-			timeZone = undefined;
-		}
+		const zone = (pi.getSettings() as { agentx?: { timezone?: string | null } }).agentx?.timezone;
+		// A zone that Node does not know would fail every delivery.
+		timeZone = knownTimeZone(zone);
+		if (zone && timeZone === undefined) say(ctx, `Unknown time zone "${zone}" in agentx.timezone of .pi/settings.json, so events show the machine's time. Use a name such as "Asia/Kolkata".`);
 		if (threadId === "") return;
 		// A workflow's events run a script, never Pi, also when Pi was started in the workflow's folder some other way.
 		if (threadId.startsWith(workflowPrefix)) {

@@ -44,7 +44,7 @@ After a change to agentx:
 | Changed | Do |
 |---|---|
 | Most code | `pnpm run build`. The project uses `dist/` through the link. |
-| `src/agent-runtime/pi/pi-package/`, and `events/queue.ts` and `project-config.ts`, which its extensions import | Nothing for Pi, which loads them as source when a session starts. For `queue.ts` and `project-config.ts`, also `pnpm run build`: the rest of agentx uses them from `dist/`. |
+| `src/agent-runtime/pi/pi-package/`, and `events/queue.ts`, `sqlite.ts` and `project-config.ts`, which its extensions import | Nothing for Pi, which loads them as source when a session starts. For `queue.ts`, `sqlite.ts` and `project-config.ts`, also `pnpm run build`: the rest of agentx uses them from `dist/`. |
 
 ## Before changing code
 

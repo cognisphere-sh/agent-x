@@ -1,9 +1,9 @@
 // A stand-in for a model endpoint (OpenAI chat-completions, streaming) on 127.0.0.1, so tests run real Pi sessions with no network and no login.
 // It answers by the last message of the request.
 // After a tool result, text; when the request offers tools, "[sleep N]", a bash tool call that sleeps; "[bash <command>]", a bash tool call of that command;
-// "[tool <name> <JSON arguments>]" on a line of its own, a call of that tool; "[fail]", an HTTP 400; "[overflow]", an HTTP 400 that says the context is
-// too long; otherwise text. `answerWhen(match, directive)` answers the first request that asks something with `match` in it, a tool result too, as if it
-// asked `directive`. After `cutNext()`, the next text stops at the token limit.
+// "[tool <name> <JSON arguments>]" on a line of its own, a call of that tool; "[fail]", an HTTP 400; otherwise text. `answerWhen(match, directive)` answers
+// the first request that asks something with `match` in it, a tool result too, as if it asked `directive`. Each answer reports its usage: a quarter of the
+// request's length read, and of its own written.
 
 import { createServer } from "node:http";
 
@@ -13,7 +13,6 @@ export async function startFakeModel() {
 	const systemPrompts = [];
 	const tools = [];
 	const scripts = [];
-	let cut = false;
 	const server = createServer((request, response) => {
 		let body = "";
 		request.on("data", (chunk) => (body += chunk));
@@ -29,7 +28,7 @@ export async function startFakeModel() {
 			const directed = last.role === "user" || script >= 0;
 			const lastText = script >= 0 ? scripts.splice(script, 1)[0][1] : asked;
 
-			const refuse = directed && (lastText.includes("[fail]") ? "The fake model was told to fail." : lastText.includes("[overflow]") ? "Your input exceeds the context window of this model." : null);
+			const refuse = directed && lastText.includes("[fail]") && "The fake model was told to fail.";
 			if (refuse) {
 				response.writeHead(400, { "content-type": "application/json" });
 				response.end(JSON.stringify({ error: { message: refuse, type: "invalid_request_error" } }));
@@ -38,21 +37,25 @@ export async function startFakeModel() {
 			const chunk = (delta, finish = null) =>
 				`data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "fake-model", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
 			response.writeHead(200, { "content-type": "text/event-stream" });
-			// A summary request offers no tools, so the calls it quotes make none.
+			// A request that offers no tools gets text.
 			const calls = directed && (declared ?? []).length > 0;
 			const sleep = calls && /\[sleep ([\d.]+)\]/.exec(lastText);
 			const bash = calls && /\[bash (.+)\]/.exec(lastText);
 			const tool = calls && /^\[tool (\w+) (\{.*\})\]$/m.exec(lastText);
+			let written;
 			if (sleep || bash || tool) {
 				const command = sleep ? `sleep ${sleep[1]}` : bash?.[1];
 				const call = { index: 0, id: `call_${requests.length}`, type: "function", function: tool ? { name: tool[1], arguments: tool[2] } : { name: "bash", arguments: JSON.stringify({ command }) } };
 				response.write(chunk({ role: "assistant", content: null, tool_calls: [call] }));
 				response.write(chunk({}, "tool_calls"));
+				written = JSON.stringify(call.function);
 			} else {
-				response.write(chunk({ role: "assistant", content: `reply ${requests.length}` }));
-				response.write(chunk({}, cut ? "length" : "stop"));
-				cut = false;
+				written = `reply ${requests.length}`;
+				response.write(chunk({ role: "assistant", content: written }));
+				response.write(chunk({}, "stop"));
 			}
+			const [read, wrote] = [JSON.stringify(messages).length, written.length].map((chars) => Math.ceil(chars / 4));
+			response.write(`data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "fake-model", choices: [], usage: { prompt_tokens: read, completion_tokens: wrote, total_tokens: read + wrote } })}\n\n`);
 			response.end("data: [DONE]\n\n");
 		});
 	});
@@ -64,9 +67,6 @@ export async function startFakeModel() {
 		port: server.address().port,
 		answerWhen: (match, directive) => {
 			scripts.push([match, directive]);
-		},
-		cutNext: () => {
-			cut = true;
 		},
 		close: () => new Promise((resolve) => server.close(resolve)),
 	};

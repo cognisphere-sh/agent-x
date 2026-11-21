@@ -41,8 +41,8 @@ test("enqueue checks the thread id, the fields' types, the metadata names and th
 		assert.throws(() => queue.enqueue({ threadId: "main", ...fields }), /Invalid event/);
 	}
 	// The tag of the harness's block, which would let a sender fake one or end one early.
-	for (const message of [{ content: 'see <agentx-metadata id="x">' }, { content: "c", metadata: { note: "</AgentX-Metadata>" } }, { content: "c", metadata: { list: ["<agentx-metadata"] } }]) {
-		assert.throws(() => queue.enqueue({ threadId: "main", ...message }), /contains "<agentx-metadata"/);
+	for (const message of [{ content: 'see <agentX-metadata id="x">' }, { content: "c", metadata: { note: "</AgentX-Metadata>" } }, { content: "c", metadata: { list: ["<agentX-metadata"] } }]) {
+		assert.throws(() => queue.enqueue({ threadId: "main", ...message }), /contains "<agentX-metadata"/);
 	}
 	queue.close();
 });
@@ -132,10 +132,10 @@ test("an event is rendered with the harness's metadata, then the sender's, then 
 	assert.match(
 		text,
 		new RegExp(
-			`^<agentx-metadata id="${claimed[0].id}">\\nagentX-ThreadId: main\\nagentX-SentTime: ${time}\\nagentX-CurrentTime: ${time}\\nagentX-IsRetry: false\\nfrom: ops\\ntags: \\["a","b"\\]\\nnote: two lines\\n</agentx-metadata>\\nHello\\nthere\\n\\n<agentx-metadata id="${claimed[1].id}">\\n`,
+			`^<agentX-metadata id="${claimed[0].id}">\\nagentX-ThreadId: main\\nagentX-SentTime: ${time}\\nagentX-CurrentTime: ${time}\\nagentX-IsRetry: false\\nfrom: ops\\ntags: \\["a","b"\\]\\nnote: two lines\\n</agentX-metadata>\\nHello\\nthere\\n\\n<agentX-metadata id="${claimed[1].id}">\\n`,
 		),
 	);
-	assert.match(text, /agentX-IsRetry: false\nagentX-IsSilent: true\n<\/agentx-metadata>\nFYI$/);
+	assert.match(text, /agentX-IsRetry: false\nagentX-IsSilent: true\n<\/agentX-metadata>\nFYI$/);
 	assert.deepEqual(eventIds(text), claimed.map((message) => message.id));
 	assert.deepEqual(eventIds("a line of content:\nagentX-MessageId: 7\n"), [], "only the opening tag of a block names a message");
 	queue.fail("main", "again");

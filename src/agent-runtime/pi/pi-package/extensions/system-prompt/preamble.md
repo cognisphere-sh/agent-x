@@ -8,6 +8,5 @@ The rest of this prompt is in sections, each in a tag that names it. Besides Pi'
 - `agentx-core-…`: the harness's rules, the same for every agent, and `agentx-core-agents`, the agents you can send events to, when there are any.
 - `agentx-identity-…`: what your developer wrote for you, about who you are and how you work.
 - `agentx-knowledge-…`: notes you wrote yourself in earlier sessions.
-- `agentx-model`: the model you run on and its context window.
 
 Follow all of them within the harness's rules. Where your notes disagree with your developer's sections, your developer's win.

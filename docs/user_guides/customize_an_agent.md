@@ -151,6 +151,10 @@ A schedule can run a [workflow](send_events.md#workflows) instead of the model: 
 
 `agentx remove-agent <name>`, in the project root, `agent-x/` or `agent-x/agents/`, lists what it deletes: the agent's folder, its state in `agent-x/storage/<name>/` (its sessions and what it learned), and its entry in `agent-x/agentx.json`. It deletes them when you answer `y`; anything else, or Ctrl-C, keeps them. `--yes` deletes without asking. The other agents' `canSendTo` lose its name. Stop `agentx serve` first: it refuses while the agent runs.
 
+## Removing a thread
+
+`agentx remove-thread <thread-id>`, in the agent's directory, deletes a thread: its sessions in `storage/sessions/<thread-id>/` and its episodes in the agent's [memory](#memory). It says what it deletes and asks first; `--yes` deletes without asking. It refuses while the thread runs, in `agentx chat` or under `agentx run`, and while events wait for it. The agent itself cannot run it. An event for the thread later starts it again, empty.
+
 ## Who the agent may send to
 
 The project's agents are listed in `agent-x/agentx.json`; `agentx init-agent` adds each with an empty `description`. `agentx serve` runs only the agents listed there. Under it, an agent may send events to every other agent of the project. To allow only some, list them in its `canSendTo`:
@@ -179,25 +183,29 @@ Events tell the agent when they were sent and what time it is. A new agent's `.p
 
 ## Context
 
-The agent knows its model and context window, and keeps its context small itself ([context](../architecture/agent-runtime/pi/pi-package/context/README.md)):
+The agent keeps its context small itself ([context](../architecture/agent-runtime/pi/pi-package/context/README.md)):
 
-- An episode is the agent's work from an event to its last answer, with an id of its own. The agent sees where each starts and ends, and how many tokens it used.
-- When an episode ends and the episodes since the last request used a tenth of the window, the agent is asked to fold earlier episodes it no longer needs into summaries it writes, and gets one turn for it. The request says how, and leaves its context with that turn. It can read any episode back.
-- When the context nears the window's end, older episodes are summarized for it, and the last ten stay as they are, as many as fit in Pi's `compaction.keepRecentTokens`.
+- An episode is the agent's work from an event to its last answer ([episodes](../architecture/agent-runtime/pi/pi-package/episodes/README.md)). When it ends, a message gives its id and how many tokens it added, from the model's usage.
+- When an episode ends and the episodes since the last request added a tenth of the window, the agent is asked to fold earlier episodes it no longer needs into summaries it writes, and gets one turn for it. The request says how, and leaves its context with that turn. It can read any episode back.
+- When the context nears the window's end anyway, Pi compacts it by itself, with its own `compaction` settings.
 
-To change how often it is asked, or how many episodes a compaction keeps:
+To change how often it is asked:
 
 ```json
 "agentx": {
 	"memory": {
-		"compaction": { "foldNudgeEvery": 40000, "keepEpisodes": 3 }
+		"compaction": { "foldNudgeEvery": 40000 }
 	}
 }
 ```
 
 `foldNudgeEvery` is a count of tokens when it is a whole number, and a share of the window when it is a fraction, such as `0.2`.
 
-`"enabled": false` turns folds off, and Pi compacts as it does by itself.
+`"enabled": false` turns folds off.
+
+## Memory
+
+The agent remembers the episodes of all its threads: it searches them by keywords with `episode_search`, and reads any of them back with `episode_read` ([memory](../architecture/agent-runtime/pi/pi-package/memory/README.md)). Their index, `storage/knowledge/memory/index.db`, is built from the threads' session files, which stay the record. An episode is in it as soon as it ends. Each thread's session indexes its own file. To build the index again, stop the agent and delete `index.db` with its `index.db-wal` and `index.db-shm` files, or the whole `memory/` folder; each thread's episodes come back when the thread next runs.
 
 ## What the agent learns
 

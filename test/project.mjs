@@ -156,11 +156,22 @@ export function scratch(t, port) {
 	};
 }
 
-/** A user message's text as it was typed or queued: without the line that starts an episode, which the context extension puts first. */
-export const asSent = (text) => text.replace(/^Episode \S+ started\.\n\n/, "");
+/** A message entry's text, without images. */
+export const text = (entry) => (typeof entry.message.content === "string" ? entry.message.content : entry.message.content.map((part) => part.text ?? "").join("\n"));
 
-/** The agent's sessions as { thread, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. A user's `text` is as sent
- * (see `asSent`), and `contents` is what was typed or queued: each user message without its metadata block. */
+/** Whether a session entry is an episode's end message. */
+export const isEnd = (entry) => entry.type === "custom_message" && entry.customType === "agentx-episode-end";
+
+/** The id of the episode that session entry `entryId` is in, in any of the agent's sessions: the one the next end message ends. */
+export function episodeOf(project, entryId) {
+	for (const { entries } of sessions(project)) {
+		const at = entries.findIndex((entry) => entry.id === entryId);
+		if (at >= 0) return entries.slice(at).find(isEnd)?.details.id;
+	}
+}
+
+/** The agent's sessions as { thread, entries, users: [{ entryId, text }], contents, roles }, read from storage/sessions/<thread>/. `contents` is what was
+ * typed or queued: each user message without its metadata block. */
 export function sessions({ agent }) {
 	// One folder per thread, storage/sessions/<thread>/, with the thread's session files.
 	const directory = join(agent, "storage", "sessions");
@@ -168,8 +179,7 @@ export function sessions({ agent }) {
 		.flatMap((thread) => readdirSync(join(directory, thread)).filter((file) => file.endsWith(".jsonl")).map((file) => ({ thread, file: join(directory, thread, file) })))
 		.map(({ thread, file }) => {
 			const entries = readFileSync(file, "utf8").trim().split("\n").map((line) => JSON.parse(line));
-			const text = (content) => (typeof content === "string" ? content : content.map((part) => part.text ?? "").join("\n"));
-			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: asSent(text(entry.message.content)) }));
+			const users = entries.filter((entry) => entry.type === "message" && entry.message.role === "user").map((entry) => ({ entryId: entry.id, text: text(entry) }));
 			return {
 				thread,
 				entries,

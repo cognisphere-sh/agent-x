@@ -13,7 +13,7 @@
 			}
 		},
 		"memory": {
-			"compaction": { "enabled": true, "foldNudgeEvery": 0.1, "keepEpisodes": 10 }
+			"compaction": { "enabled": true, "foldNudgeEvery": 0.1 }
 		}
 	}
 }

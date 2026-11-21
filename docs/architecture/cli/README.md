@@ -8,6 +8,7 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | `copy-template.ts` | Copies `templates/<name>` into a missing or empty directory. |
 | `pinned-cli.ts` | Finds the CLI the project pins ([D15](#d15)). |
 | `agent-root.ts` | Finds the agent directory, or the project's `agent-x/`, a command runs in. |
+| `confirmed.ts` | Asks a person to confirm what `remove-agent` and `remove-thread` delete. |
 | `commands/<name>.ts` | One file per command. |
 
 ## Commands
@@ -20,12 +21,13 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. |
 | `agentx run` | Runs the agent until it is stopped ([supervisor](../agent-runtime/supervisor/README.md)). |
 | `agentx chat [--thread-id <id>] [pi args]` | Opens the pinned Pi on a thread, `main` by default. Other arguments go to Pi ([Pi](../agent-runtime/pi/README.md#how-agentx-chat-starts-pi)). |
+| `agentx remove-thread <thread-id> [--yes]` | Deletes a Pi thread of the agent: its sessions, `storage/sessions/<thread-id>/`, and its episodes in the agent's [memory](../agent-runtime/pi/pi-package/memory/README.md) ([D94](#d94)). Says what it deletes and asks first, as `remove-agent` does; `--yes` skips the question. Refuses in the agent's processes, while a process holds the thread, and while events wait for it, before the question and again after. |
 | `agentx event deliver [options] [--] <content>` | A person gives an agent an event, straight into its inbox, with no `agentx serve`. Refuses to run in the agent's processes. |
 | `agentx event send [options] [--] <content>` | The agent sends an event, from its own processes, such as the model's bash, into its outbox. Refuses to run elsewhere. |
 
 Both `event` commands take `--agent <name>` (another agent of the project), `--thread-id <id>` (without it, the routers pick), `--key`, `--do-not-steer`, `--silent`, `--meta <name>=<value>` ([D30](#d30)) and `--file <path>`. Both add `source: cli` unless `--meta source=…` says otherwise, and print the event's id ([Events](../agent-runtime/events/README.md#sending-and-delivering)).
 
-`run`, `chat` and `event` run in an agent directory, and make its storage when it is missing, as after a fresh clone. Flags are lower case with dashes, like Pi's; `--thread-id` names the folder of the thread's Pi sessions ([D21](../agent-runtime/pi/README.md#d21)).
+`run`, `chat`, `remove-thread` and `event` run in an agent directory, and make its storage when it is missing, as after a fresh clone. Flags are lower case with dashes, like Pi's; `--thread-id` names the folder of the thread's Pi sessions ([D21](../agent-runtime/pi/README.md#d21)).
 
 Planned: `upgrade`.
 
@@ -41,7 +43,7 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 
 ## Conventions
 
-- `run`, `serve` and `event` only read their arguments and call the agent runtime or the coordinator runtime. `init-project`, `init-agent`, `remove-agent` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
+- `run`, `serve` and `event` only read their arguments and call the agent runtime or the coordinator runtime. `init-project`, `init-agent`, `remove-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
 - Commands throw an `Error` with a message for the user; only `agentx.ts` prints it and exits.
 - `event` reads its options with Node's `parseArgs` in strict mode, so an unknown option is an error. `chat` reads its own flags by hand and passes the rest to Pi.
 
@@ -72,3 +74,11 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 - **Decision.** `run` runs the agent until it is stopped. `chat` opens Pi on one thread for a person. `event send` is the agent's way to send, `event deliver` a person's way to give an agent an event.
 - **Why.** Each name says what the command does. The agent sends and a person delivers, which go different ways ([D48](../agent-runtime/events/README.md#d48)).
 - **Rejected.** `agentx serve` in an agent directory, which would give `serve` two meanings.
+
+<a id="d94"></a>
+### D94. A person removes a thread with `agentx remove-thread`, which takes its episodes out of the memory index too, and only while the thread is idle
+
+- **Problem.** A person may want a thread gone, with what the agent remembers of it. Its sessions are Pi's files, its episodes are rows in the memory index, and `agentx run` can start the thread whenever an event comes.
+- **Decision.** `agentx remove-thread` refuses in the agent's processes, while a process holds the thread and while events wait for it. It holds the thread's lease while it deletes the thread's folder, then the thread's rows in the index, in one transaction. It opens the index through `index-db.ts`, which loads nothing of Pi.
+- **Why.** The lease keeps a session from starting on the thread meanwhile, and waiting events would start it again. Only the thread's own session indexes its files ([memory](../agent-runtime/pi/pi-package/memory/README.md#d91)), so nothing adds its episodes back. What the agent remembers is for a person to remove, not the agent. Loading Pi takes most of a second, which every command would pay, since the CLI imports its commands up front.
+- **Consequence.** The thread's settled events stay on the queue. An event for the thread later starts it again, with new sessions.

@@ -33,6 +33,7 @@ my-project/
       event_queue.db            its queue (its router adds, Pi sessions and workflows settle)
       sessions/<thread>/        one folder of Pi sessions per thread (Pi)
       knowledge/                what it learns: skills, prompt text, its own router, workflows and schedules (the agent)
+      knowledge/memory/index.db the index of its episodes (its Pi sessions)
       heartbeat                 written by agentx run while it works; read by the coordinator
       schedule-state.json       what each schedule has fired (the coordinator)
 ```
@@ -43,7 +44,7 @@ The agentx repository itself is laid out in [README.md](../README.md#repository-
 
 ```mermaid
 flowchart TD
-  CLI["cli/"] --> SUP["supervisor/"] & SEND["events/send-event"] & DELIV["coordinator-runtime/deliver-event"] & COORD["coordinator-runtime/coordinator"] & LAUNCH["pi/pi-launch"]
+  CLI["cli/"] --> SUP["supervisor/"] & SEND["events/send-event"] & DELIV["coordinator-runtime/deliver-event"] & COORD["coordinator-runtime/coordinator"] & LAUNCH["pi/pi-launch"] & MEMDB["pi-package memory/index-db"]
   COORD --> MGR["agent-manager"] & SVC["service"] & DELY["services/relay"] & SCHED["services/scheduler"] & CMP["services/composio"] & TG["services/telegram"]
   DELY & SCHED & CMP & TG --> SVC
   DELY & SCHED & CMP & TG --> DELIV
@@ -57,27 +58,31 @@ flowchart TD
   PR -. "spawns Pi, which loads" .-> PKG["pi/pi-package"]
   ER & DELIV & SEND --> MB["events/mailbox"]
   ER & WR & PR & PKG & MB --> Q["events/queue"]
+  PKG --> MEMDB
+  Q & PKG & MEMDB --> SQL["sqlite"]
   PKG --> PC["project-config"]
   DELIV & DELY --> PC
   ER & SEND & DELIV & MGR --> ST["storage"]
   ST --> PC --> Q
 ```
 
-Arrows are imports; dotted ones start a process. The runtimes never import the CLI. `events/queue.ts` and `project-config.ts` import nothing else of agentx: Pi loads them as source, through the Pi package.
+Arrows are imports; dotted ones start a process. The runtimes never import the CLI. `events/queue.ts`, `sqlite.ts` and `project-config.ts` import nothing of agentx but each other: Pi loads them as source, through the Pi package.
 
 | Module | Files | Responsibility | Depends on | Doc |
 |---|---|---|---|---|
-| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates projects and agents, removes an agent, opens a thread, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch | [cli](architecture/cli/README.md) |
+| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file | [cli](architecture/cli/README.md) |
 | Project | `templates/` | The generated repo: `web/` and `agent-x/` | | [cli/project](architecture/cli/project/README.md) |
 | Agent | `agent-env.ts`, `storage.ts`, `project-config.ts` | An agent's directory, its storage and the link to it, the environment of its processes, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
-| Events | `src/agent-runtime/events/` | The queue (SQLite), the inbox and outbox (`mailbox.ts`), `sendEvent`, and the EventRouter loop, the only writer of new events to the queue | functions, workflows, storage | [events](architecture/agent-runtime/events/README.md) |
+| Events | `src/agent-runtime/events/`, `sqlite.ts` | The queue (SQLite, opened by `sqlite.ts`, as the memory index is), the inbox and outbox (`mailbox.ts`), `sendEvent`, and the EventRouter loop, the only writer of new events to the queue | functions, workflows, storage | [events](architecture/agent-runtime/events/README.md) |
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |
 | Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types; a workflow's `ctx.composio` | agent env, send-event, Composio's policy | [functions](architecture/agent-runtime/functions/README.md) |
 | Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
-| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions | queue, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
+| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions | queue, sqlite, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
 | Composio | `pi-package/extensions/composio/` | Each agent's access to external services, and the policy its workflows' sessions get too | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
-| Context | `pi-package/extensions/context/` | The agent's model and window, its episodes and the tokens each used, the episodes it folds when a fold nudge asks, and the compaction that keeps the last episodes | | [context](architecture/agent-runtime/pi/pi-package/context/README.md) |
+| Episodes | `pi-package/extensions/episodes/` | Divides a thread into episodes, each of Pi's runs, ended by a message with its id and the tokens it added, from the model's usage | | [episodes](architecture/agent-runtime/pi/pi-package/episodes/README.md) |
+| Context | `pi-package/extensions/context/` | The episodes the agent folds when a fold nudge asks; Pi compacts by itself | episodes | [context](architecture/agent-runtime/pi/pi-package/context/README.md) |
+| Memory | `pi-package/extensions/memory/` | The agent's episodic memory: an index of every thread's episodes, which each session updates with its own file when a run settles, and which the agent searches by keyword and reads back | episodes, sqlite | [memory](architecture/agent-runtime/pi/pi-package/memory/README.md) |
 | Pi reference | | What agentx relies on in Pi | | [pi-reference](architecture/agent-runtime/pi/pi-reference/README.md) |
 | Browser | `src/agent-runtime/browser/` | `agentx-browser`, the agent's browser command: the agent-browser agentx pins, on one of the agent's profiles in `storage/workspace/browser/` | agent env, storage, project config | [browser](architecture/agent-runtime/browser/README.md) |
 | Coordinator | `src/coordinator-runtime/` | `agentx serve`: an AgentManager per agent, the services, agentx's and the project's own from `agent-x/services/`, the API server with its routes to report and control the agents, and the services' routes under `/services/<name>/`; `deliverEvent`, the only code that writes an inbox | storage, project config, mailbox, workflows | [coordinator-runtime](architecture/coordinator-runtime/README.md) |
@@ -88,7 +93,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 ## Lifecycles
 
-**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs.
+**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs. `agentx remove-thread <id>`, in an agent, deletes one thread's sessions and its episodes in the agent's memory, the same way; not while the thread runs or has events waiting.
 
 **The coordinator** (`agentx serve`). It starts, reads `agentx.json` once, and starts its services: the core ones, the relay, the scheduler and Composio's webhook, on when its secret is set, then the optional ones `agentx.json` lists, then the project's own in `agent-x/services/` that it lists. One that fails to load or start is off; the rest go on. Then it starts an AgentManager per listed agent with a folder, and its API server, with its own routes, which report, start and stop the agents with the API token, and the services' routes under `/services/<name>/`. Each second the scheduler fires the schedules that are due, and the relay delivers every outbox. The first SIGINT or SIGTERM lets the agents finish their running work, the second stops it, while the services go on, except the scheduler, which fires nothing during a stop. Then the services stop, the last started first, so the relay delivers once more, and the server closes.
 
@@ -116,10 +121,11 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Built | Planned |
 |---|---|
-| CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `event send`, `event deliver` | `agentx upgrade` |
+| CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver` | `agentx upgrade` |
 | `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Sandboxes |
 | `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | Composio's triggers, made for each agent by its service |
 | Pi package: harness prompt, event queue, Composio, skills as sections with versions, the browser skill | The web app's use of the API: agent controls, events from people, answers back |
-| Each agent's state in `agent-x/storage/` | Memory: episodic search, then dream, task logs and sub-agents; hints later |
+| Each agent's state in `agent-x/storage/` | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
 | The agent's browser: `agentx-browser` and its profiles | |
-| The agent's context: its model and window, episodes and the tokens of each, folds of episodes, fold nudges, compactions that keep the last episodes | |
+| The agent's context: episodes and the tokens each added, folds of episodes, fold nudges | |
+| Episodic memory: every thread's episodes, searched by keyword and read back | |

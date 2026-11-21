@@ -25,7 +25,7 @@ A sender gives:
 | Field | Meaning |
 |---|---|
 | `threadId` | Optional. A thread, the folder of its Pi sessions ([D21](../pi/README.md#d21)), or `workflow.<name>`: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit, at most 200 characters. Without it, the routers pick. |
-| `content` | Markdown for the agent. It may not contain `<agentx-metadata` ([D25](../pi/pi-package/event-queue/README.md#d25)). Large data goes in a file ([D49](#d49)). |
+| `content` | Markdown for the agent. It may not contain `<agentX-metadata` ([D25](../pi/pi-package/event-queue/README.md#d25)). Large data goes in a file ([D49](#d49)). |
 | `metadata` | Optional facts for the model, one per line. A name may not start with `agentX-`, or hold `:` or a line break. `source` says where the event came from, such as `cli` or `workflow.<name>`. |
 | `key` | Optional. An event whose key is there already is added once ([D50](#d50)). |
 | `doNotSteer` | Optional. Never joins a run in progress; waits for the next one. |
@@ -105,7 +105,7 @@ Two processes writing one Pi session would split the conversation, and Pi has no
 | `abandon`, `expired`, `nextThread` | the Pi runner, the workflow runner | Free a dead process's thread; pick the next thread with work |
 | `claim`, `claimOldest`, `delivered`, `settle`, `finish`, `fail` | the extension, the workflow runner | Take events, record the session entry, end the run |
 
-Each method is one atomic step. The file uses WAL mode, and waits up to 5 seconds for another process's write.
+Each method is one atomic step. The file uses WAL mode, and waits up to 5 seconds for another process's write. `src/agent-runtime/sqlite.ts` opens it so, and the [memory index](../pi/pi-package/memory/README.md) the same way.
 
 ## Routing
 

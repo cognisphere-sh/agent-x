@@ -11,7 +11,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
 import { Coordinator } from "../dist/coordinator-runtime/coordinator.js";
 import { startFakeModel } from "./fake-model.mjs";
-import { addAgent, agentx, alive, asAgent, asSent, cli, createAgent, editConfig, editSettings, events, holder, inboxEvents, onlySession, onQueueFile, open, projectRoot, scratch, sessions, until } from "./project.mjs";
+import { addAgent, agentx, alive, asAgent, cli, createAgent, editConfig, editSettings, events, holder, inboxEvents, onlySession, onQueueFile, open, projectRoot, scratch, sessions, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -36,7 +36,7 @@ test("a queued event runs in the session of its thread and is linked to its sess
 	const session = onlySession(project);
 	assert.equal(session.thread, "main");
 	assert.deepEqual(session.roles, ["system", "user", "assistant"]);
-	assert.equal(session.users[0].text, `<agentx-metadata id="${id}">\n${session.users[0].text.split("\n").slice(1, 4).join("\n")}\nagentX-IsRetry: false\nfrom: test\n</agentx-metadata>\nhello`);
+	assert.equal(session.users[0].text, `<agentX-metadata id="${id}">\n${session.users[0].text.split("\n").slice(1, 4).join("\n")}\nagentX-IsRetry: false\nfrom: test\n</agentX-metadata>\nhello`);
 	assert.match(session.users[0].text, /\nagentX-ThreadId: main\nagentX-SentTime: \w+day [^\n]+\nagentX-CurrentTime: \w+day [^\n]+\n/);
 	assert.equal(event(id).entryId, session.users[0].entryId);
 	assert.equal(event(id).attempts, 1);
@@ -133,7 +133,7 @@ test("a one-shot agentx chat answers its own prompt and leaves the thread's queu
 	assert.equal(cli.status, 0, cli.stderr);
 	// Two model calls, both for the typed prompt alone: the tool call, then the answer, which is what gets printed.
 	assert.deepEqual(
-		model.requests.slice(calls).map((users) => users.map(asSent)),
+		model.requests.slice(calls),
 		[["[sleep 2] typed"], ["[sleep 2] typed"]],
 	);
 	assert.equal(cli.stdout.trim(), `reply ${calls + 2}`);
@@ -324,7 +324,7 @@ test("an event that arrives while a thread's session is closing waits for it and
 	const session = onlySession(project);
 	assert.deepEqual(session.roles, ["system", "user", "assistant", "user", "assistant", "user", "assistant"]);
 	// Each model call saw the whole conversation so far: nothing was answered from an older copy of the session. Its events count; the messages that end episodes do not.
-	assert.deepEqual(model.requests.slice(-3).map((users) => users.filter((user) => asSent(user).startsWith("<agentx-metadata")).length), [1, 2, 3]);
+	assert.deepEqual(model.requests.slice(-3).map((users) => users.filter((user) => user.startsWith("<agentX-metadata")).length), [1, 2, 3]);
 	// The second session was opened only after the first had closed.
 	assert.deepEqual(server.output().match(/main: session (opened|closed)/g).slice(0, 3), ["main: session opened", "main: session closed", "main: session opened"]);
 });
@@ -668,7 +668,7 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 				systemPrompt: ["../storage/knowledge/system_prompt"],
 				runner: { maxThreads: 4, stallSeconds: 600, routerSeconds: 60 },
 				composio: { userId: "main@project", session: { toolkits } },
-				memory: { compaction: { enabled: true, foldNudgeEvery: 0.1, keepEpisodes: 10 } },
+				memory: { compaction: { enabled: true, foldNudgeEvery: 0.1 } },
 			},
 		],
 	);

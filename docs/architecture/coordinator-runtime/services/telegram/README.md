@@ -42,8 +42,20 @@ Messages come in without Composio, so a failure here leaves the service on, with
 4. **Delivers** with `context.deliver`, with no thread, so the agent's routers pick one:
    - key `telegram:<update_id>`, so an update Telegram sends again is one event;
    - content: the message's text or caption, then a line for each file that could not be downloaded, and the files line;
-   - metadata `source: telegram`, `chat` (its id), `chat-type`, `from` (`@username`, or the sender's name), `from-id` and `message-id`, with the fact `agentX-Service: telegram`.
+   - metadata `source: telegram`, `chat` (its id), `chat-type`, `from` (`@username`, or the sender's name), `from-id` and `message-id`, with the fact `agentX-Service: telegram`;
+   - for a reply, also `reply-to`, the id of the message it answers, and `reply-to-bot`, whether that message is the bot's: the bot's user id is the part of its token before the colon. A router can then send answers to the agent and leave people's talk among themselves elsewhere.
 5. **Answers** 200 with the event's id once it is in the inbox, and 503 when it cannot be written, so Telegram sends it again.
+
+## Albums
+
+Telegram sends an album, several photos or files sent together, as one message per photo or file, with the same `media_group_id`, and sends a chat's messages one at a time, each once the one before is answered. The service makes an album one event ([D93](#d93)):
+
+1. **Answers** each part 200 at once, and starts downloading its files, so Telegram sends the next part. A part it has already, sent again, is dropped.
+2. **Waits** until no part of the album has come for 2 s, and its files are in. A part that comes meanwhile restarts the wait.
+3. **Delivers** one event: its parts' text and files in the order they were sent, a number first on a file whose name another part's file has; the metadata of its first part, with `album`, the `media_group_id`, and `reply-to` from a part that is a reply; key `telegram:<update_id>` of its first part. An event the inbox cannot take is tried three times, a second apart; then a log line says it is lost.
+4. **Remembers** the album's parts for 10 minutes, and drops a part Telegram sends again. A part that comes after the album was delivered is an event of its own.
+
+When `agentx serve` stops, the service delivers the albums on their way in before it stops; they wait in the inboxes for the agents' next start.
 
 ## Button taps
 
@@ -62,6 +74,8 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 - A bot has one webhook, so Composio's tools that read updates, `TELEGRAM_GET_UPDATES` and `TELEGRAM_GET_CHAT_HISTORY`, fail while the service runs.
 - In a group, a bot in Telegram's privacy mode, the default, gets only commands and replies to it.
 - A file that fails to download for a passing reason, such as a network error, is not tried again.
+- An album is answered before it is delivered, so one the inbox cannot take, or that is on its way in when `agentx serve` dies without stopping, is lost: Telegram does not send it again.
+- An album's event comes 2 s after its last part. A part that comes more than 2 s after the one before, such as on a very slow link, is an event of its own.
 - Updates are lost while `agentx serve` is down for longer than Telegram keeps them, 24 hours.
 - Until sandboxes, an agent can read `COMPOSIO_COORDINATOR_API_KEY` as it reads any file of its OS user, and with it change any agent's Composio accounts.
 - Answers depend on Composio: without the agents' `COMPOSIO_API_KEY`, or when the bot could not be connected, the agent gets the message but cannot answer in Telegram.
@@ -93,3 +107,10 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 - **Decision.** The harness prompt has the agent put the answers on inline buttons, with `TELEGRAM_SEND_MESSAGE`'s `reply_markup`. The service takes `callback_query` updates too: it answers each tap, delivers it as an event with the button's text as content, then takes the message's buttons off and adds the choice under its text. The prompt rules out polls.
 - **Why.** The buttons sit under the question, the chat shows the choice, and nobody answers twice. Only the service holds the bot token and gets the tap, so only it can answer the tap in time, before the button spins on, and close the question at once instead of waiting on a model run.
 - **Rejected.** A reply keyboard, whose tap is a plain message, so it needs no change to the service: the keyboard sits under the input instead of the question, and the tap is a message in the chat. Polls: a `poll_answer` names no chat, so the service would have to know which chat each poll went to. Every option of the old harness's Telegram plugin, such as several answers, a question for one person or buttons that stay: no agent needs them yet.
+
+### D93. An album is one event, gathered after each part is answered
+
+- **Problem.** Telegram sends each photo or file of an album as a message of its own, so an agent answered an album of two photos twice, as if two people had each sent one.
+- **Decision.** The service answers each part with a `media_group_id` at once, and gathers the parts in memory until none has come for 2 s and their files are in; it then delivers one event, keyed by its first part's update, with every part's text and files and `album` in its metadata. It drops a part it has, or delivered in the last 10 minutes, sent again, and delivers the albums on their way in when it stops.
+- **Why.** Telegram sends the next part of an album only once the one before is answered, so the service can see the whole album only by answering each part before the album is delivered. Gathering in the service makes an album one event for every agent and router, which then need no rule of their own.
+- **Rejected.** Holding each part's answer until the album is delivered: Telegram would wait to send the next part, and each part would go in alone. Delivering each part and merging them in the agent's queue, or in the agent's workflow: the queue knows nothing of Telegram, and every agent would need its own merge. Keying the event by `media_group_id`: a part that comes after the album was delivered would have the same key, and be dropped as the same event.

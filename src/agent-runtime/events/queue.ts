@@ -2,9 +2,9 @@
 // Loaded twice: compiled, by the CLI and `agentx run`, and from source, by the event queue extension in pi/pi-package, which Pi loads as source. The two copies share only the file.
 
 import { randomBytes } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
+import { openDatabase, transaction } from "../sqlite.js";
 
 /** What a sender puts on the queue. */
 export interface NewEvent {
@@ -60,10 +60,6 @@ const leaseMs = 120_000;
 // How old a lease gets before its holder writes it again. The holder checks it every second; writing it only now and then keeps the writes of
 // a session that holds its thread to one every 10 s. A holder that stops thus keeps its thread for 110 to 120 s.
 const renewMs = 10_000;
-// How long a step waits for another process that is writing the file.
-const waitMs = 5000;
-// SQLite's result code for "another process has the file locked".
-const sqliteBusy = 5;
 // This process as a lease holder: its id and its start time, so a reused process id is a new holder.
 const owner = `${process.pid}.${Math.trunc(performance.timeOrigin)}`;
 // Limits a statement on `events` to threads this process holds; takes `owner` as a parameter.
@@ -75,7 +71,7 @@ const work = `((${startsRun}) OR status = 'in_flight')`;
 // A workflow's thread, in SQL.
 const workflowThread = `thread_id GLOB '${workflowPrefix}*'`;
 // The tag of the harness's metadata block (render.ts). No sender's text may hold it, so no event can fake a block or end one early.
-const blockTag = /<\/?agentx-metadata\b/i;
+const blockTag = /<\/?agentX-metadata\b/i;
 
 /** A new event's id: 72 random bits, so that ids are unique without a check and nobody can guess one. A leading "-" becomes "_",
  * so that a command line does not take the id for an option. */
@@ -84,7 +80,7 @@ export const newId = () => randomBytes(9).toString("base64url").replace(/^-/, "_
 /** Whether `id` has the shape of an event's id. */
 export const isEventId = (id: unknown): id is string => typeof id === "string" && /^[A-Za-z0-9_][A-Za-z0-9_-]{11}$/.test(id);
 
-// The tables. Several processes can open a new file at once, so they are made in one transaction, under the write lock: one makes them, the others find them.
+// The tables.
 const schema = `
 	CREATE TABLE IF NOT EXISTS events (
 		seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -128,20 +124,9 @@ interface Row {
 	updated_at: number;
 }
 
-// node:sqlite prints an "experimental" warning when it loads on Node before 24.15 and 26. Loading it here, with warnings off for that moment, keeps the line out of every agentx command.
-function sqlite(): { DatabaseSync: typeof DatabaseSync } {
-	const { emitWarning } = process;
-	process.emitWarning = () => {};
-	try {
-		return process.getBuiltinModule("node:sqlite");
-	} finally {
-		process.emitWarning = emitWarning;
-	}
-}
-
 /** `text` with the tag of the harness's metadata block broken, for text from code the agent wrote, such as an error message, that goes into an event. */
 export function withoutBlockTag(text: string): string {
-	return text.replace(/<(\/?agentx-metadata)/gi, "\u2039$1");
+	return text.replace(/<(\/?agentX-metadata)/gi, "\u2039$1");
 }
 
 /** Opens the queue of the agent in `agentRoot`, does `work` with it, and closes it. */
@@ -169,10 +154,10 @@ export function checkEvent(event: NewEvent): void {
 	const metadata = event.metadata ?? {};
 	if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) throw new Error("Invalid event: its metadata must be an object.");
 	// Names starting with agentX- are the harness's own lines, and a name with a colon or a line break could fake one.
-	const badKey = Object.keys(metadata).find((key) => /^agentx-|[:\r\n\u2028\u2029]/i.test(key));
+	const badKey = Object.keys(metadata).find((key) => /^agentX-|[:\r\n\u2028\u2029]/i.test(key));
 	if (badKey !== undefined) throw new Error(`Invalid metadata name "${badKey}": names must not start with "agentX-" or contain ":" or a line break.`);
 	if ([event.content, ...Object.entries(metadata).map(([name, value]) => `${name} ${JSON.stringify(value)}`)].some((text) => blockTag.test(text))) {
-		throw new Error('Invalid event: its content or metadata contains "<agentx-metadata", the tag of the harness\'s own block.');
+		throw new Error('Invalid event: its content or metadata contains "<agentX-metadata", the tag of the harness\'s own block.');
 	}
 }
 
@@ -186,23 +171,7 @@ export class Queue {
 	private readonly db: DatabaseSync;
 
 	constructor(agentRoot: string) {
-		const storage = join(agentRoot, "storage");
-		mkdirSync(storage, { recursive: true });
-		const file = join(storage, "event_queue.db");
-		// `timeout`: wait for another process's write instead of failing at once.
-		this.db = new (sqlite().DatabaseSync)(file, { timeout: waitMs });
-		// WAL lets readers and one writer work at the same time, across processes. The switch to it on a new file is the one step that
-		// does not wait: it fails at once while another process is making the same switch. So it is tried again for as long as a write would wait.
-		for (const deadline = Date.now() + waitMs; ; Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20)) {
-			try {
-				this.db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL");
-				break;
-			} catch (error) {
-				if ((error as { errcode?: number }).errcode !== sqliteBusy || Date.now() > deadline) throw error;
-			}
-		}
-		// Read first, so that opening a file that has its tables takes no write lock.
-		if (this.db.prepare("SELECT 1 FROM sqlite_master WHERE name = 'events'").get() === undefined) this.transaction(() => this.db.exec(schema));
+		this.db = openDatabase(join(agentRoot, "storage", "event_queue.db"), "events", schema);
 	}
 
 	/** Closes the file. The queue must not be used afterwards. */
@@ -238,7 +207,7 @@ export class Queue {
 	 * its last holder left in flight. Without `retry` they fail at once, as a workflow's do, since its run may have done part of its work.
 	 */
 	acquire(threadId: string, retry = true): boolean {
-		return this.transaction(() => {
+		return transaction(this.db, () => {
 			const now = Date.now();
 			const lease = this.db.prepare("SELECT owner, heartbeat_at FROM threads WHERE thread_id = ?").get(threadId);
 			if (lease && lease.owner !== owner && Number(lease.heartbeat_at) > now - leaseMs) return false;
@@ -332,7 +301,7 @@ export class Queue {
 	 * With `steer`, takes those that may enter a run in progress. Otherwise takes all of them to start a run, and none when all are silent.
 	 */
 	claim(threadId: string, steer = false): Event[] {
-		return this.transaction(() => {
+		return transaction(this.db, () => {
 			// Checked first, so that the claim of an idle session writes nothing.
 			if (!steer && !this.db.prepare(`SELECT 1 FROM events WHERE thread_id = ? AND ${startsRun} LIMIT 1`).get(threadId)) return [];
 			// Only the holder takes events. Renewing an old lease here keeps another process from taking the thread, and with it these events, before the next renewal.
@@ -349,7 +318,7 @@ export class Queue {
 
 	/** Takes the thread's oldest queued event, for a workflow, which runs one event at a time. */
 	claimOldest(threadId: string): Event | undefined {
-		return this.transaction(() => {
+		return transaction(this.db, () => {
 			if (!this.renew(threadId)) return undefined;
 			const row = this.db
 				.prepare(
@@ -408,19 +377,6 @@ export class Queue {
 				 WHERE thread_id = ? AND status = 'in_flight' AND ${held} ${which}`,
 			)
 			.run(retry ? maxAttempts : 0, error, Date.now(), threadId, owner);
-	}
-
-	// IMMEDIATE takes the write lock at the start. A transaction that reads first and locks later fails when another process writes in between.
-	private transaction<T>(work: () => T): T {
-		this.db.exec("BEGIN IMMEDIATE");
-		try {
-			const result = work();
-			this.db.exec("COMMIT");
-			return result;
-		} catch (error) {
-			this.db.exec("ROLLBACK");
-			throw error;
-		}
 	}
 }
 

@@ -35,17 +35,17 @@ The Pi runner starts Pi with `--agentx-worker`, a flag this extension registers,
 
 ## What the model sees
 
-`render` turns one delivery's events into one user message: for each event, a metadata block, then its content. A message that starts an episode then gets the episode's line first, from the [context extension](../context/README.md#episodes).
+`render` turns one delivery's events into one user message: for each event, a metadata block, then its content.
 
 ```
-<agentx-metadata id="q7Rk2mXa9LbT">
+<agentX-metadata id="q7Rk2mXa9LbT">
 agentX-ThreadId: main
 agentX-SentTime: Wednesday 2026-11-11 21:58:10 GMT+5:30
 agentX-CurrentTime: Wednesday 2026-11-11 21:59:54 GMT+5:30
 agentX-IsRetry: true
 agentX-RetryAttempt: 1
 from: ops
-</agentx-metadata>
+</agentX-metadata>
 The event itself.
 ```
 
@@ -58,7 +58,7 @@ A delivered event starts with `<`, so Pi never reads it as a slash command. The 
 
 ## Known limits
 
-- Only senders are checked for `<agentx-metadata`. Typed input that holds a block's opening tag with an event's id could mark that event delivered.
+- Only senders are checked for `<agentX-metadata`. Typed input that holds a block's opening tag with an event's id could mark that event delivered.
 - Aborting, closing or switching a terminal session during a run cancels its queued events, also those waiting inside Pi to be steered in. Pi may still put such an event into the session's next run.
 - An agent's extension that drops a block's opening tag from user messages makes delivered events look undelivered, so they are retried and fail.
 
@@ -73,7 +73,7 @@ A delivered event starts with `<`, so Pi never reads it as a slash command. The 
 <a id="d25"></a>
 ### D25. An event reaches Pi as a user message that starts with a metadata block
 
-- **Decision.** Each event starts with a block from `<agentx-metadata id="<event id>">` to `</agentx-metadata>`, one fact per line, the harness's named `agentX-<Name>`. Content or metadata that holds the tag is refused.
+- **Decision.** Each event starts with a block from `<agentX-metadata id="<event id>">` to `</agentX-metadata>`, one fact per line, the harness's named `agentx-<Name>`. Content or metadata that holds the tag is refused.
 - **Why.** No sender can fake a block, and the id links an event to its session entry.
 - **Rejected.** A Pi custom message: Pi keeps it apart from user messages and skips their input handling.
 

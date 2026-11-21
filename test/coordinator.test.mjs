@@ -117,7 +117,7 @@ test("delivery takes the sender from its outbox, drops the facts it wrote, copie
 	mkdirSync(join(main, "storage", "workspace", "outbox"), { recursive: true });
 	symlinkSync(elsewhere, join(main, "storage", "workspace", "outbox", "linklinklink"));
 	handWritten(main, "linklinklink", "", 2);
-	handWritten(main, "tagtagtagtag", JSON.stringify({ id: "tagtagtagtag", sentAt: 1, to: "<agentx-metadata", from: { agent: "main", thread: "main" }, event: { content: "x", key: "t" }, facts: {}, files: [] }), 3);
+	handWritten(main, "tagtagtagtag", JSON.stringify({ id: "tagtagtagtag", sentAt: 1, to: "<agentX-metadata", from: { agent: "main", thread: "main" }, event: { content: "x", key: "t" }, facts: {}, files: [] }), 3);
 	// An id the sender picked, not made from its key, as one that would take the place of another event of b.
 	handWritten(main, "forgedforged", JSON.stringify({ id: "forgedforged", sentAt: 1, to: "b", from: { agent: "main", thread: "main" }, event: { content: "x", key: "f" }, facts: {}, files: [] }), 3);
 
@@ -670,6 +670,15 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	const big = await until(() => events(project.agent).find((found) => found.content.startsWith("a big one")));
 	assert.equal(big.content, "a big one\n\nA file of this message could not be downloaded: Telegram's getFile: Bad Request: file is too big");
 
+	// A reply says which message it answers, and whether that one is the bot's: the bot's id is its token's part before the colon. Others say neither.
+	assert.equal(await post("main", { update_id: 7, message: message(111, { text: "the foil pan", reply_to_message: { message_id: 3, from: { id: 1, is_bot: true } } }) }), 200);
+	assert.equal(await post("main", { update_id: 8, message: message(111, { text: "me too", reply_to_message: { message_id: 4, from: { id: 6 } } }) }), 200);
+	const toBot = await until(() => events(project.agent).find((found) => found.content === "the foil pan"));
+	assert.deepEqual([toBot.metadata["reply-to"], toBot.metadata["reply-to-bot"]], [3, true]);
+	const toPerson = await until(() => events(project.agent).find((found) => found.content === "me too"));
+	assert.deepEqual([toPerson.metadata["reply-to"], toPerson.metadata["reply-to-bot"]], [4, false]);
+	assert.equal("reply-to" in got.metadata, false);
+
 	// Without the bot's secret token: 401. From a chat main does not list: 200, and no event. An agent without a bot: 404.
 	assert.equal(await post("main", { update_id: 3, message: message(111, { text: "forged" }) }, "a-guess"), 401);
 	assert.equal(await post("main", { update_id: 4, message: message(222, { text: "a stranger" }) }), 200);
@@ -678,7 +687,42 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	assert.equal(await post("main", { update_id: 6, message: message(111, { pinned_message: { message_id: 7 } }) }), 200);
 	assert.match(server.output(), /telegram: a message to agent main from chat 222, which it does not list, is dropped\./);
 	await sleep(1500);
-	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one"]);
+	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one", "the foil pan", "me too"]);
+});
+
+test("Telegram: an album, which comes as one message per photo, goes into the inbox as one event once no part has come for a while; a part sent again is not a second photo, a late part still arrives, and an album on its way in at a stop is delivered", async (t) => {
+	const project = createAgent(model.port);
+	const telegram = await fakeTelegram(t, ["1:main-token"]);
+	editConfig(project, (config) => ({ ...config, publicUrl: "https://agents.example.com", services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [111] } } } } }));
+	const server = await serve(t, project, "TELEGRAM_BOT_TOKEN_MAIN=1:main-token\n");
+	const secret = telegram.calls[0].params.secret_token;
+	const post = async (update) => (await fetch(`${server.address}/services/telegram/main`, { method: "POST", body: JSON.stringify(update), headers: { "x-telegram-bot-api-secret-token": secret } })).status;
+	const part = (updateId, messageId, group, fileId, extra) => ({ update_id: updateId, message: { message_id: messageId, date: 1, chat: { id: 111, type: "supergroup" }, from: { id: 5, username: "ana" }, media_group_id: group, photo: [{ file_id: fileId }], ...extra } });
+	const albums = (group) => events(project.agent).filter((found) => found.metadata.album === group);
+
+	// Three parts, answered at once, the caption on the second, the reply on the first; the first sent again; the third the same file as the first.
+	const first = part(10, 20, "g1", "front", { reply_to_message: { message_id: 3, from: { id: 1, is_bot: true } } });
+	for (const update of [first, part(11, 21, "g1", "back", { caption: "SKU-1" }), first, part(12, 22, "g1", "front")]) assert.equal(await post(update), 200);
+	const album = await until(() => albums("g1")[0]);
+	assert.equal(album.content, "SKU-1\n\nFiles: `front.jpg`, `back.jpg`, `3-front.jpg`");
+	const { from, "message-id": messageId, "reply-to": replyTo, "reply-to-bot": toBot, "agentX-Service": service } = album.metadata;
+	assert.deepEqual([from, messageId, replyTo, toBot, service], ["@ana", 20, 3, true, "telegram"]);
+	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "inbox", album.id, "back.jpg"), "utf8"), "the bytes of photos/back.jpg");
+	// A part that comes after the album went in is an event of its own, not lost; the first part sent again then is the album's event again.
+	assert.equal(await post(part(13, 23, "g1", "side")), 200);
+	assert.equal(await post(first), 200);
+	await until(() => albums("g1").length === 2);
+	await sleep(2500);
+	assert.deepEqual(albums("g1").map((found) => [found.metadata["message-id"], found.content]), [[20, album.content], [23, "\n\nFiles: `side.jpg`"]]);
+
+	// An album on its way in when the service stops goes in before it stops, after the agent has: it waits in the inbox, with its file.
+	assert.equal(await post(part(14, 24, "g2", "last")), 200);
+	process.kill(-server.child.pid, "SIGINT");
+	assert.equal(await server.exited, 0);
+	const inbox = join(project.agent, "storage", "workspace", "inbox");
+	const waiting = readdirSync(join(inbox, ".pending")).map((name) => read(inbox, name.replace(/^\d+-/, "")));
+	assert.deepEqual(waiting.map((mail) => [mail.event.metadata.album, mail.event.content]), [["g2", "\n\nFiles: `last.jpg`"]]);
+	assert.deepEqual(readdirSync(join(inbox, waiting[0].id)).filter((name) => name !== "event.json"), ["last.jpg"]);
 });
 
 test("Telegram: a tap on an inline button goes into the agent's inbox as the button's text, and the service answers the tap and takes the message's buttons off, adding the choice to its text", async (t) => {

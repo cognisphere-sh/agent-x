@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// `agentx` command line: creates projects and agents, runs an agent or all of them, opens Pi on one of its threads, and gives it events.
+// `agentx` command line: creates projects and agents, runs an agent or all of them, opens Pi on one of its threads or removes one, and gives it events.
 
 import { spawn } from "node:child_process";
 import { once } from "node:events";
@@ -10,6 +10,7 @@ import { event } from "./commands/event.js";
 import { initAgent } from "./commands/init-agent.js";
 import { initProject } from "./commands/init-project.js";
 import { removeAgent } from "./commands/remove-agent.js";
+import { removeThread } from "./commands/remove-thread.js";
 import { serve } from "./commands/serve.js";
 import { runAgent } from "../agent-runtime/supervisor/run-agent.js";
 import { pinnedCli } from "./pinned-cli.js";
@@ -28,6 +29,8 @@ in an agent directory:
   agentx run                   run the agent until stopped: route its events, run its Pi threads and its workflows
   agentx chat [--thread-id <id>] [pi args]
                                open Pi on a thread, "main" unless told otherwise
+  agentx remove-thread <thread-id> [--yes]
+                               delete a thread: its sessions and its episodes in the agent's memory; asks first, unless --yes
   agentx event deliver [--thread-id <id>] [--agent <name>] [--meta <name>=<value> ...] [--file <path> ...] <content>
                                give the agent, or another, an event; without a thread, the agent's router picks one
   agentx event send ...        the agent's own send, from its processes, such as the model's bash`;
@@ -64,6 +67,7 @@ try {
 	// The other commands act on the agent directory they are started in.
 	else if (command === "run" && args.length === 0) await runAgent(agentAt(cwd));
 	else if (command === "chat") process.exit(chatAgent(agentAt(cwd), args));
+	else if (command === "remove-thread") await removeThread(agentAt(cwd), args);
 	else if (command === "event") event(agentAt(cwd), args);
 	else throw new Error(usage);
 } catch (error) {

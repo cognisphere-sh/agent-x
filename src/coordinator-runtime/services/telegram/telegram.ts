@@ -1,12 +1,13 @@
 // The Telegram service, an optional one: each agent that `services.telegram` in agentx.json lists gets a Telegram bot. At start it points each bot's
 // webhook at the bot's route, and connects the bot in Composio for the agent's Composio user id; each message from a chat the agent lists goes into its
 // inbox, with the message's files downloaded into the event, and so does a tap on an inline button, after which the service takes the message's buttons
-// off. The agent answers with Composio's Telegram tools, which send as its bot.
+// off. An album, which Telegram sends as one message per photo or file, goes in as one event. The agent answers with Composio's Telegram tools, which
+// send as its bot.
 
 import { createHmac } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { withoutBlockTag } from "../../../agent-runtime/events/queue.js";
 import { type ApiRequest, type ApiResponse, type Route, sameText } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
@@ -20,6 +21,8 @@ const tokenPrefix = "TELEGRAM_BOT_TOKEN_";
 interface Bot {
 	agent: string;
 	token: string;
+	// The bot's own user id, the part of its token before the colon, to tell a reply to the bot from a reply to a person.
+	id: string;
 	// The chats the agent takes messages from, by id.
 	chats: string[];
 	// What Telegram sends in X-Telegram-Bot-Api-Secret-Token, made from the token, so it needs no setting of its own and only the token's holder knows it.
@@ -47,6 +50,9 @@ interface Message {
 	entities?: unknown[];
 	caption?: string;
 	photo?: { file_id: string }[];
+	// The album the message is a part of: each of an album's photos and files comes as a message of its own, with the same media_group_id.
+	media_group_id?: string;
+	reply_to_message?: { message_id?: number; from?: User };
 	reply_markup?: { inline_keyboard?: { text: string; callback_data?: string }[][] };
 	[kind: string]: unknown;
 }
@@ -61,6 +67,21 @@ interface Tap {
 
 // The kinds of file a message can carry, besides photos, which come in several sizes.
 const fileKinds = ["document", "audio", "video", "voice", "video_note", "animation", "sticker"];
+
+// How long the service waits, in ms, after an album's last part for another, before the album goes into the inbox. Telegram sends a chat's messages
+// one at a time, each once the one before is answered, so the service answers each part at once and goes by quiet instead.
+const albumQuiet = 2000;
+// How long the service remembers an album's delivered parts, in ms, to drop one Telegram sends again.
+const albumMemory = 10 * 60_000;
+
+// An album on its way in.
+interface Album {
+	bot: Bot;
+	// A temporary folder of its own, with a folder in it for each part's files, removed once the album is delivered.
+	folder: string;
+	parts: { updateId: number | undefined; message: Message; download: Promise<{ files: string[]; failures: string[] }> }[];
+	timer?: NodeJS.Timeout;
+}
 
 /** Telegram: each listed agent's bot sends the messages of the agent's chats into its inbox. */
 export class TelegramService extends Service {
@@ -78,6 +99,10 @@ export class TelegramService extends Service {
 	private context!: ServiceContext;
 	private api = "https://api.telegram.org";
 	private readonly bots = new Map<string, Bot>();
+	// The albums on their way in, by agent, chat and media_group_id.
+	private readonly albums = new Map<string, Album>();
+	// When each part of an album delivered lately was delivered, by its album's id and its message_id.
+	private readonly delivered = new Map<string, number>();
 
 	/** Checks the config and each agent's token, and sets each bot's webhook, any failure leaving the service off; then connects each bot in Composio. */
 	override async onStart(context: ServiceContext): Promise<void> {
@@ -99,7 +124,7 @@ export class TelegramService extends Service {
 			const sharing = [...this.bots.values()].find((other) => other.token === token);
 			if (sharing !== undefined) throw new Error(`agents "${sharing.agent}" and "${agent}" have the same bot token; each agent needs a bot of its own.`);
 			const secret = createHmac("sha256", token).update("agentx webhook").digest("base64url");
-			const bot = { agent, token, chats: chats.map(String), secret, userId: composioUserId(running.root) };
+			const bot = { agent, token, id: token.split(":")[0], chats: chats.map(String), secret, userId: composioUserId(running.root) };
 			await this.call(bot, "setWebhook", { url: `${context.publicUrl.replace(/\/$/, "")}/services/telegram/${agent}`, secret_token: bot.secret, allowed_updates: ["message", "callback_query"] });
 			this.bots.set(agent, bot);
 		}
@@ -133,6 +158,14 @@ export class TelegramService extends Service {
 		const attached = attachments(message);
 		// Joins, pins, locations and the like carry nothing for the agent to read, and would each cost a model run.
 		if (!message.text && !message.caption && attached.length === 0) return { status: 200, body: { ignored: "no text and no file" } };
+		if (typeof message.media_group_id === "string") {
+			try {
+				return this.gather(bot, update.update_id, message, attached);
+			} catch (error) {
+				console.error(`telegram: update ${update.update_id} for agent ${bot.agent} was not delivered, and Telegram sends it again: ${(error as Error).message}`);
+				return { status: 503, body: { error: "The message could not be delivered." } };
+			}
+		}
 		const folder = mkdtempSync(join(tmpdir(), "agentx-telegram-"));
 		try {
 			const { files, failures } = await this.download(bot, attached, folder);
@@ -142,7 +175,7 @@ export class TelegramService extends Service {
 				{
 					key: `telegram:${update.update_id}`,
 					content: withoutBlockTag([message.text ?? message.caption ?? "", ...failures].filter(Boolean).join("\n\n")),
-					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(senderName(from)), "from-id": from?.id, "message-id": message.message_id },
+					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(senderName(from)), "from-id": from?.id, "message-id": message.message_id, ...replyTo(bot, message) },
 				},
 				files,
 			);
@@ -152,6 +185,97 @@ export class TelegramService extends Service {
 			return { status: 503, body: { error: "The message could not be delivered." } };
 		} finally {
 			rmSync(folder, { recursive: true, force: true });
+		}
+	}
+
+	/** Delivers the albums still on their way in, so a stop loses none. */
+	override async onStop(): Promise<void> {
+		for (const album of this.albums.values()) clearTimeout(album.timer);
+		await Promise.all([...this.albums.keys()].map((id) => this.flush(id)));
+	}
+
+	// Takes a part of an album, starting its files' download, and answers at once, so Telegram sends the next part. Once no part has come for
+	// albumQuiet, flush delivers the album. Answered before it is delivered, an album the service cannot deliver, or has when it stops abruptly, is lost.
+	private gather(bot: Bot, updateId: number | undefined, message: Message, attached: string[]): ApiResponse {
+		const id = `${bot.agent}:${message.chat.id}:${message.media_group_id}`;
+		for (const [part, at] of this.delivered) {
+			if (Date.now() - at < albumMemory) break;
+			this.delivered.delete(part);
+		}
+		// A part Telegram sends again after its album went in would otherwise be an event of its own, or, with a late part, take that one's place.
+		if (this.delivered.has(`${id}:${message.message_id}`)) return { status: 200, body: { ignored: "a part of an album delivered already" } };
+		let album = this.albums.get(id);
+		if (album === undefined) {
+			album = { bot, folder: mkdtempSync(join(tmpdir(), "agentx-telegram-")), parts: [] };
+			this.albums.set(id, album);
+		}
+		// A part Telegram sends again, as when its answer was lost, is in already.
+		if (!album.parts.some((part) => part.message.message_id === message.message_id)) {
+			album.parts.push({ updateId, message, download: this.download(bot, attached, mkdtempSync(join(album.folder, "part-"))) });
+		}
+		clearTimeout(album.timer);
+		album.timer = setTimeout(() => void this.flush(id), albumQuiet);
+		return { status: 200, body: { album: message.media_group_id } };
+	}
+
+	// Delivers an album as one event once its files are in: its parts' text and files in the order they were sent, and the metadata of its first part,
+	// its key that part's update. A part that comes while the files download waits for quiet again, and takes the album with it; one that comes after
+	// is an event of its own.
+	private async flush(id: string): Promise<void> {
+		const album = this.albums.get(id);
+		if (album === undefined) return;
+		const count = album.parts.length;
+		const downloads = await Promise.all(album.parts.map((part) => part.download));
+		if (album.parts.length !== count || this.albums.get(id) !== album) return;
+		this.albums.delete(id);
+		for (const part of album.parts) this.delivered.set(`${id}:${part.message.message_id}`, Date.now());
+		const { bot } = album;
+		const order = album.parts.map((part, i) => ({ ...part, ...downloads[i] })).sort((a, b) => (a.message.message_id ?? 0) - (b.message.message_id ?? 0));
+		const [first] = order;
+		const { message } = first;
+		// Each part's files are in a folder of their own, so two may have the same name; the event refuses that, so the second gets its number first.
+		const files: string[] = [];
+		for (const part of order) {
+			for (const file of part.files) {
+				const name = basename(file);
+				if (!files.some((other) => basename(other) === name)) files.push(file);
+				else {
+					const renamed = join(dirname(file), `${files.length + 1}-${name}`);
+					renameSync(file, renamed);
+					files.push(renamed);
+				}
+			}
+		}
+		const text = order.map((part) => part.message.caption ?? part.message.text ?? "");
+		const event = {
+			key: `telegram:${first.updateId}`,
+			content: withoutBlockTag([...text, ...order.flatMap((part) => part.failures)].filter(Boolean).join("\n\n")),
+			metadata: {
+				source: "telegram",
+				chat: message.chat.id,
+				"chat-type": message.chat.type,
+				from: withoutBlockTag(senderName(message.from)),
+				"from-id": message.from?.id,
+				"message-id": message.message_id,
+				album: message.media_group_id,
+				...(order.map((part) => replyTo(bot, part.message)).find((reply) => "reply-to" in reply) ?? {}),
+			},
+		};
+		try {
+			// An inbox that cannot take the event now, as when its database is busy, may a moment later; Telegram does not send the parts again.
+			for (let attempt = 1; ; attempt++) {
+				try {
+					this.context.deliver(bot.agent, event, files);
+					return;
+				} catch (error) {
+					if (attempt === 3) throw error;
+					await new Promise((resolve) => setTimeout(resolve, 1000));
+				}
+			}
+		} catch (error) {
+			console.error(`telegram: an album of ${order.length} messages from ${event.metadata.from} in chat ${message.chat.id}, for agent ${bot.agent}, was not delivered and is lost: ${(error as Error).message}`);
+		} finally {
+			rmSync(album.folder, { recursive: true, force: true });
 		}
 	}
 
@@ -228,6 +352,13 @@ function listed(bot: Bot, message: Message, what: "message" | "tap"): boolean {
 	if (bot.chats.includes(String(message.chat.id))) return true;
 	console.error(`telegram: a ${what} to agent ${bot.agent} from chat ${message.chat.id}, which it does not list, is dropped.`);
 	return false;
+}
+
+// The message a reply answers, and whether it is the bot's, so a router can send answers to the agent and leave people's talk among themselves.
+function replyTo(bot: Bot, message: Message): Record<string, number | boolean> {
+	const replied = message.reply_to_message;
+	if (replied?.message_id === undefined) return {};
+	return { "reply-to": replied.message_id, "reply-to-bot": String(replied.from?.id) === bot.id };
 }
 
 // How the event names a sender: `@username`, or the name.
