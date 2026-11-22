@@ -1,6 +1,6 @@
 // The scheduler, a core service: events an agent gets at the times a cron pattern names. They are listed in the developer's .pi/schedules.json and in the agent's own
-// storage/knowledge/schedules.json; on a name in both, the developer's wins. The coordinator looks at them each second and reads a file again only
-// when it changed, so an edit applies within a second. Polled, not watched: file watching misses changes on mounted and linked folders.
+// storage/knowledge/schedules.json; on a name in both, the agent's wins, so the agent can change or stop one of its developer's. The coordinator looks at them
+// each second and reads a file again only when it changed, so an edit applies within a second. Polled, not watched: file watching misses changes on mounted and linked folders.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -50,7 +50,7 @@ export class SchedulerService extends Service {
 /** The schedules of the agent in `agentRoot`, fired into its inbox. */
 export class Scheduler {
 	readonly agent: string;
-	// The developer's list of schedules, then the agent's own.
+	// The agent's own list of schedules, then the developer's.
 	private readonly lists: string[];
 	// The agent's settings, which hold the time zone the patterns are in.
 	private readonly settings: string;
@@ -66,7 +66,7 @@ export class Scheduler {
 		storage: string,
 	) {
 		this.agent = basename(agentRoot);
-		this.lists = [join(agentRoot, ".pi", "schedules.json"), join(storage, "knowledge", "schedules.json")];
+		this.lists = [join(storage, "knowledge", "schedules.json"), join(agentRoot, ".pi", "schedules.json")];
 		this.settings = join(agentRoot, ".pi", "settings.json");
 		this.stateFile = join(storage, "schedule-state.json");
 	}
@@ -112,7 +112,8 @@ export class Scheduler {
 			for (const [name, entry] of Object.entries(entries ?? {})) {
 				const checked = check(file, name, entry, timeZone);
 				if (typeof checked === "string") this.report(file, name, `schedule "${name}" is skipped: ${checked}`);
-				else if (!schedules.has(name)) schedules.set(name, checked);
+				else if (schedules.has(name)) console.error(`${this.agent}: ${file}: schedule "${name}" is skipped: storage/knowledge/schedules.json has one of that name, which is used.`);
+				else schedules.set(name, checked);
 			}
 		}
 		this.schedules = schedules;

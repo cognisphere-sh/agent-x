@@ -11,20 +11,21 @@ const tools = ["COMPOSIO_SEARCH_TOOLS", "COMPOSIO_MANAGE_CONNECTIONS"].map((name
 const results = {
 	initialize: (params) => ({ protocolVersion: params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "fake-composio", version: "1.0.0" } }),
 	"tools/list": () => ({ tools }),
-	"tools/call": (params) => ({ content: [{ type: "text", text: `ran ${params.name}` }] }),
+	"tools/call": (params, fake) => ({ content: [{ type: "text", text: (params.name === "COMPOSIO_SEARCH_TOOLS" && fake.searchAnswer) || `ran ${params.name}` }] }),
 };
 
 /**
  * Starts the fake on a free port. `env` is what a Pi process needs to use it. `created` collects the body of each session it creates,
  * `sessions` holds the ids of those it still has, `mcpKeys` collects the x-api-key of each MCP request. `executed` collects each tool a session's execute route ran,
- * as `{ sessionId, tool, arguments }`: it answers the tool's slug and arguments as its data, and `FAILING_TOOL` fails. `delayMs` delays session routes; `refuse` makes them answer 401.
+ * as `{ sessionId, tool, arguments }`: it answers the tool's slug and arguments as its data, and `FAILING_TOOL` fails. `searchAnswer`, when set, is the text COMPOSIO_SEARCH_TOOLS
+ * answers over MCP. `delayMs` delays session routes; `refuse` makes them answer 401.
  * `authConfigs` and `accounts` hold the auth configs and connected accounts the coordinator's key made, an account with the bot token it was given as
  * `token`. `reset()` forgets all of that.
  */
 export async function startFakeComposio() {
 	const fake = {
 		reset() {
-			Object.assign(fake, { created: [], sessions: new Set(), mcpKeys: [], executed: [], delayMs: 0, refuse: false, authConfigs: [], accounts: [] });
+			Object.assign(fake, { created: [], sessions: new Set(), mcpKeys: [], executed: [], searchAnswer: undefined, delayMs: 0, refuse: false, authConfigs: [], accounts: [] });
 		},
 	};
 	fake.reset();
@@ -43,7 +44,7 @@ export async function startFakeComposio() {
 				if (request.method !== "POST") return send(405, { error: "GET is not supported" });
 				const rpc = JSON.parse(body);
 				if (rpc.id === undefined) return response.writeHead(202).end();
-				return send(200, { jsonrpc: "2.0", id: rpc.id, result: results[rpc.method]?.(rpc.params) ?? {} });
+				return send(200, { jsonrpc: "2.0", id: rpc.id, result: results[rpc.method]?.(rpc.params, fake) ?? {} });
 			}
 			await new Promise((resolve) => setTimeout(resolve, fake.delayMs));
 			if (/^\/api\/v3\.1\/(auth_configs|connected_accounts)/.test(path)) {

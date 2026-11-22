@@ -1,6 +1,6 @@
 # Schedules
 
-A schedule sends you an event at the times a cron pattern names. Schedules are listed by name in `.pi/schedules.json`, your developer's (**read-only**), and in `storage/knowledge/schedules.json`, yours:
+A schedule sends you an event at the times a cron pattern names. Schedules are listed by name in `.pi/schedules.json`, your developer's (**read-only**), and in `storage/knowledge/schedules.json`, yours. On a name in both, yours is used: to change one of your developer's, copy its entry into yours and edit it, and to stop one, copy it with `"isActive": false`:
 
 ```json
 {

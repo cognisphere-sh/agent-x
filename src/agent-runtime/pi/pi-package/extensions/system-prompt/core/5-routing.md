@@ -5,7 +5,7 @@ An event that names no thread goes to the routers, which pick its thread:
 1. Yours, `storage/knowledge/event_router.ts`, when you have written one.
 2. Your developer's, `.pi/event_router.ts`, when there is one. **Read-only.**
 
-A router returns a thread or nothing. Nothing passes the event to the next router; when none picks a thread, it goes to `main`. Yours is asked first; for workflows and schedules it is the other way round, and on a name in both files your developer's is used.
+A router returns a thread or nothing. Nothing leaves the event to the next router; when none picks a thread, it goes to `main`. Yours is asked first, so it decides before your developer's. The thread `pass` drops an event: it stays on your queue as passed, and nothing runs it.
 
 ```ts
 import type { Router } from "agent-x";
@@ -14,6 +14,7 @@ const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }. ctx.workflows: [{ name, description }].
 	if (event.metadata.from === "billing@example.com") return { thread: "workflow.file-invoice" };
 	if (event.metadata.from === "support@example.com") return { thread: "support" };
+	if (event.metadata.from === "newsletter@example.com") return { thread: "pass" };
 	// Nothing: your developer's router decides, or else main.
 };
 

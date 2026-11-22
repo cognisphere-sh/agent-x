@@ -47,6 +47,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 ## Tools
 
 - The `bash` tool runs a command with `PI_SESSION_FILE`, the file of the session that runs it, and `PI_SESSION_ID` in its environment, removing ones it inherited. A command a person types with `!` gets none (`resolveSpawnContext` in `src/core/tools/bash.ts`). So `agentx event send`, run by the model, knows its thread, the file's folder ([sending](../../events/README.md#sending-and-delivering)). The rest of the command's environment is Pi's own (`getShellEnv` in `src/utils/shell.ts`), so `AGENTX_AGENT`, which agentx gives Pi, reaches every command, a person's `!` command too.
+- Pi saves the model's answer to the session before it runs the answer's tool calls: the agent awaits each listener, and the session appends the message at `message_end` (`processEvents` in pi-agent-core's `src/agent.ts`, `runLoop` in its `src/agent-loop.ts`). So while a tool runs, the branch's last assistant message is the answer that called it, with all its tool calls.
 
 ## Delivering messages
 
@@ -81,6 +82,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 
 - `before_agent_start` can set `event.systemPromptOptions.customPrompt`. It replaces the default preamble and drops the default tool list, rules and Pi docs sections. Pi still adds the skills list and `cwd` (`src/core/system-prompt.ts`). Tool schemas still reach the model.
 - `before_agent_start` runs once per run, when a prompt starts one (`_prepareRun` in `src/core/agent-session.ts`). A message steered into a running run does not run it.
+- A `before_agent_start` handler that throws does not stop the run. Pi reports the error and goes on with the options as the handler left them: without a `customPrompt` it set, Pi's default prompt (`emitBeforeAgentStart` in `src/core/extensions/runner.ts`).
 - `event.systemPromptOptions.sections` holds custom sections, each wrapped in `<name>` tags. They stay when `customPrompt` is set. A name must match `^[a-z][a-z0-9_-]*$` and not be `preamble`, or building the prompt throws. They come after Pi's own sections, `cwd` last of those, in the order they were set, and an empty one is left out. Each run's handlers get the options fresh, without the last run's sections, so a section no handler sets again is removed (`normalizeBuildSystemPromptOptions` in `src/core/system-prompt.ts`). A session replays its sections in the order they first came: a changed one keeps its place, a new one goes last (`getCurrentSystemMessage` in pi-ai's `src/utils/transcript.ts`). When a section changes, Pi sends the model that section's whole new text, and nothing for the sections that did not change (`diffSystemPromptSections` in `src/core/system-prompt.ts`).
 - An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
 - The `input` event can return `continue`, `transform` or `handled` (skip the model).
@@ -108,12 +110,13 @@ Sources: `docs/extensions.md`, `docs/compaction.md`, `docs/session-format.md`, `
 
 ## MCP servers
 
-Sources: `docs/mcp.md`, `docs/extensions.md`.
+Sources: `docs/mcp.md`, `docs/extensions.md`, `dist/extensions/mcp/` and pi-mcp's `output-limit.js`.
 
 - `pi.registerMcpServer(name, config)` takes the shape of an `mcpServers` entry in `mcp.json`. Registered during `session_start`, a server connects at once. A registration is not saved, so an extension registers again on every load. A server of the same name in `mcp.json` takes precedence.
 - `env` and `headers` values can name environment variables as `${NAME}`. Pi fills them in when it connects, also for a registered server.
 - `exposure` decides how tools reach the model. `codemode`, the default: not declared; scripts in the `codemode` tool call them. `deferred`: found and loaded with `tool_search`. `direct`: declared like a built-in tool. Pi lists a server's instructions and `description` in the system prompt only for servers whose tools are not declared.
 - The first prompt waits up to 10 seconds for servers with `direct` tools, so their tools are in its request.
+- An MCP tool is an extension tool, named `mcp__<server>__<tool>` (`pi.registerTool` in `index.js`), so `tool_result` handlers get its result and can replace it; the session file keeps the result as they leave it. Its `content` is the server's content blocks, and text over 20 KB is already cut in the middle, with the whole text in a temp file named by `details.fullOutputPath` (`convertMcpResult` in `tools.js`). Replacing `content` drops `structuredContent`, the whole `CallToolResult`, which codemode scripts get.
 - Pi takes an HTTP server without an `Authorization` header for one that may sign in with OAuth, so a server that refuses its key shows in `/mcp` as needing sign-in.
 
 ## RPC mode

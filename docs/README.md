@@ -38,7 +38,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D96**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D98**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -122,6 +122,8 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D93](architecture/coordinator-runtime/services/telegram/README.md#d93) | An album is one event, gathered after each part is answered | coordinator-runtime/services/telegram |
 | [D94](architecture/cli/README.md#d94) | A person removes a thread with `agentx remove-thread`, which takes its episodes out of the memory index too, and only while the thread is idle | cli |
 | [D95](architecture/agent-runtime/pi/pi-package/episodes/README.md#d95) | An episode's tokens come from the model's usage: what its last answer used, less what its first answer read, plus its event | agent-runtime/pi/pi-package/episodes |
+| [D96](architecture/agent-runtime/events/README.md#d96) | The thread `pass` drops an event, which stays on the queue as `passed` | agent-runtime/events |
+| [D97](architecture/agent-runtime/pi/pi-package/composio/README.md#d97) | The Composio extension trims a search's answer by removing the fields it names | agent-runtime/pi/pi-package/composio |
 
 ## User guides
 

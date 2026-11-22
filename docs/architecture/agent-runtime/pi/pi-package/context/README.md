@@ -15,19 +15,18 @@ It adds the tool `fold`. The harness prompt, `core/11-context.md`, explains epis
 
 - **Only during a fold nudge's turn.** Otherwise it refuses: the fold nudge holds the instructions.
 - Episodes are named by their ids, as their end messages give them; an event's id names none.
-- **A range takes in an earlier fold whole or not at all.** The new summary replaces the old one, so no episode is in two folds. The agent sees only the old summary, so it writes the new one from it.
+- **A range takes in an earlier fold whole or not at all.** The new summary replaces the old one, so no episode is in two folds. The agent sees only the old summary, so it writes the new one from it. The tool finds earlier folds by their tags, read only on the messages folds replaced: a tool's output can start with the same tag.
 - It refuses an episode the thread does not have, a `to` that is not after `from`, a range that cuts an earlier fold, an episode a compaction summarized whole, and ranges that overlap. Pi checks the edits of a turn together and drops them all for one bad target, so the tool checks first.
-- The fold nudge says what to fold: the oldest finished tasks first, never one whose task is still going on; long explorations, multi-step processes and executions once they are over, keeping only what was learned and the information that matters. It gives the rules for the summary: stand alone; keep goals, decisions with reasons, the work's exact paths, names, values, commands and errors, and the ids of what it touched; drop used tool output; write the work's state as history, and end with what is still open; do not name the episodes, which the tag lists.
+- **One call per answer.** Folds apply at the turn's end, so two calls in one answer would each be checked against the context before either, and could overlap. When an answer has more than one, each fails: only one is allowed, and it can have many ranges. The agent then calls `fold` again, once ([Pi](../../pi-reference/README.md#tools)). The fold nudge asks for all the ranges in a single call.
+- The fold nudge says what to fold: the oldest finished tasks first, never one whose task is still going on; long explorations, multi-step processes and executions once they are over, keeping only what was learned and the information that matters. It gives the rules for the summary: stand alone; keep goals, decisions with reasons, the work's exact paths, names, values, commands and errors, and the ids of what it touched; drop used tool output; write the work's state as history, and end with what is still open; do not mention episodes, by id, number or tokens, also ones the work read or was about, since the tag lists those it covers. It asks for `from` and `to` as the ids the episodes' end messages give.
 - At the turn's end the extension returns Pi's `context_edit` entries:
   - each summary replaces the content of the first message the model sees of its range: the first episode's event, an earlier fold's summary, or, when a compaction cut inside that episode, the first message it kept;
   - every other message of the folded episodes the model sees, their end messages and earlier summaries included, is omitted (`replacement: null`).
 - The `fold` call and its result stay until the fold nudge's turn is over, so the model sees what it did for the nudge, and then leave with the rest of that turn.
-- The summary names the episodes it folded:
+- The summary's tag names the episodes it folded, and nothing else does: `episode_read` takes those ids, as the harness prompt says.
 
   ```
   <agentx-folded episodes="t3Kq9Zp0LmXa c9Jp4Mx1Ya2R">
-  Folded: 2 episodes (t3Kq9Zp0LmXa, c9Jp4Mx1Ya2R). `episode_read` with an episode id gives it back.
-
   The summary.
   </agentx-folded>
   ```

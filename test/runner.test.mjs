@@ -728,6 +728,25 @@ test("when a prompt file changes, the session records only its section again, on
 	assert.deepEqual(prompts[1], { "agentx-knowledge-owner-prefs": "<agentx-knowledge-owner-prefs>\nAnswer in English.\n</agentx-knowledge-owner-prefs>", "agentx-knowledge-old": null });
 });
 
+test("a prompt file or folder that cannot be read leaves the rest of the prompt whole, and a section says why", async (t) => {
+	const { project } = setup(t);
+	const notes = join(project.agent, "storage", "knowledge", "system_prompt");
+	// A folder with a note's name, and a developer's prompt folder that is a file: reading either throws.
+	mkdirSync(join(notes, "broken.md"));
+	writeFileSync(join(notes, "kept.md"), "KEPT: a note that reads.");
+	rmSync(join(project.agent, ".pi", "system_prompt"), { recursive: true });
+	writeFileSync(join(project.agent, ".pi", "system_prompt"), "");
+	const run = await agentx(project, ["chat", "-p", "hi"]);
+	assert.equal(run.status, 0, run.stderr);
+
+	const prompt = model.systemPrompts.at(-1);
+	assert.ok(prompt.startsWith("# Harness"), prompt);
+	assert.ok(prompt.includes("<agentx-core-tools>\n# Tools"), prompt);
+	assert.ok(prompt.includes("<agentx-knowledge-kept>\nKEPT: a note that reads.\n</agentx-knowledge-kept>"), prompt);
+	assert.match(prompt, /<agentx-knowledge-broken>\n\S+broken\.md cannot be read, so its text is missing: EISDIR/);
+	assert.match(prompt, /<agentx-identity-unreadable>\n\S+system_prompt cannot be read, so its text is missing: ENOTDIR/);
+});
+
 test("each thread keeps its sessions in a folder of its own, and opening the thread again goes on with its session", async (t) => {
 	const { project } = setup(t);
 	const sessionsDir = join(project.agent, "storage", "sessions");

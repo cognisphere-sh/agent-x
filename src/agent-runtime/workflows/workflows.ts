@@ -1,5 +1,5 @@
 // The agent's workflows: listed in its developer's .pi/workflows.json and in its own storage/knowledge/workflows.json, read again each time they are needed,
-// so an edit applies at once. On a name in both, the developer's wins.
+// so an edit applies at once. On a name in both, the agent's wins, so the agent can replace a workflow of its developer's.
 
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -27,7 +27,7 @@ const warn = (text: string) => {
 /** The workflows of the agent in `agentRoot`, by name. Broken entries are left out, and said once on the error output. */
 export function loadWorkflows(agentRoot: string): Map<string, WorkflowDefinition> {
 	const all = new Map<string, WorkflowDefinition>();
-	for (const file of [join(agentRoot, ".pi", "workflows.json"), join(agentRoot, "storage", "knowledge", "workflows.json")]) {
+	for (const file of [join(agentRoot, "storage", "knowledge", "workflows.json"), join(agentRoot, ".pi", "workflows.json")]) {
 		if (!existsSync(file)) continue;
 		let entries: unknown;
 		try {
@@ -39,7 +39,7 @@ export function loadWorkflows(agentRoot: string): Map<string, WorkflowDefinition
 		for (const [name, entry] of Object.entries(entries ?? {})) {
 			const checked = check(file, name, entry);
 			if (typeof checked === "string") warn(`${file}: workflow "${name}" is skipped: ${checked}`);
-			else if (all.has(name)) warn(`${file}: workflow "${name}" is skipped: .pi/workflows.json has one of that name, which is used.`);
+			else if (all.has(name)) warn(`${file}: workflow "${name}" is skipped: storage/knowledge/workflows.json has one of that name, which is used.`);
 			else all.set(name, checked);
 		}
 	}

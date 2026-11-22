@@ -84,7 +84,7 @@ It replaces Pi's one `skills` section with a section per skill.
 - Every run, the extension reads the skills again itself: every skill Pi found, and any new one in the folders of the `skills` setting. A new or changed skill shows up without `/reload`.
 - **Rejected: `--no-skills`.** It drops the skills of the `skills` setting and of other packages, which the extension would then have to find itself.
 - **Sections:**
-  - `agentx-skills`: how to use a skill and how to change one (below), and any skill that could not be loaded, with why.
+  - `agentx-skills`: how to use a skill and how to change one (below), and any skill it leaves out, with why.
   - `agentx-skill-<name>`, one per skill: its name, description, version and path.
   - A new skill adds its section. A change to a skill's description or version changes only its section, which Pi sends again. A removed skill's section goes.
   - That is how a thread learns that a skill changed: it sees the new version, and reads the skill's `CHANGELOG.md` for what changed.

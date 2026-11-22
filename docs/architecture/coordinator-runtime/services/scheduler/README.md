@@ -2,7 +2,7 @@
 
 A core [service](../../README.md#services) of the coordinator: it fires each agent's schedules into its inbox. Code: `src/coordinator-runtime/services/scheduler/scheduler.ts`.
 
-A schedule sends an agent an event at the times a cron pattern names. The developer lists schedules in `.pi/schedules.json`, the agent in `storage/knowledge/schedules.json`; on a name in both, the developer's wins. A new agent has both, empty.
+A schedule sends an agent an event at the times a cron pattern names. The developer lists schedules in `.pi/schedules.json`, the agent in `storage/knowledge/schedules.json`; on a name in both, the agent's wins, so the agent can change one of its developer's, or stop it with a copy that has `isActive: false`. The developer's entry it replaces is logged as skipped on `agentx serve`'s error output. A new agent has both, empty.
 
 ```json
 {

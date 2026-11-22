@@ -29,7 +29,7 @@ A new agent has both, empty, each with an empty `workflows/` folder next to it f
 | `timeoutSeconds` | no | Default 600. |
 | `babysitterThread` | no | The agent's thread that looks after the workflow: it hears of failed runs and refused sends, and gets the answers to the workflow's sends. Default `main`. |
 
-Names use letters, digits and dashes. On a name in both files, the developer's wins. A broken entry is skipped and reported on `agentx run`'s error output.
+Names use letters, digits and dashes. On a name in both files, the agent's wins, so the agent can replace a workflow of its developer's. A broken entry is skipped and reported on `agentx run`'s error output.
 
 ## The contract
 
@@ -85,8 +85,8 @@ The agent reads the log and the script, fixes the script or tells a person if it
 <a id="d52"></a>
 ### D52. Workflows are listed in two `workflows.json` files; each is a function on its own thread
 
-- **Decision.** A workflow is an entry in `.pi/workflows.json` or `storage/knowledge/workflows.json`, with a description and a script whose default export takes the event. On a name in both, the developer's wins. Its events are on the thread `workflow.<name>`, which Pi never runs.
-- **Why.** One file lists what the routers can choose from, easy to review and for the agent to edit. A thread per workflow reuses the queue's lease to run one event at a time.
+- **Decision.** A workflow is an entry in `.pi/workflows.json` or `storage/knowledge/workflows.json`, with a description and a script whose default export takes the event. On a name in both, the agent's wins. Its events are on the thread `workflow.<name>`, which Pi never runs.
+- **Why.** One file lists what the routers can choose from, easy to review and for the agent to edit. The agent can do better than a workflow it was given, as it does with its developer's skills, router and schedules. A thread per workflow reuses the queue's lease to run one event at a time.
 - **Rejected.** A folder per workflow with its own `workflow.json`; a SQLite file, which nobody can review in git; scripts in any language reading stdin, which every workflow would have to parse.
 
 <a id="d53"></a>

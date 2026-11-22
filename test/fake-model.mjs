@@ -1,7 +1,7 @@
 // A stand-in for a model endpoint (OpenAI chat-completions, streaming) on 127.0.0.1, so tests run real Pi sessions with no network and no login.
 // It answers by the last message of the request.
 // After a tool result, text; when the request offers tools, "[sleep N]", a bash tool call that sleeps; "[bash <command>]", a bash tool call of that command;
-// "[tool <name> <JSON arguments>]" on a line of its own, a call of that tool; "[fail]", an HTTP 400; otherwise text. `answerWhen(match, directive)` answers
+// "[tool <name> <JSON arguments>]" on a line of its own, a call of that tool, each such line one more call in the same answer; "[fail]", an HTTP 400; otherwise text. `answerWhen(match, directive)` answers
 // the first request that asks something with `match` in it, a tool result too, as if it asked `directive`. Each answer reports its usage: a quarter of the
 // request's length read, and of its own written.
 
@@ -41,14 +41,15 @@ export async function startFakeModel() {
 			const calls = directed && (declared ?? []).length > 0;
 			const sleep = calls && /\[sleep ([\d.]+)\]/.exec(lastText);
 			const bash = calls && /\[bash (.+)\]/.exec(lastText);
-			const tool = calls && /^\[tool (\w+) (\{.*\})\]$/m.exec(lastText);
+			const named = calls ? [...lastText.matchAll(/^\[tool (\w+) (\{.*\})\]$/gm)].map(([, name, args]) => ({ name, arguments: args })) : [];
 			let written;
-			if (sleep || bash || tool) {
+			if (sleep || bash || named.length > 0) {
 				const command = sleep ? `sleep ${sleep[1]}` : bash?.[1];
-				const call = { index: 0, id: `call_${requests.length}`, type: "function", function: tool ? { name: tool[1], arguments: tool[2] } : { name: "bash", arguments: JSON.stringify({ command }) } };
-				response.write(chunk({ role: "assistant", content: null, tool_calls: [call] }));
+				const functions = named.length > 0 ? named : [{ name: "bash", arguments: JSON.stringify({ command }) }];
+				const toolCalls = functions.map((fn, index) => ({ index, id: `call_${requests.length}_${index}`, type: "function", function: fn }));
+				response.write(chunk({ role: "assistant", content: null, tool_calls: toolCalls }));
 				response.write(chunk({}, "tool_calls"));
-				written = JSON.stringify(call.function);
+				written = functions.map((fn) => JSON.stringify(fn)).join("");
 			} else {
 				written = `reply ${requests.length}`;
 				response.write(chunk({ role: "assistant", content: written }));

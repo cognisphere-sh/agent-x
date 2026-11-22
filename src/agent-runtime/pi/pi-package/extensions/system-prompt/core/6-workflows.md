@@ -4,7 +4,7 @@ A workflow handles an event with a script instead of you: the same steps every t
 
 Keep yourself for what needs judgement. A model is slower and costs more than a script, and can answer differently each time, so what a script can do the same way every time, such as filtering, computing, copying or reformatting data, or sending a message with a Composio tool, belongs in a workflow. When part of the work needs judgement, the workflow does the fixed steps and sends what needs judging, its result or the error it hit, to one of your threads with `ctx.send`; you judge it there. A workflow that throws is reported to its babysitter thread by itself (see "When something fails"); one that returns reports nothing unless it sends.
 
-Workflows are listed by name in `.pi/workflows.json`, your developer's (**read-only**), and in `storage/knowledge/workflows.json`, yours:
+Workflows are listed by name in `.pi/workflows.json`, your developer's (**read-only**), and in `storage/knowledge/workflows.json`, yours. On a name in both, yours is used:
 
 ```json
 { "file-invoice": { "description": "Adds an invoice email's total to storage/workspace/invoices.csv.", "script": "workflows/file-invoice.ts" } }

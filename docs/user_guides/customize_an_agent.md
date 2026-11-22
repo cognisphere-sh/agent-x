@@ -21,7 +21,7 @@ metadata:
 Steps the agent follows...
 ```
 
-Each skill is a section of the agent's prompt of its own, with its name, description, version and file; the agent reads the file when a task needs it. A new skill, or a change to one, shows from the agent's next run. When you change a skill, raise its version and say what changed at the top of a `CHANGELOG.md` next to it: the agent's conversations see the new version, and read the changelog. The agent does the same with its own skills.
+Each skill is a section of the agent's prompt of its own, with its name, description, version and file; the agent reads the file when a task needs it. A new skill, or a change to one, shows from the agent's next run. When you change a skill, raise its version and say what changed at the top of a `CHANGELOG.md` next to it: the agent's conversations see the new version, and read the changelog. The agent does the same with its own skills. When one of its skills has the name of one of yours, the agent's is used.
 
 ## Extensions
 
@@ -103,7 +103,7 @@ Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (
 
 ## Workflows
 
-A workflow handles events with a script instead of the model, such as filing every invoice email. Your workflows go in `.pi/workflows.json`, checked in and read-only to the agent; the agent can add its own in `storage/knowledge/workflows.json`. A new agent has both, empty, each with an empty `workflows/` folder next to it for the scripts, and on a name in both, yours is used:
+A workflow handles events with a script instead of the model, such as filing every invoice email. Your workflows go in `.pi/workflows.json`, checked in and read-only to the agent; the agent can add its own in `storage/knowledge/workflows.json`. A new agent has both, empty, each with an empty `workflows/` folder next to it for the scripts, and on a name in both, the agent's is used:
 
 ```json
 {
@@ -135,7 +135,7 @@ A workflow handles events with a script instead of the model, such as filing eve
 
 ## Schedules
 
-A schedule sends the agent an event at the times a cron pattern names. List yours in `.pi/schedules.json`; the agent can add its own in `storage/knowledge/schedules.json`. A new agent has both, empty, and on a name in both, yours is used:
+A schedule sends the agent an event at the times a cron pattern names. List yours in `.pi/schedules.json`; the agent can add its own in `storage/knowledge/schedules.json`. A new agent has both, empty, and on a name in both, the agent's is used: the agent can change one of yours, or stop it with a copy that has `"isActive": false`:
 
 ```json
 {

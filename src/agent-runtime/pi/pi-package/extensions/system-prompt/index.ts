@@ -23,11 +23,32 @@ interface Settings {
 // A folder's Markdown files as sections, in filename order with numbers compared as numbers, so an index before the name, as in `1-tools.md`,
 // orders them, and `9-` comes before `10-`. Each is named `<prefix>-<file name>`, without the index, so renumbering a file changes nothing that Pi sends.
 // Pi throws on a name that is not lowercase letters, digits, `-` and `_`, which would stop every run, so anything else in a file name becomes `-`.
+// A folder or file that cannot be read, such as a folder named `x.md`, is a section that says why. A throw would end this handler, and Pi would
+// run on with its own default prompt, without the harness's rules.
 function sections(dir: string, prefix: string): [string, string][] {
-	return readdirSync(dir)
-		.filter((file) => file.endsWith(".md"))
+	let files: string[];
+	try {
+		files = readdirSync(dir).filter((file) => file.endsWith(".md"));
+	} catch (error) {
+		return [[`${prefix}-unreadable`, unreadable(dir, error)]];
+	}
+	return files
 		.sort((a, b) => a.localeCompare(b, "en", { numeric: true }))
-		.map((file) => [`${prefix}-${file.slice(0, -3).replace(/^\d+-/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`, readFileSync(join(dir, file), "utf8").trim()]);
+		.map((file) => [`${prefix}-${file.slice(0, -3).replace(/^\d+-/, "").toLowerCase().replace(/[^a-z0-9_-]+/g, "-")}`, read(join(dir, file))]);
+}
+
+// A prompt file's text, or why it cannot be read.
+function read(file: string): string {
+	try {
+		return readFileSync(file, "utf8").trim();
+	} catch (error) {
+		return unreadable(file, error);
+	}
+}
+
+// Tells the model which file is missing from its prompt, so it can fix its own or tell a person.
+function unreadable(path: string, error: unknown): string {
+	return `${path} cannot be read, so its text is missing: ${(error as Error).message}`;
 }
 
 // The agent's own folders: storage/ is not checked in, and a developer may have no prompt files, so a folder may not exist.

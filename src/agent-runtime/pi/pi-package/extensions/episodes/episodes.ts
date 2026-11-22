@@ -40,9 +40,21 @@ export function textOf(message: AgentMessage): string {
  * the system messages that carry the prompt's sections stay. */
 export const editable = (entry: SessionEntry) => entry.type === "custom_message" || (entry.type === "message" && ["user", "assistant", "toolResult"].includes(entry.message.role));
 
-/** The episodes of `entries`, each with the messages `view` gives for its entries. Where each starts and ends comes from the entries as they were written,
- * since a fold or a compaction can have taken its first message or its end message out of what the model sees. What comes between an end and the next user
- * message, such as a fold nudge's turn, is in no episode. */
+/**
+ * Splits a thread's entries into episodes, oldest first.
+ *
+ * - An episode starts at a user message, since every event reaches Pi as one, and runs up to and including the end message the episode extension adds,
+ *   whose id it takes. The episode whose run is still going has no end yet, so its id is undefined.
+ * - What comes between an end and the next user message, such as a fold nudge's turn, is in no episode.
+ * - An episode holds the entries a `context_edit` may target (`editable`), each with the messages `view` gives for it: as they were written
+ *   (`sessionEntryToContextMessages`), or as the model sees them now (a `projection`), where a fold left them out or put its summary in their place.
+ * - Where an episode starts and ends comes from the entries, never from `view`: a fold or a compaction can have taken its first message or its end
+ *   message out of what the model sees.
+ * - An episode that `view` gives no messages for, such as one wholly before the last compaction, is left out.
+ *
+ * For example, `user A, model, end E1, fold nudge, model, user B, model` gives two episodes: E1 with `user A, model, end E1`, and one still going,
+ * with `user B, model`.
+ */
 export function episodesIn(entries: SessionEntry[], view: (entry: SessionEntry) => AgentMessage[]): Episode[] {
 	const episodes: Episode[] = [];
 	let open: Episode | undefined;

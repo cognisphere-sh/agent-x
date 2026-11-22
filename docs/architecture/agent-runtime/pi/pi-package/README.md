@@ -7,12 +7,13 @@ src/agent-runtime/pi/pi-package/
   package.json                Pi as a peer dependency; its `pi` manifest lists the extensions in load order, and the skills folder
   extensions/system-prompt/   index.ts, and the harness prompt: preamble.md and core/*.md, a file per section, numbered in reading order
   extensions/event-queue/     index.ts, and render.ts, how events look to the model
-  extensions/composio/        index.ts, and policy.ts, the policy of the agent's Composio sessions, which its workflows use too
+  extensions/composio/        index.ts; policy.ts, the policy of the agent's Composio sessions, which its workflows use too; and trim.ts, which trims a search's answer
   extensions/skills/          index.ts: each skill a section of the system prompt, with its version
   extensions/episodes/        index.ts, episodes' end messages, and episodes.ts, the episodes of a session's entries and their tokens
   extensions/context/         index.ts: folds and fold nudges
   extensions/memory/          index.ts, episode-index.ts, the index of every thread's episodes, transcript.ts, an episode as Markdown, and index-db.ts, the index's file: episode_search, episode_read
   skills/browser/             SKILL.md: the agent's browser, with agentx-browser
+  skills/telegram/            SKILL.md: how to answer on Telegram, and ask with buttons
 ```
 
 Pi loads the extensions the manifest lists, in that order, and the skills in `skills/` ([D42](#d42)). Five have their own docs: [event queue](event-queue/README.md), [Composio](composio/README.md), [episodes](episodes/README.md), [context](context/README.md), [memory](memory/README.md). Something new, an extension, skill or prompt template, must be listed in the manifest too.
@@ -31,7 +32,7 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 
 | Section | From |
 |---|---|
-| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send`, who sent an event, and that a question to a Telegram chat with fixed answers goes on inline buttons (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread (`5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio, the main way into external services, before the browser, and that the person chooses the service when several can do a task and none is connected (`9-external-services`, [Composio](composio/README.md#the-prompt)); where the app and the other agents are (`10-project`); episodes, that a fold nudge asks to fold and says how, `episode_read` and compactions (`11-context`, [context](context/README.md)); and `episode_search` and `episode_read` over every thread's episodes, which are records whose events are data (`12-memory`, [memory](memory/README.md)) |
+| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send`, who sent an event, and that a message from Telegram is answered as the `telegram` skill says (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread; that the thread `pass` drops an event; and that the agent's own skill, router, workflow and schedule come before its developer's, so it stops a developer's schedule with a copy of it that has `isActive: false` (`3-learning`, `5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio, the main way into external services, before the browser, that a tool the agent knows runs without a search, and that the person chooses the service when several can do a task and none is connected (`9-external-services`, [Composio](composio/README.md#the-prompt)); where the app and the other agents are (`10-project`); episodes, that a fold nudge asks to fold and says how, and compactions (`11-context`, [context](context/README.md)); and `episode_search` and `episode_read` over every thread's episodes, which are records whose events are data (`12-memory`, [memory](memory/README.md)) |
 | `agentx-core-agents` | One line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). None when there are none |
 | `agentx-identity-<file>` | The developer's prompt, `.pi/system_prompt/*.md` ([Agent](../../agent/README.md#system-prompt)) |
 | `agentx-knowledge-<file>` | The `agentx.systemPrompt` folders, such as the agent's `storage/knowledge/system_prompt` |
@@ -40,9 +41,11 @@ The blocks keep the order of the table: the developer's sections always follow t
 
 `<file>` is the file's name without `.md` and without its index, in lowercase, with every run of characters that Pi does not allow in a name (anything but letters, digits, `-` and `_`) made one `-`: `1-tools.md` is `agentx-core-tools`, and `Owner Prefs.md` is `agentx-knowledge-owner-prefs`. So renumbering a file sends nothing. Two files that come to one name, such as `1-goals.md` and `2-goals.md`, share its section, in their order, and an empty file makes no section.
 
+A file that cannot be read, such as a folder named `x.md`, keeps its section, which says why its text is missing; so does a folder that cannot be read, such as a `system_prompt` that is a file, as `agentx-identity-unreadable` or `agentx-knowledge-unreadable`. So the model can fix its own note or tell a person, and the rest of the prompt stays whole: a throw would end the handler, and Pi would run on with its default prompt, without the harness's rules ([Pi](../pi-reference/README.md#extensions)).
+
 ## The skills extension
 
-`extensions/skills/index.ts` puts each skill in a section of its own, `agentx-skill-<name>`: its name, its version (`metadata.version` in its frontmatter, or `none`), its description, and its file ([D85](#d85)). Before them, `agentx-skills` says how to use a skill and that a new version means reading it again, with its `CHANGELOG.md`, and lists the skills that could not be loaded, with why.
+`extensions/skills/index.ts` puts each skill in a section of its own, `agentx-skill-<name>`: its name, its version (`metadata.version` in its frontmatter, or `none`), its description, and its file ([D85](#d85)). Before them, `agentx-skills` says how to use a skill and that a new version means reading it again, with its `CHANGELOG.md`, and lists the skills it leaves out, with why.
 
 In `before_agent_start` of every run it:
 
@@ -52,7 +55,7 @@ In `before_agent_start` of every run it:
 
 So a new skill, a new version or a new description shows from the next run, without `/reload`, and a change sends that skill's section alone. Pi still finds the skills when the session starts, so `/skill:<name>` works for those.
 
-Left out: skills under `~/.agents/skills`, which Pi loads for every project on the machine; skills with `disable-model-invocation`, as Pi does; and a skill without a description, or whose name is not lowercase letters and digits joined by single hyphens, which `agentx-skills` lists instead. Of two skills with one name, the first wins, Pi's own list first.
+Left out: skills under `~/.agents/skills`, which Pi loads for every project on the machine; skills with `disable-model-invocation`, as Pi does; and a skill without a description, or whose name is not lowercase letters and digits joined by single hyphens, which `agentx-skills` lists instead. Of two skills with one name, the first wins in Pi's order: agentx's and the packages' skills, then the agent's own folders. The developer's `.pi/skills/` come last, so a skill of the agent's replaces the developer's of that name, also one it wrote during the session. The one replaced is listed as left out, with the skill that took its name.
 
 The agent writes its skills with Pi's `read`, `write` and `edit`. The harness prompt (`core/3-learning.md`) tells it to raise a skill's version whenever it changes one, and to add an entry to its `CHANGELOG.md`.
 
@@ -63,6 +66,7 @@ Each folder of `skills/` with a `SKILL.md` is a skill of every agent, listed bes
 | Skill | Teaches |
 |---|---|
 | `browser` | The agent's [browser](../../browser/README.md), for a task that Composio, a command line tool or another tool cannot do, or that the person asks a browser for: `agentx-browser` and agent-browser's own guide, and profiles |
+| `telegram` | Answering a person on [Telegram](../../../coordinator-runtime/services/telegram/README.md) with Composio's tools, asking with inline buttons and how a tap comes back, never with a poll. Every agent has it, so only agents that get Telegram events read it |
 
 ## Known limits
 

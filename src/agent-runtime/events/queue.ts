@@ -8,7 +8,7 @@ import { openDatabase, transaction } from "../sqlite.js";
 
 /** What a sender puts on the queue. */
 export interface NewEvent {
-	/** The thread the event belongs to: the id of the Pi session that receives it, or `workflow.<name>`. Without one, the agent's router picks it. */
+	/** The thread the event belongs to: the id of the Pi session that receives it, `workflow.<name>`, or `pass`. Without one, the agent's router picks it. */
 	threadId?: string;
 	content: string;
 	/** Facts for the model about the event, shown to it one per line. */
@@ -21,8 +21,8 @@ export interface NewEvent {
 	isSilent?: boolean;
 }
 
-/** `queued`: waiting. `in_flight`: taken by the session or the workflow that runs the thread. The others are final. */
-export type Status = "queued" | "in_flight" | "done" | "failed" | "cancelled";
+/** `queued`: waiting. `in_flight`: taken by the session or the workflow that runs the thread. `passed`: its thread is `pass`, so nothing runs it. The others are final too. */
+export type Status = "queued" | "in_flight" | "done" | "failed" | "cancelled" | "passed";
 
 /** An event on the queue. */
 export interface Event extends Required<Omit<NewEvent, "threadId" | "key">> {
@@ -43,6 +43,9 @@ export interface Event extends Required<Omit<NewEvent, "threadId" | "key">> {
 
 /** The start of a workflow's thread id: `workflow.<name>`. Pi never runs such a thread. */
 export const workflowPrefix = "workflow.";
+
+/** The thread that drops an event: one with this thread is kept on the queue as `passed`, and nothing runs it. */
+export const passThread = "pass";
 
 /** The workflow whose thread `threadId` is, or undefined for any other thread. */
 export function workflowName(threadId: string | undefined): string | undefined {
@@ -183,7 +186,7 @@ export class Queue {
 
 	/**
 	 * Adds an event and returns its id. With a key or an id that is already on the queue, adds nothing and returns the id of the event that has it.
-	 * Every event on the queue has its thread: the router gives one to an event without. `facts` are `agentX-` lines from the harness itself, such as
+	 * Every event on the queue has its thread: the router gives one to an event without. One for `pass` is added as `passed`, so nothing runs it. `facts` are `agentX-` lines from the harness itself, such as
 	 * agentX-Schedule or agentX-Service, which no sender may name. `fromInbox` gives the event the id and the send time it got in the agent's inbox.
 	 */
 	enqueue(event: NewEvent & { threadId: string }, facts: Record<string, string> = {}, fromInbox?: { id: string; sentAt: number }): string {
@@ -193,9 +196,9 @@ export class Queue {
 		const added = this.db
 			.prepare(
 				`INSERT INTO events (id, thread_id, content, metadata, do_not_steer, is_silent, status, attempts, key, created_at, updated_at)
-				 VALUES (?, ?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?) ON CONFLICT DO NOTHING`,
+				 VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?) ON CONFLICT DO NOTHING`,
 			)
-			.run(id, event.threadId, event.content, JSON.stringify({ ...event.metadata, ...facts }), Number(event.doNotSteer ?? false), Number(event.isSilent ?? false), event.key ?? null, fromInbox?.sentAt ?? now, now);
+			.run(id, event.threadId, event.content, JSON.stringify({ ...event.metadata, ...facts }), Number(event.doNotSteer ?? false), Number(event.isSilent ?? false), event.threadId === passThread ? "passed" : "queued", event.key ?? null, fromInbox?.sentAt ?? now, now);
 		if (added.changes > 0) return id;
 		return String(this.db.prepare("SELECT id FROM events WHERE key = ? OR id = ?").get(event.key ?? null, id)?.id);
 	}

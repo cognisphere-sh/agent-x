@@ -26,7 +26,7 @@ The event goes straight into the agent's inbox. It needs no `agentx serve`.
 
 | Option | Effect |
 |---|---|
-| `--thread-id <id>` | The thread. Without it, the routers pick one. `workflow.<name>` runs that workflow. |
+| `--thread-id <id>` | The thread. Without it, the routers pick one. `workflow.<name>` runs that workflow, and `pass` drops the event. |
 | `--agent <name>` | Another agent of the project. |
 | `--key <key>` | Delivering again with the same key adds nothing. |
 | `--do-not-steer` | If the thread is busy, wait for its next run instead of joining this one. |
@@ -42,7 +42,7 @@ A thread is one conversation, kept as a folder of Pi sessions. Threads run side 
 
 ## Routing
 
-An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.ts`, then yours, `.pi/event_router.ts`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`.
+An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.ts`, then yours, `.pi/event_router.ts`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`. The thread `pass` drops an event: it stays on the queue as `passed`, and nothing runs it.
 
 ```ts
 // .pi/event_router.ts
@@ -57,7 +57,7 @@ const route: Router = async (event, ctx) => {
 export default route;
 ```
 
-A router returns a thread, `workflow.<name>`, or nothing. One that throws, takes longer than 60 seconds or returns something else counts as nothing. The event then gets `agentX-RouterError: <why>`, and what the router printed is in `storage/workspace/router-logs/`.
+A router returns a thread, `workflow.<name>`, `pass`, or nothing. One that throws, takes longer than 60 seconds or returns something else counts as nothing. The event then gets `agentX-RouterError: <why>`, and what the router printed is in `storage/workspace/router-logs/`.
 
 ## Workflows
 

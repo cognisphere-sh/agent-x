@@ -51,7 +51,7 @@ function intro(broken: string[]): string {
 		"When a task matches a skill's description, read its file with `read` before you start, and resolve relative paths in it against the skill's folder.",
 		"When a skill's version changes, read it again; its `CHANGELOG.md`, next to it, says what changed.",
 	];
-	if (broken.length > 0) lines.push("", "These skills could not be loaded:", "", ...broken.map((line) => `- ${line}`));
+	if (broken.length > 0) lines.push("", "These skills are left out:", "", ...broken.map((line) => `- ${line}`));
 	return lines.join("\n");
 }
 
@@ -65,13 +65,16 @@ export default function (pi: ExtensionAPI) {
 			const scan = loadSkillsFromDir({ dir: folder, source: "agentx" });
 			paths.push(...scan.skills.map((skill) => skill.filePath), ...scan.diagnostics.flatMap((diagnostic) => (diagnostic.path?.endsWith("SKILL.md") ? [diagnostic.path] : [])));
 		}
+		// The first of two skills with one name wins, in Pi's order: agentx's and the packages' first, then the agent's own folders. The developer's
+		// .pi/skills come last, so a skill of the agent's replaces the developer's of that name, also one it wrote since the session started.
+		const developer = join(options.cwd, ".pi", "skills") + sep;
+		paths.sort((a, b) => Number(a.startsWith(developer)) - Number(b.startsWith(developer)));
 		const skills = new Map<string, Skill>();
 		const broken: string[] = [];
 		for (const filePath of new Set(paths)) {
 			if (filePath.startsWith(homeSkills)) continue;
 			const skill = readSkill(filePath);
 			if (typeof skill === "string") broken.push(`${filePath}: ${skill}`);
-			// The first of two skills with one name wins, as in Pi: its own come first.
 			else if (skill && skills.has(skill.name)) broken.push(`${filePath}: the name "${skill.name}" is taken by ${skills.get(skill.name)?.filePath}`);
 			else if (skill) skills.set(skill.name, skill);
 		}

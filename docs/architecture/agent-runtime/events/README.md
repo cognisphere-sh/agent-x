@@ -6,6 +6,7 @@ What reaches an agent is an event ([D47](#d47)). Every event comes in through th
 |---|---|
 | none | the [routers](#routing), which pick a thread first |
 | `workflow.<name>` | the [workflow runner](../workflows/README.md) |
+| `pass` | nobody: it stays on the queue as `passed` ([D96](#d96)) |
 | any other, such as `main` | a Pi session for that thread, through the [event queue extension](../pi/pi-package/event-queue/README.md) |
 
 ```
@@ -24,7 +25,7 @@ A sender gives:
 
 | Field | Meaning |
 |---|---|
-| `threadId` | Optional. A thread, the folder of its Pi sessions ([D21](../pi/README.md#d21)), or `workflow.<name>`: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit, at most 200 characters. Without it, the routers pick. |
+| `threadId` | Optional. A thread, the folder of its Pi sessions ([D21](../pi/README.md#d21)), `workflow.<name>`, or `pass`: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit, at most 200 characters. Without it, the routers pick. |
 | `content` | Markdown for the agent. It may not contain `<agentX-metadata` ([D25](../pi/pi-package/event-queue/README.md#d25)). Large data goes in a file ([D49](#d49)). |
 | `metadata` | Optional facts for the model, one per line. A name may not start with `agentX-`, or hold `:` or a line break. `source` says where the event came from, such as `cli` or `workflow.<name>`. |
 | `key` | Optional. An event whose key is there already is added once ([D50](#d50)). |
@@ -70,6 +71,7 @@ The coordinator delivers the event, to another agent or the sender itself, with 
 ```mermaid
 stateDiagram-v2
   [*] --> queued: the router takes it from the inbox
+  [*] --> passed: the same, on the thread pass
   queued --> in_flight: claimed (attempts + 1)
   in_flight --> done: run completed
   in_flight --> queued: run failed or cut off, or the process died
@@ -83,7 +85,7 @@ stateDiagram-v2
 - **Finish.** A workflow's event becomes `done`, or `failed` with the reason. It gets one attempt ([D53](../workflows/README.md#d53)).
 - **Process died.** What a dead holder left in flight goes back to the queue the same way ([Pi runner](../pi/README.md#when-a-pi-process-ends)), or fails on a workflow's thread.
 
-`done`, `failed` and `cancelled` are final. To try again, send the event again.
+`done`, `failed`, `cancelled` and `passed` are final. To try again, send the event again.
 
 ## Threads and leases
 
@@ -114,7 +116,7 @@ The `EventRouter` loop takes the inbox oldest first, one event at a time. When t
 1. An event whose id is on the queue already is a copy: its marker is deleted, and no router is asked.
 2. An event without a thread goes to the routers, each only when the one before picked nothing ([D51](#d51)): the agent's own, `storage/knowledge/event_router.ts`, then the developer's, `.pi/event_router.ts`. A missing file is skipped. When none picks a thread, the event goes to `main`. Each call runs in a child process ([functions](../functions/README.md)), with up to `routerSeconds` ([settings](../supervisor/README.md#settings)).
 3. An event that names a thread keeps it.
-4. The event goes on the queue with its thread, id and send time, and its marker is deleted.
+4. The event goes on the queue with its thread, id and send time, and its marker is deleted. On the thread `pass`, from its sender or a router, it goes on as `passed`, and nothing runs it ([D96](#d96)).
 
 **When a router fails**, it counts as one that picked nothing. The event gets `agentX-RouterError: <why>`, a name only the harness can set, so the agent learns its router broke. What the router printed goes to `storage/workspace/router-logs/<event id>.<agent or developer>.log`.
 
@@ -130,7 +132,7 @@ import type { Router } from "agent-x";
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }
 	// ctx:   { workflows: [{ name, description }] }
-	return { thread: "main" }; // a Pi thread or "workflow.<name>"; nothing leaves the event to the next router
+	return { thread: "main" }; // a Pi thread, "workflow.<name>", or "pass" to drop it; nothing leaves the event to the next router
 };
 
 export default route;
@@ -171,7 +173,7 @@ export default route;
 <a id="d47"></a>
 ### D47. What reaches an agent is an event, and its thread decides who takes it
 
-- **Decision.** One table, `events`, holds everything that reaches an agent. An event without a thread gets one from the routers; one on `workflow.<name>` goes to the workflow runner; any other to Pi.
+- **Decision.** One table, `events`, holds everything that reaches an agent. An event without a thread gets one from the routers; one on `workflow.<name>` goes to the workflow runner; one on `pass` to nobody ([D96](#d96)); any other to Pi.
 - **Why.** One table and one set of states for every input, and each row shows where its event went. An event that names a thread reaches it even when the agent's router is broken.
 
 <a id="d48"></a>
@@ -216,3 +218,11 @@ export default route;
 - **Decision.** A mailbox holds `<id>/event.json` with the event's files, and `.pending/<time>-<id>` for each event that waits. A writer writes the folder under a hidden name, renames it, then creates the marker; the reader deletes the marker.
 - **Why.** Create, rename and delete are each one step of the file system, so any number of writers share a mailbox with no lock.
 - **Rejected.** A cursor the reader keeps, which skips an event whose writer finishes after a newer one's; a list of waiting ids in one file, which needs a lock; an append-only log, never trimmed without a lock.
+
+<a id="d96"></a>
+### D96. The thread `pass` drops an event, which stays on the queue as `passed`
+
+- **Problem.** A router can only pick a thread or leave the event to the next router, so no router can drop an event, such as a newsletter nobody needs to read.
+- **Decision.** `pass` is a thread that nobody runs. The queue adds an event on it as `passed`, a final status, whoever named it: a router, the sender, or a schedule. A router's nothing still leaves the event to the next router.
+- **Why.** One rule in one place, the queue's `enqueue`, covers every way an event gets its thread, and the row keeps what was dropped. The agent's router is asked first, so it can drop what the developer's would take.
+- **Rejected.** Dropping the event before the queue: nothing would show that it came. Nothing from a router meaning drop: the agent's router could no longer leave an event to the developer's.

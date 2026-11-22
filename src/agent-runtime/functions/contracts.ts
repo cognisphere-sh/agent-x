@@ -17,7 +17,7 @@ export interface RouterContext {
 	workflows: { name: string; description: string }[];
 }
 
-/** The router's answer: a thread of the agent, such as `main`, or `workflow.<name>` to run a workflow. A router that returns nothing leaves the event to the next. */
+/** The router's answer: a thread of the agent, such as `main`, `workflow.<name>` to run a workflow, or `pass` to drop the event. A router that returns nothing leaves the event to the next. */
 export interface RouteResult {
 	thread: string;
 }

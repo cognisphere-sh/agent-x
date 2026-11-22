@@ -66,7 +66,7 @@ The agent asks a question with fixed answers on inline buttons, which it sends w
 3. **Delivers** it as a message: key `telegram:<update_id>`, content the button's text, metadata as a message's with `button`, the button's `callback_data`, and `message-id` the message the button is on. 503 when it cannot be written.
 4. **Takes the buttons off** the message, so each question is answered once, and adds `✅ <from>: <button>` under its text, keeping its formatting, so the chat shows the choice. A message without text, such as a photo, or one too long to add to, only loses its buttons; when that fails too, a log line says the question can be answered again.
 
-The harness prompt tells the agent that an event with `agentX-Service: telegram` is a person's message or tap, to answer in its `chat` with Composio's Telegram tools, and to put the answers to a question with fixed answers on inline buttons.
+The harness prompt tells the agent that an event with `agentX-Service: telegram` is from Telegram, and to read the harness's `telegram` skill, which says it is a person's message or tap, to answer in its `chat` with Composio's Telegram tools, and to put the answers to a question with fixed answers on inline buttons.
 
 ## Known limits
 
@@ -104,7 +104,7 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 ### D84. The agent asks a question with fixed answers on inline buttons, which the service closes at the first tap
 
 - **Problem.** A person answers a question with a few fixed answers faster with a tap than by typing, and the agent should learn the answer once.
-- **Decision.** The harness prompt has the agent put the answers on inline buttons, with `TELEGRAM_SEND_MESSAGE`'s `reply_markup`. The service takes `callback_query` updates too: it answers each tap, delivers it as an event with the button's text as content, then takes the message's buttons off and adds the choice under its text. The prompt rules out polls.
+- **Decision.** The harness's `telegram` skill has the agent put the answers on inline buttons, with `TELEGRAM_SEND_MESSAGE`'s `reply_markup`. The service takes `callback_query` updates too: it answers each tap, delivers it as an event with the button's text as content, then takes the message's buttons off and adds the choice under its text. The prompt rules out polls.
 - **Why.** The buttons sit under the question, the chat shows the choice, and nobody answers twice. Only the service holds the bot token and gets the tap, so only it can answer the tap in time, before the button spins on, and close the question at once instead of waiting on a model run.
 - **Rejected.** A reply keyboard, whose tap is a plain message, so it needs no change to the service: the keyboard sits under the input instead of the question, and the tap is a message in the chat. Polls: a `poll_answer` names no chat, so the service would have to know which chat each poll went to. Every option of the old harness's Telegram plugin, such as several answers, a question for one person or buttons that stay: no agent needs them yet.
 

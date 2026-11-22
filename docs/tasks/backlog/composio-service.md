@@ -42,7 +42,7 @@ The coordinator makes Composio match a list of triggers for each agent. The list
 
 1. **The developer**, under `agentx.composio.triggers` in the agent's `.pi/settings.json`, checked in. Every environment gets the same triggers, and no model can add event costs.
 2. **The agent**, in `storage/knowledge/composio_triggers.json`, its own ([D35](../../architecture/agent-runtime/agent/README.md#d35)), in the same format. The agent can start watching something when a person asks, as it keeps its own router and workflows. The coordinator still sends only the agent's user id, a slug and a config, so the agent reaches nothing beyond its own triggers. The agent finds trigger types and their configs in the toolkit pages of Composio's docs.
-3. **Both** (pick), the way workflows come from `.pi/workflows/` and from the agent's knowledge. A name in both: the developer's wins.
+3. **Both** (pick), the way workflows come from `.pi/workflows/` and from the agent's knowledge. A name in both: the agent's wins.
 
 ### Plan
 

@@ -1,10 +1,12 @@
-// End-to-end tests of Composio: the extension in real Pi sessions, and workflows' ctx.composio under `agentx run`, in a scratch project, against a fake Composio and the fake model.
+// End-to-end tests of Composio: the extension in real Pi sessions, and workflows' ctx.composio under `agentx run`, in a scratch project, against a fake Composio and the fake model;
+// and the trim of a search's answer on its own.
 
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { Queue } from "../dist/agent-runtime/events/queue.js";
+import { trimSearch } from "../dist/agent-runtime/pi/pi-package/extensions/composio/trim.js";
 import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
 import { agentx, createAgent, editSettings, events, onlySession, runner, until } from "./project.mjs";
@@ -162,6 +164,91 @@ test("the project's agent-x/.env gives every agent its keys, and a variable alre
 	assert.equal((await agentx(project, ["chat", "--thread-id", "other", "-p", "hello"])).status, 0);
 	assert.equal(unavailable(before), "Composio tools are unavailable in this session: Composio could not be reached: fetch failed.");
 	assert.equal(composio.created.length, 1);
+});
+
+// A search's answer in Composio's shape, for a service with an account or without: a full schema, a stub of a primary tool and one of a related tool.
+const searchAnswer = (connected) => ({
+	successful: true,
+	data: {
+		results: [
+			{
+				index: 1,
+				use_case: "send a chat message",
+				execution_guidance: "IMPORTANT: Follow the recommended plan below.",
+				recommended_plan_steps: ["[Required] [Step]: Send it with CHAT_SEND."],
+				known_pitfalls: ["[CHAT_SEND] Long texts fail."],
+				primary_tool_slugs: ["CHAT_SEND", "CHAT_SEND_FILE"],
+				related_tool_slugs: ["CHAT_GET"],
+				toolkits: ["chat"],
+				plan_id: "plan_1",
+				cached_plan_usecase: "send a chat message",
+				field_composio_adds: "kept",
+			},
+		],
+		toolkit_connection_statuses: [
+			connected
+				? { toolkit: "chat", has_active_connection: true, description: "A chat service.", connection_details: { connected_account_id: "ca_1", status: "ACTIVE" }, status_message: "Connection is active and ready to use" }
+				: { toolkit: "chat", has_active_connection: false, description: "A chat service.", status_message: "No Active connection for toolkit=chat. You MUST call COMPOSIO_MANAGE_CONNECTIONS." },
+		],
+		tool_schemas: {
+			CHAT_SEND: { toolkit: "chat", tool_slug: "CHAT_SEND", description: "Sends a message.", input_schema: { type: "object" }, hasFullSchema: true },
+			CHAT_SEND_FILE: { toolkit: "chat", tool_slug: "CHAT_SEND_FILE", description: "Sends a file.", hasFullSchema: false, schemaRef: "COMPOSIO_GET_TOOL_SCHEMAS" },
+			CHAT_GET: { toolkit: "chat", tool_slug: "CHAT_GET", description: "Gets a chat.", hasFullSchema: false, schemaRef: "COMPOSIO_GET_TOOL_SCHEMAS" },
+		},
+		time_info: { current_time_utc: "2026-11-22T08:43:45.083Z", current_time_utc_epoch_seconds: 1795337025, message: "This is time in UTC timezone." },
+		session: { id: "fall", generate_id: true, instructions: 'REQUIRED: Pass session_id "fall" in ALL subsequent meta tool calls for this workflow.' },
+		next_steps_guidance: [connected ? "1) Connections active, proceed to next step" : "1) CALL COMPOSIO_MANAGE_CONNECTIONS"],
+		success: true,
+		error: null,
+	},
+	error: null,
+	log_id: "log_1",
+});
+
+// What the trim keeps of either answer, whatever the connections.
+const trimmedResults = [
+	{
+		index: 1,
+		use_case: "send a chat message",
+		recommended_plan_steps: ["[Required] [Step]: Send it with CHAT_SEND."],
+		known_pitfalls: ["[CHAT_SEND] Long texts fail."],
+		primary_tool_slugs: ["CHAT_SEND", "CHAT_SEND_FILE"],
+		related_tool_slugs: ["CHAT_GET"],
+		toolkits: ["chat"],
+		field_composio_adds: "kept",
+	},
+];
+
+test("a search's answer reaches the model trimmed, and the thread's Pi session keeps it so", async () => {
+	const project = setup();
+	const answer = searchAnswer(true);
+	composio.searchAnswer = JSON.stringify(answer);
+	assert.equal((await agentx(project, ["chat", "-p", "[tool mcp__composio__COMPOSIO_SEARCH_TOOLS {}]"])).status, 0);
+	const result = onlySession(project).entries.find((entry) => entry.type === "message" && entry.message.role === "toolResult");
+	assert.deepEqual(JSON.parse(result.message.content[0].text), {
+		successful: true,
+		data: {
+			results: trimmedResults,
+			toolkit_connection_statuses: [{ toolkit: "chat", has_active_connection: true }],
+			tool_schemas: { CHAT_SEND: answer.data.tool_schemas.CHAT_SEND, CHAT_SEND_FILE: answer.data.tool_schemas.CHAT_SEND_FILE },
+			time_info: { current_time_utc: "2026-11-22T08:43:45.083Z" },
+			session: { id: "fall" },
+			success: true,
+			error: null,
+		},
+		error: null,
+		log_id: "log_1",
+	});
+});
+
+test("a search for a service with no account keeps its connections and next steps whole, and an answer that failed or is not JSON stays as it is", () => {
+	const answer = searchAnswer(false);
+	const trimmed = JSON.parse(trimSearch(JSON.stringify(answer)));
+	assert.deepEqual(trimmed.data.toolkit_connection_statuses, answer.data.toolkit_connection_statuses);
+	assert.deepEqual(trimmed.data.next_steps_guidance, answer.data.next_steps_guidance);
+	assert.deepEqual(trimmed.data.results, trimmedResults);
+	assert.equal(trimSearch(JSON.stringify({ ...answer, successful: false })), undefined);
+	assert.equal(trimSearch(`{"successful":true,"data":{"results":[ … 3 KB cut … ]}}`), undefined);
 });
 
 /** Gives the agent the developer's workflows `scripts`, by name, each the body of its default export, and runs each once under `agentx run`. Resolves to their events once all are settled. */

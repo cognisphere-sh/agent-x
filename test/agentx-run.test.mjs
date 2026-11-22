@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { join } from "node:path";
 import { after, before, test } from "node:test";
 import { sendEvent } from "../dist/agent-runtime/events/send-event.js";
+import { deliverEvent } from "../dist/coordinator-runtime/deliver-event.js";
 import { deliverOutbox } from "../dist/coordinator-runtime/services/relay/relay.js";
 import { startFakeModel } from "./fake-model.mjs";
 import { agentx, editSettings, events, inboxEvents, onQueueFile, scratch, until } from "./project.mjs";
@@ -33,13 +34,13 @@ function setup(t) {
 	};
 }
 
-/** A router that answers `{ thread }` from a line of the event's content, `route: <thread>`; "throw" and "hang" make it fail, and "pass" returns nothing. */
+/** A router that answers `{ thread }` from a line of the event's content, `route: <thread>`; "throw" and "hang" make it fail, and "nothing" returns nothing. */
 const testRouter = `
 export default async function route(event, ctx) {
 	const wanted = /route: (\\S+)/.exec(event.content)?.[1] ?? "main";
 	if (wanted === "throw") { console.log("printed before throwing"); throw new Error("the router broke"); }
 	if (wanted === "hang") for (;;);
-	if (wanted === "pass") return;
+	if (wanted === "nothing") return;
 	if (wanted === "workflows") return { thread: ctx.workflows.map((workflow) => workflow.name).join("-") || "none" };
 	return { thread: wanted };
 }
@@ -73,8 +74,8 @@ test("the agent's router is asked first, then the developer's; one that fails or
 	);
 	start();
 	const agents = await send("route: support\ndev: throw");
-	const developers = await send("route: pass\ndev: billing");
-	const neither = await send("route: pass");
+	const developers = await send("route: nothing\ndev: billing");
+	const neither = await send("route: nothing");
 	const agentFailed = await send("route: throw\ndev: billing");
 	const bothFailed = await send("route: throw\ndev: throw");
 	const all = [agents, developers, neither, agentFailed, bothFailed];
@@ -89,6 +90,22 @@ test("the agent's router is asked first, then the developer's; one that fails or
 			["main", ["storage/knowledge/event_router.ts: failed", ".pi/event_router.ts: failed"]],
 		],
 	);
+});
+
+test("an event on the thread pass stays on the queue as passed and nothing runs it, whether its sender or a router named pass, and a router sees which schedule sent an event", async (t) => {
+	const { project, event, send, start, reach, file } = setup(t);
+	// A router can drop a schedule's events, which carry agentX-Schedule.
+	file("storage/knowledge/event_router.ts", `export default async function route(event) { if (event.metadata["agentX-Schedule"] === "weekly-digest") return { thread: "pass" }; }`);
+	start();
+	const named = await send("--thread-id", "pass", "dropped by its sender");
+	const scheduled = deliverEvent(project.agent, { content: "Write the weekly digest." }, { facts: { "agentX-Schedule": "weekly-digest" } });
+	await reach("passed", named, scheduled);
+	assert.deepEqual([event(named).threadId, event(scheduled).threadId], ["pass", "pass"]);
+	// An event after them runs, while they never do: no Pi thread of that name, and the model never saw them.
+	const later = await send("--thread-id", "main", "after them");
+	await reach("done", later);
+	assert.ok(!existsSync(join(project.agent, "storage", "sessions", "pass")));
+	assert.ok(!model.requests.flat().some((text) => /dropped by its sender|weekly digest/.test(text)), JSON.stringify(model.requests));
 });
 
 test("the router's answer puts the event on its thread, the router can import the project's packages, and an event that names a thread skips the router", async (t) => {
@@ -244,11 +261,11 @@ test("an event the queue cannot hold is refused when it is sent, and one written
 	assert.ok(existsSync(join(project.agent, "storage", "workspace", "inbox", ".rejected", "000000000000001-badbadbadbad")));
 });
 
-test("a workflow runs one event at a time, and of two workflows with one name the developer's runs", async (t) => {
+test("a workflow runs one event at a time, and of two workflows with one name the agent's own runs", async (t) => {
 	const { project, send, start, reach, file } = setup(t);
 	workflows(file);
-	file("storage/knowledge/workflows.json", JSON.stringify({ ok: { description: "The agent's own, never used.", script: "mine.ts" } }));
-	file("storage/knowledge/mine.ts", `export default async function () { throw new Error("the agent's own ran"); }`);
+	file("storage/knowledge/workflows.json", JSON.stringify({ ok: { description: "The agent's own, used in place of its developer's.", script: "mine.ts" } }));
+	file("storage/knowledge/mine.ts", `export default async function () { console.log("the agent's own ran"); }`);
 	const [first, second] = [await send("--thread-id", "workflow.timed", "1"), await send("--thread-id", "workflow.timed", "2")];
 	const ok = await send("--thread-id", "workflow.ok", "{}");
 	const server = start();
@@ -256,7 +273,8 @@ test("a workflow runs one event at a time, and of two workflows with one name th
 	const [start1, end1, start2] = readFileSync(join(project.agent, "storage", "workspace", "timed"), "utf8").trim().split("\n").map((line) => Number(line.split(" ")[1]));
 	assert.ok(end1 <= start2, "the second run started after the first ended");
 	assert.ok(start1 < end1);
-	assert.match(server.output(), /workflow "ok" is skipped: \.pi\/workflows\.json has one of that name/);
+	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "ok", `${ok}.log`), "utf8").trim(), "the agent's own ran");
+	assert.match(server.output(), /workflow "ok" is skipped: storage\/knowledge\/workflows\.json has one of that name/);
 });
 
 test("after agentx run is killed during a run, the next one fails the event once and reports that the run was cut off", async (t) => {

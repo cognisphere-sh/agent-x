@@ -265,7 +265,7 @@ test("a workflow sends from its babysitter thread, which gets its refusals and i
 	await until(() => events(project.agent).find((found) => found.id === run)?.status === "done");
 });
 
-test("a schedule fires when its cron pattern is due, once with fireOnce, never when inactive, and missed fires once with catchUp; a broken entry, and a fire the agent refuses, are reported on main", () => {
+test("a schedule fires when its cron pattern is due, once with fireOnce, never when inactive, and missed fires once with catchUp; the agent's own replaces its developer's of that name; a broken entry, and a fire the agent refuses, are reported on main", () => {
 	const project = createAgent(model.port);
 	const main = project.agent;
 	editSettings(main, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone: "UTC" } }));
@@ -282,13 +282,18 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 			report: { cron: "* * * * *", threadId: "workflow.report", metadata: { month: "january", pages: 2 } },
 			broken: { cron: "nope", content: "x" },
 			mute: { cron: "* * * * *", threadId: "ticks" },
+			stopped: { cron: "* * * * *", content: "stopped" },
+			replaced: { cron: "0 0 1 1 *", content: "the developer's" },
 		}),
 	);
 	writeFileSync(join(main, ".pi", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "workflows/report.ts" } }));
 	mkdirSync(join(main, ".pi", "workflows"), { recursive: true });
 	writeFileSync(join(main, ".pi", "workflows", "report.ts"), "export default async function () {}");
-	// The agent's own: the developer's "minutely" wins.
-	writeFileSync(join(main, "storage", "knowledge", "schedules.json"), JSON.stringify({ minutely: { cron: "0 0 1 1 *", content: "mine" }, late: { cron: "0 * * * *", content: "late", catchUp: true } }));
+	// The agent's own, used in place of the developer's of the same name: a copy with isActive false stops one, and another entry replaces one.
+	writeFileSync(
+		join(main, "storage", "knowledge", "schedules.json"),
+		JSON.stringify({ stopped: { cron: "* * * * *", content: "stopped", isActive: false }, replaced: { cron: "* * * * *", content: "mine" }, late: { cron: "0 * * * *", content: "late", catchUp: true } }),
+	);
 	const fired = (content) => inboxEvents(main).filter((mail) => mail.event.content === content);
 	const minute = 60_000;
 	const t0 = Date.UTC(2026, 0, 1, 0, 0, 30);
@@ -302,7 +307,7 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 	const [first, second] = fired("every minute");
 	assert.deepEqual([first.sentAt, second.sentAt], [Date.UTC(2026, 0, 1, 0, 1), Date.UTC(2026, 0, 1, 0, 2)]);
 	assert.deepEqual([first.event.threadId, first.event.metadata, first.facts], ["ticks", { from: "cron", source: "schedule" }, { "agentX-Schedule": "minutely" }]);
-	assert.deepEqual([fired("once").length, fired("off").length, fired("mine").length], [1, 0, 0]);
+	assert.deepEqual([fired("once").length, fired("off").length, fired("stopped").length, fired("mine").length, fired("the developer's").length], [1, 0, 0, 2, 0]);
 	const report = inboxEvents(main).find((mail) => mail.event.threadId === "workflow.report");
 	assert.deepEqual([report.event.content, report.event.metadata], ["", { month: "january", pages: 2, source: "schedule" }]);
 	assert.ok(inboxEvents(main).some((mail) => mail.event.content.endsWith('schedule "mute" is skipped: it needs content, the text of its event, unless it runs a workflow.')));

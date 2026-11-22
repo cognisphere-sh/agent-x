@@ -21,8 +21,7 @@ const omit = (targetId: string): ContextEditEntryDraft => ({ type: "context_edit
 const isFoldNudge = (entry: SessionEntry) => entry.type === "custom_message" && entry.customType === foldNudgeType;
 
 // A fold's summary as the model sees it, in a tag that names the episodes it folded, which the extension reads back.
-const foldText = (ids: string[], summary: string) =>
-	[`<agentx-folded episodes="${ids.join(" ")}">`, `Folded: ${plural(ids.length, "episode")} (${ids.join(", ")}). \`episode_read\` with an episode id gives it back.`, "", summary.trim(), "</agentx-folded>"].join("\n");
+const foldText = (ids: string[], summary: string) => [`<agentx-folded episodes="${ids.join(" ")}">`, summary.trim(), "</agentx-folded>"].join("\n");
 const foldedEpisodes = (text: string): string[] => /^<agentx-folded episodes="([^"]*)">/.exec(text)?.[1].split(" ") ?? [];
 
 /** Gives each Pi session fold nudges and the `fold` tool. */
@@ -60,11 +59,19 @@ export default function (pi: ExtensionAPI) {
 			const visible = (id: string) => isVisible(projected, id);
 			const nudge = ctx.sessionManager.getBranch().findLast(isFoldNudge);
 			if (!nudge || !visible(nudge.id)) throw new Error("Fold only when a message asks you to; none does now.");
+			// Folds apply at the turn's end, so two calls of one answer would each be checked against the context before either, and could overlap.
+			// Pi saves the answer before it runs its tools, so the branch's last answer is the one that called this.
+			const answer = ctx.sessionManager.getBranch().findLast((entry) => entry.type === "message" && entry.message.role === "assistant");
+			const calls = answer?.type === "message" && answer.message.role === "assistant" ? answer.message.content.filter((part) => part.type === "toolCall" && part.name === "fold") : [];
+			if (calls.length > 1) throw new Error("Only one fold call is allowed in an answer. It can have multiple ranges: call fold again, once, with all of them.");
 			const episodes = allEpisodes(ctx.sessionManager);
 			const index = (id: string) => episodeAt(episodes, id);
-			// The earlier folds the model sees, each as the indexes of its first and last episodes, which its tag names in order.
-			const earlier = [...projected.values()]
-				.flatMap((messages) => messages.map((message) => foldedEpisodes(textOf(message))))
+			// The earlier folds the model sees, each as the indexes of its first and last episodes, which its tag names in order. Only messages a fold
+			// replaced are read: any other, such as a tool's output, can start with the same tag.
+			const summaries = new Set(ctx.sessionManager.getBranch().flatMap((entry) => (entry.type === "context_edit" && entry.replacement !== null ? [entry.targetId] : [])));
+			const earlier = [...projected]
+				.filter(([id]) => summaries.has(id))
+				.flatMap(([, messages]) => messages.map((message) => foldedEpisodes(textOf(message))))
 				.filter((ids) => ids.length > 0)
 				.map((ids) => [index(ids[0]), index(ids[ids.length - 1])]);
 			// A wrong id would make Pi refuse every edit of the turn, so each range is checked here.
@@ -139,14 +146,14 @@ export default function (pi: ExtensionAPI) {
 				"",
 				"- Fold the oldest finished tasks first: work that is done, whose details your next steps will not need. Never fold an episode whose task is still going on, even when the episode has ended.",
 				"- Fold long explorations, multi-step processes and executions once they are over, such as a search through files, a debugging session or a run of commands: the summary keeps only what was learned and the information that matters, not the steps.",
-				"- Give one or more ranges that do not overlap, each from episode `from` up to episode `to`, the first episode to keep, with its summary. Name episodes by the ids their end messages give. The newest episode stays.",
+				"- Give all the ranges in a single `fold` call: one or more that do not overlap, each from episode `from` up to episode `to`, the first episode to keep, with its summary. Give `from` and `to` as the ids the episodes' end messages give. The newest episode stays.",
 				"- A range takes in an earlier fold whole or not at all. When it takes one in, its summary must cover the old one too.",
 				"- Each summary takes its range's place, marked as folded with its episode ids. `episode_read` gives a folded episode back.",
 				"- Write the summary to stand alone: whoever reads it has not seen what it replaces.",
 				"- Keep the goals and how they changed, decisions with their reasons, and the exact paths, names, values, commands and errors of the work, and the ids of what it touched, such as files, events and issues: what was done and what was found.",
 				"- Drop tool output that has been used, failed attempts that taught nothing, and repetition.",
 				"- Write the state of the work as history, not as orders, and end with what is still open.",
-				"- Do not name the episodes it covers: its tag lists them.",
+				"- Do not mention episodes, by id, number or tokens, not even ones the work read or was about: the tag lists the episodes the summary covers.",
 				"",
 				"When nothing should be folded, say only that. This message and what you do for it then leave your context.",
 			].join("\n"),
