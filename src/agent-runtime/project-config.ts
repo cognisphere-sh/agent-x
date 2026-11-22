@@ -2,7 +2,7 @@
 // An agent is an agent of the project when it is listed there and has its folder in agents/. Read again each time, so an edit applies at once.
 // Loaded twice, like events/queue.ts: compiled, and from source, by the system prompt extension in pi/pi-package, which Pi loads as source. So it imports only queue.ts, which ships as source too.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { nameRule } from "./events/queue.js";
 
@@ -40,6 +40,12 @@ export const saveProjectConfig = (agentX: string, config: ProjectConfig) => writ
 
 /** Whether `dir` is an agent's folder: it holds the agent's checked-in settings. */
 export const isAgentFolder = (dir: string) => existsSync(join(dir, ".pi", "settings.json"));
+
+/** The names of the agent folders in agents/ of the project whose `agent-x/` directory is `agentX`, listed in agentx.json or not, sorted. */
+export function agentFolders(agentX: string): string[] {
+	const dir = join(agentX, "agents");
+	return existsSync(dir) ? readdirSync(dir).filter((name) => isAgentFolder(join(dir, name))).sort() : [];
+}
 
 /** The directory of the agent `name` of the project in `agentX`; undefined when the config does not list it or its folder is missing. Throws when the config cannot be read. */
 export function agentIn(agentX: string, name: string): string | undefined {

@@ -43,7 +43,7 @@ Turn it on in `agent-x/agentx.json`, with its config, `{}` when it has none:
 "services": { "github": { "agent": "main" } }
 ```
 
-Put its secret in `agent-x/.env.services`, which no agent reads, and start `agentx serve` again. GitHub then sends to `<publicUrl>/services/github/webhook`.
+Put its secret in `agent-x/.env`, which no agent reads, and start `agentx serve` again. GitHub then sends to `<publicUrl>/services/github/webhook`.
 
 ## The contract
 
@@ -51,7 +51,7 @@ The default export is a class; each member may be left out.
 
 | Member | What it is |
 |---|---|
-| `secrets` | The environment variables it needs, from the coordinator's environment or `agent-x/.env.services`; `NAME_*` takes every variable that starts with `NAME_`. It gets only these, in `context.secrets`. |
+| `secrets` | The environment variables it needs, from the coordinator's environment or `agent-x/.env`; `NAME_*` takes every variable that starts with `NAME_`. It gets only these, in `context.secrets`. |
 | `routes` | Its API, served under `/services/<name>/`: each route's `method` (`GET` or `POST`), `path` (`:param` for a parameter), `access` and `summary`, and `handle(request)`, which returns `{ status, body }`. `private`, the default, needs `AGENTX_API_TOKEN`; a `public` one must check its caller itself, as above. |
 | `onStart(context)` | Sets it up, before the agents start. A throw leaves it off, and says why in the log. |
 | `onStop()` | Its last work, after the agents have stopped. |

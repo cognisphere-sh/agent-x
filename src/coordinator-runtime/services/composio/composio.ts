@@ -40,7 +40,7 @@ export class ComposioService extends Service {
 
 	override onStart(context: ServiceContext): void {
 		const secret = context.secrets.COMPOSIO_WEBHOOK_SECRET;
-		if (!secret) throw new Error("COMPOSIO_WEBHOOK_SECRET is not set, in the environment or agent-x/.env.services.");
+		if (!secret) throw new Error("COMPOSIO_WEBHOOK_SECRET is not set, in the environment or agent-x/.env.");
 		this.context = context;
 		this.secret = secret;
 	}

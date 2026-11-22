@@ -5,10 +5,11 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | File | Role |
 |---|---|
 | `agentx.ts` | Entry point. Hands over to the pinned copy, then runs the command. On failure, prints the error or the usage and exits 1. |
-| `copy-template.ts` | Copies `templates/<name>` into a missing or empty directory. |
-| `pinned-cli.ts` | Finds the CLI the project pins ([D15](#d15)). |
+| `copy-template.ts` | Copies `templates/<name>` into a missing or empty directory, naming each `env` and `gitignore` file with a dot. Writes the JSON files the CLI changes, indented with tabs. |
+| `pinned-cli.ts` | Finds the CLI the project pins, and runs it ([D15](#d15)); `upgrade-project` runs the copy it installed the same way ([D99](#d99)). |
 | `agent-root.ts` | Finds the agent directory, or the project's `agent-x/`, a command runs in. |
 | `confirmed.ts` | Asks a person to confirm what `remove-agent` and `remove-thread` delete. |
+| `template-sync.ts` | Adds what a template has and a project's or agent's file lacks, for `upgrade-project` and `upgrade-agent` ([D100](#d100)). |
 | `commands/<name>.ts` | One file per command. |
 
 ## Commands
@@ -16,8 +17,10 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | Command | Does |
 |---|---|
 | `agentx init-project [name]` | Creates `<name>/`, or fills the current directory, which must be empty. Pins `agent-x` at its own version ([D14](project/README.md#d14)) and runs `git init` ([D7](project/README.md#d7)). |
-| `agentx init-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Creates `agent-x/agents/<name>` from the template, its [storage](../agent-runtime/agent/README.md#storage) and the link to it, writes its Composio user id `<name>@<project>` ([D38](../agent-runtime/pi/pi-package/composio/README.md#d38)), and lists it in `agentx.json` ([D63](../coordinator-runtime/README.md#d63)). Names use letters, digits and dashes. |
+| `agentx init-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Creates `agent-x/agents/<name>` from the template, with its `.env` for its keys ([D43](../agent-runtime/agent/README.md#d43)), its [storage](../agent-runtime/agent/README.md#storage) and the link to it, writes its Composio user id `<name>@<project>` ([D38](../agent-runtime/pi/pi-package/composio/README.md#d38)), and lists it in `agentx.json` ([D63](../coordinator-runtime/README.md#d63)). Names use letters, digits and dashes. |
 | `agentx remove-agent <name> [--yes]` | In the project root, `agent-x/` or `agent-x/agents/`. Deletes the agent's folder, its state and its entry in `agentx.json`, and takes it off the other agents' `canSendTo`. Lists them and asks first; only `y` or `yes` deletes, and input that ends unanswered, as with Ctrl-C, keeps them. `--yes` skips the question. Refuses while the agent runs. |
+| `agentx upgrade-project` | In the project root, `agent-x/` or `agent-x/agents/`. Moves `agent-x` to the latest version in the registry and installs it, with pnpm ([D99](#d99)). Then adds what the templates have and the project lacks: keys of `agentx.json`, keys of `agent-x/.env`, lines of `.gitignore`; and upgrades every agent, as `upgrade-agent` does ([D100](#d100)). Prints each change. |
+| `agentx upgrade-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Adds to the agent's `.pi/settings.json` the `agentx` settings it lacks, with the template's values, and to its `.env` the keys it does not name; moves the Pi packages it lists to the versions the template pins ([D100](#d100)). Changes no other value. Prints each change. |
 | `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. |
 | `agentx run` | Runs the agent until it is stopped ([supervisor](../agent-runtime/supervisor/README.md)). |
 | `agentx chat [--thread-id <id>] [pi args]` | Opens the pinned Pi on a thread, `main` by default. Other arguments go to Pi ([Pi](../agent-runtime/pi/README.md#how-agentx-chat-starts-pi)). |
@@ -28,8 +31,6 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 Both `event` commands take `--agent <name>` (another agent of the project), `--thread-id <id>` (without it, the routers pick), `--key`, `--do-not-steer`, `--silent`, `--meta <name>=<value>` ([D30](#d30)) and `--file <path>`. Both add `source: cli` unless `--meta source=…` says otherwise, and print the event's id ([Events](../agent-runtime/events/README.md#sending-and-delivering)).
 
 `run`, `chat`, `remove-thread` and `event` run in an agent directory, and make its storage when it is missing, as after a fresh clone. Flags are lower case with dashes, like Pi's; `--thread-id` names the folder of the thread's Pi sessions ([D21](../agent-runtime/pi/README.md#d21)).
-
-Planned: `upgrade`.
 
 ## Where the command comes from
 
@@ -43,7 +44,7 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 
 ## Conventions
 
-- `run`, `serve` and `event` only read their arguments and call the agent runtime or the coordinator runtime. `init-project`, `init-agent`, `remove-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
+- `run`, `serve` and `event` only read their arguments and call the agent runtime or the coordinator runtime. `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
 - Commands throw an `Error` with a message for the user; only `agentx.ts` prints it and exits.
 - `event` reads its options with Node's `parseArgs` in strict mode, so an unknown option is an error. `chat` reads its own flags by hand and passes the rest to Pi.
 
@@ -82,3 +83,19 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 - **Decision.** `agentx remove-thread` refuses in the agent's processes, while a process holds the thread and while events wait for it. It holds the thread's lease while it deletes the thread's folder, then the thread's rows in the index, in one transaction. It opens the index through `index-db.ts`, which loads nothing of Pi.
 - **Why.** The lease keeps a session from starting on the thread meanwhile, and waiting events would start it again. Only the thread's own session indexes its files ([memory](../agent-runtime/pi/pi-package/memory/README.md#d91)), so nothing adds its episodes back. What the agent remembers is for a person to remove, not the agent. Loading Pi takes most of a second, which every command would pay, since the CLI imports its commands up front.
 - **Consequence.** The thread's settled events stay on the queue. An event for the thread later starts it again, with new sessions.
+
+<a id="d99"></a>
+### D99. `agentx upgrade-project` installs the latest agentx, and the new copy brings the files up to its own templates
+
+- **Problem.** A project pins one agentx, and every command runs that copy ([D15](#d15)), which has the old templates. A new version may add settings and keys that the project's files lack.
+- **Decision.** `upgrade-project` asks pnpm for `agent-x@latest`. When the project pins another version, it installs the latest with `pnpm add --save-exact`, then runs the new copy's `upgrade-project`, which finds itself the latest and brings the files up to its own templates. A pin that is not a version, such as a `link:` to a checkout, is not looked up: the files are brought up to the agentx installed.
+- **Why.** Only the new version knows its templates. The same command hands over with no hidden flag: the second run finds nothing to install.
+- **Consequence.** A project that pins a version without `upgrade-project` upgrades once by hand: `pnpm add --save-exact agent-x@latest` in `agent-x/`, then `agentx upgrade-project`.
+
+<a id="d100"></a>
+### D100. An upgrade adds what the templates have and the files lack, and changes no value
+
+- **Problem.** A new version adds settings and keys. The project's and the agents' files are the developer's: checked in, or holding secrets.
+- **Decision.** `upgrade-project` adds to `agentx.json` the keys of its template that it lacks, to `agent-x/.env` each paragraph of the template that names a variable the file does not, and to `.gitignore` the template's lines it lacks. For each agent it does what `upgrade-agent` does: it adds to `.pi/settings.json` each `agentx` setting the agent lacks, at any depth, with the template's value, and moves each Pi package the agent lists to the version the template pins for it; it adds to the agent's `.env` the template's keys it does not name. A missing `.env` is written from the template. Values, lists, Pi's other settings and packages the agent does not list stay as they are.
+- **Why.** Running it again changes nothing, and what it changes shows in `git diff`. Pi's settings in the template are a start the developer changes, not defaults, so a package the developer removed stays removed. A setting the developer deleted comes back with the template's value, so a setting is turned off by its value, such as `"systemPrompt": []`.
+- **Rejected.** Comparing the old version's templates with the new one's, to add only what is new: the old templates are gone once the new version is installed, and `upgrade-agent` alone has no old version. Copying every template file the agent lacks: a developer may have removed `system_prompt/1-role.md` or `event_router.ts` on purpose.

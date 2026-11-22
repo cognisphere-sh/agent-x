@@ -8,14 +8,15 @@ import { agentTimeZone } from "./time-zone.js";
 
 /**
  * The environment of the agent's processes: Pi, its router and its workflows. Its agent directory is the project's agent-x/.pi (agent-x/agents/<name> -> agent-x/.pi):
- * one login and one Pi state for all agents of the project. The project's gitignored agent-x/.env adds keys such as COMPOSIO_API_KEY for all its agents;
- * a variable already in the environment wins, as a deployment sets it. The project's commands come first on the PATH, so `agentx` is the one it pins.
+ * one login and one Pi state for all agents of the project. The agent's own gitignored .env adds its keys, such as COMPOSIO_API_KEY; the project's
+ * agent-x/.env is the coordinator's, which no agent reads. A variable already in the environment wins, as a deployment sets it. The project's
+ * commands come first on the PATH, so `agentx` is the one it pins.
  * `AGENTX_AGENT` names the agent, so that `agentx event send`, run by the model's bash or a workflow, sends from inside the agent. `TZ` is the agent's time
  * zone, when its settings name one, so that what its processes and the commands they run say of the time is in it.
  */
 export function agentEnv(agentRoot: string): NodeJS.ProcessEnv {
 	const agentX = join(agentRoot, "..", "..");
-	const env = withEnvFile(join(agentX, ".env"));
+	const env = withEnvFile(agentEnvFile(agentRoot));
 	const timeZone = agentTimeZone(agentRoot);
 	return {
 		...env,
@@ -25,6 +26,9 @@ export function agentEnv(agentRoot: string): NodeJS.ProcessEnv {
 		...(timeZone ? { TZ: timeZone } : {}),
 	};
 }
+
+/** The agent's own env file, its keys: the only env file its processes read. */
+export const agentEnvFile = (agentRoot: string) => join(agentRoot, ".env");
 
 /** This process's environment, with the variables of the env file `file` that it does not set: a variable already in the environment wins, as a deployment sets it. */
 export function withEnvFile(file: string): NodeJS.ProcessEnv {

@@ -72,7 +72,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D40](architecture/agent-runtime/pi/pi-package/composio/README.md#d40) | The extension registers the session's MCP server, with direct tools, and uses no Composio SDK | agent-runtime/pi/pi-package/composio |
 | [D41](architecture/agent-runtime/pi/pi-package/composio/README.md#d41) | Without Composio, the session starts and the model is told why | agent-runtime/pi/pi-package/composio |
 | [D42](architecture/agent-runtime/pi/pi-package/README.md#d42) | The package's manifest lists its extensions in the order they load | agent-runtime/pi/pi-package |
-| [D43](architecture/agent-runtime/agent/README.md#d43) | Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins | agent-runtime/agent |
+| [D43](architecture/agent-runtime/agent/README.md#d43) | Each agent's keys go in its own gitignored `.env`; the environment wins | agent-runtime/agent |
 | [D44](architecture/agent-runtime/pi/pi-package/event-queue/README.md#d44) | The session takes events only once every extension has started | agent-runtime/pi/pi-package/event-queue |
 | [D45](architecture/cli/README.md#d45) | `run` runs the agent, `chat` opens a thread, `event` sends and delivers | cli |
 | [D46](architecture/agent-runtime/supervisor/README.md#d46) | `agentx run` is one process: a supervisor with three loops | agent-runtime/supervisor |
@@ -97,7 +97,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D65](architecture/agent-runtime/agent/README.md#d65) | An agent's state lives in `agent-x/storage/<agent>/`, reached as `storage/` through a link | agent-runtime/agent |
 | [D66](architecture/coordinator-runtime/README.md#d66) | Everything the coordinator does besides running the agents is a service, in its process | coordinator-runtime |
 | [D67](architecture/coordinator-runtime/README.md#d67) | A service polls with `context.every` | coordinator-runtime |
-| [D68](architecture/coordinator-runtime/README.md#d68) | A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services` | coordinator-runtime |
+| [D68](architecture/coordinator-runtime/README.md#d68) | A service's config is in `agentx.json`, and its secrets in `agent-x/.env` | coordinator-runtime |
 | [D69](architecture/coordinator-runtime/README.md#d69) | The coordinator and every service declare their API as routes | coordinator-runtime |
 | [D70](architecture/coordinator-runtime/README.md#d70) | Private routes need the API token; a public route checks its caller itself; people sign in to the web app | coordinator-runtime |
 | [D71](architecture/coordinator-runtime/services/composio/README.md#d71) | One Composio webhook for the project, which finds the agent by its Composio user id | coordinator-runtime/services/composio |
@@ -125,6 +125,8 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D96](architecture/agent-runtime/events/README.md#d96) | The thread `pass` drops an event, which stays on the queue as `passed` | agent-runtime/events |
 | [D97](architecture/agent-runtime/pi/pi-package/composio/README.md#d97) | The Composio extension trims a search's answer by removing the fields it names | agent-runtime/pi/pi-package/composio |
 | [D98](architecture/agent-runtime/agent/README.md#d98) | Every time the agent sees is in its time zone: its processes run with `TZ`, and the harness writes its times in it | agent-runtime/agent |
+| [D99](architecture/cli/README.md#d99) | `agentx upgrade-project` installs the latest agentx, and the new copy brings the files up to its own templates | cli |
+| [D100](architecture/cli/README.md#d100) | An upgrade adds what the templates have and the files lack, and changes no value | cli |
 
 ## User guides
 
@@ -137,6 +139,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
 | [give_an_agent_a_browser.md](user_guides/give_an_agent_a_browser.md) | The agent's browser: setting it up, and its profiles |
 | [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |
+| [upgrade_agentx.md](user_guides/upgrade_agentx.md) | Move a project to the latest agentx, with the settings and keys it adds |
 | [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
 
 ## Maintaining these docs

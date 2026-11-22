@@ -14,7 +14,7 @@ src/agent-runtime/browser/
 
 It is a second executable of the `agent-x` package, so pnpm links it into `agent-x/node_modules/.bin`, which is on the PATH of the agent's processes ([agent env](../agent/README.md)). It is the agent's, not a person's: it finds the agent from `AGENTX_AGENT` and `PI_CODING_AGENT_DIR`, which its processes have, refuses to run without them, and makes the agent's storage when it is missing, as `agentx run` does.
 
-It runs agent-browser with the project's `agent-x/.env`, as the agent's processes have it, so a setting there reaches agent-browser too, such as `AGENT_BROWSER_EXECUTABLE_PATH` or a proxy. It adds:
+It runs agent-browser with the agent's `.env`, as the agent's processes have it, so a setting there reaches agent-browser too, such as `AGENT_BROWSER_EXECUTABLE_PATH` or a proxy. It adds:
 
 | Variable | Value | Why |
 |---|---|---|
@@ -43,7 +43,7 @@ storage/workspace/browser/        the agent's, in its storage
 ## Setup
 
 - **Chrome.** `agentx-browser install` downloads the Chrome for Testing build that this agent-browser expects into `~/.agent-browser/browsers/`, once per machine and user. The skill tells the agent to run it when a command says Chrome is missing.
-- **Linux.** Chrome needs system libraries: `agentx-browser install --with-deps` installs them too, as root or with `sudo`. Chrome for Testing has no Linux ARM64 build: there, install Chromium from the system's packages and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in `agent-x/.env`.
+- **Linux.** Chrome needs system libraries: `agentx-browser install --with-deps` installs them too, as root or with `sudo`. Chrome for Testing has no Linux ARM64 build: there, install Chromium from the system's packages and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the agent's `.env`.
 
 [Give an agent a browser](../../../user_guides/give_an_agent_a_browser.md) shows how to use it.
 

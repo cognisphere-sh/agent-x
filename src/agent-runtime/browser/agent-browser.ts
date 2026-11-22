@@ -6,8 +6,7 @@ import { createHash } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { withEnvFile } from "../agent-env.js";
-import { agentXOf } from "../project-config.js";
+import { agentEnvFile, withEnvFile } from "../agent-env.js";
 import { storageOf } from "../storage.js";
 
 /** The agent-browser this harness pins, never one on the PATH, so every agent runs the same version. */
@@ -25,8 +24,8 @@ export function runBrowser(agentRoot: string, profile: string, args: string[]): 
 	const storage = storageOf(agentRoot);
 	const folder = join(storage, "workspace", "browser");
 	const env = {
-		// The project's agent-x/.env, which the agent's processes have, also when only the agent's two variables are set, as in an image that installs Chrome.
-		...withEnvFile(join(agentXOf(agentRoot), ".env")),
+		// The agent's .env, which its processes have, also when only the agent's two variables are set, as in an image that installs Chrome.
+		...withEnvFile(agentEnvFile(agentRoot)),
 		// agent-browser keeps its sockets and its own state in ~/.agent-browser/namespaces/<namespace>/: a socket path in storage/ would be too long.
 		// One per agent, so two agents, also of two projects, never share a session.
 		AGENT_BROWSER_NAMESPACE: `agentx-${createHash("sha256").update(realpathSync(storage)).digest("hex").slice(0, 12)}`,

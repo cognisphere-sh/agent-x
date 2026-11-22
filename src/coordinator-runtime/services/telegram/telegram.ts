@@ -119,7 +119,7 @@ export class TelegramService extends Service {
 			if (!Array.isArray(chats) || !chats.every((chat) => typeof chat === "number" || typeof chat === "string")) throw new Error(`services.telegram: agent "${agent}" needs "chats", the ids of the chats it takes messages from.`);
 			const variable = tokenPrefix + agent.toUpperCase().replaceAll("-", "_");
 			const token = context.secrets[variable];
-			if (!token) throw new Error(`${variable}, the bot token of agent "${agent}", is not set in the environment or agent-x/.env.services.`);
+			if (!token) throw new Error(`${variable}, the bot token of agent "${agent}", is not set in the environment or agent-x/.env.`);
 			// A bot has one webhook, so the second agent's would take the first's messages.
 			const sharing = [...this.bots.values()].find((other) => other.token === token);
 			if (sharing !== undefined) throw new Error(`agents "${sharing.agent}" and "${agent}" have the same bot token; each agent needs a bot of its own.`);
@@ -131,7 +131,7 @@ export class TelegramService extends Service {
 		// Messages come in without Composio, so a bot that cannot be connected is logged, and the service stays on.
 		const key = context.secrets.COMPOSIO_COORDINATOR_API_KEY;
 		if (!key) {
-			console.error("telegram: COMPOSIO_COORDINATOR_API_KEY is not set, in the environment or agent-x/.env.services, so no bot is connected in Composio; an agent answers only with a bot connected by hand.");
+			console.error("telegram: COMPOSIO_COORDINATOR_API_KEY is not set, in the environment or agent-x/.env, so no bot is connected in Composio; an agent answers only with a bot connected by hand.");
 			return;
 		}
 		const composio = { base: context.secrets.COMPOSIO_BASE_URL ?? "https://backend.composio.dev", key };

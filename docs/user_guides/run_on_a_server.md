@@ -13,7 +13,7 @@ Start the pinned agentx directly, as above, so no package manager sits in betwee
 
 ## Health and control
 
-Set `AGENTX_API_TOKEN` in `agent-x/.env.services`, and give it to the web app's server. Every route but `/health` needs it, as `Authorization: Bearer <token>`.
+Set `AGENTX_API_TOKEN` in `agent-x/.env`, and give it to the web app's server. Every route but `/health` needs it, as `Authorization: Bearer <token>`.
 
 | Route | Answers |
 |---|---|
@@ -45,16 +45,16 @@ Every agent's state, its sessions, queue, mailboxes and what it learned, is in `
 
 ## Keys
 
-The agents get the environment `agentx serve` was started with, plus `agent-x/.env`; a variable in the environment wins. On a server, set keys such as `COMPOSIO_API_KEY` in the service's environment.
+Each agent gets the environment `agentx serve` was started with, plus its own `agent-x/agents/<name>/.env`; a variable in the environment wins. On a server, set an agent's keys, such as `COMPOSIO_API_KEY`, in its `.env`, or in the service's environment for every agent.
 
-The coordinator's own services, such as a webhook, take their secrets from that environment or `agent-x/.env.services`, which no agent reads. Until agents run in sandboxes, a secret set in the environment reaches the agents' processes too, so prefer `agent-x/.env.services` for them. Set `publicUrl` in `agent-x/agentx.json` to the address the API server is reached at from outside, for services that register webhooks.
+The coordinator and its services, such as a webhook, take their secrets from that environment or `agent-x/.env`, which no agent reads. Until agents run in sandboxes, a secret set in the environment reaches the agents' processes too, so prefer `agent-x/.env` for them. Set `publicUrl` in `agent-x/agentx.json` to the address the API server is reached at from outside, for services that register webhooks.
 
 ## Composio's events
 
 An agent can get an event each time one of its Composio triggers fires, such as a new email in its Gmail. Composio sends every trigger event of a Composio project to one webhook, and `agentx serve` delivers each to the agent whose Composio user id the trigger was made for ([Composio service](../architecture/coordinator-runtime/services/composio/README.md)).
 
 1. In Composio's dashboard, set the project's webhook to `https://<host>/services/composio/webhook`, version V3, with the event `composio.trigger.message`. Forward that path from the internet to `agentx serve`.
-2. Copy the webhook's signing secret into `agent-x/.env.services`: `COMPOSIO_WEBHOOK_SECRET=...`, and start `agentx serve` again. Without it, `agentx serve` logs `Service "composio" is off`.
+2. Copy the webhook's signing secret into `agent-x/.env`: `COMPOSIO_WEBHOOK_SECRET=...`, and start `agentx serve` again. Without it, `agentx serve` logs `Service "composio" is off`.
 3. Make triggers for the agent's user id, `agentx.composio.userId` in its `.pi/settings.json`, with Composio's CLI (`composio dev triggers create`) or API, on an account the agent has connected.
 
 Each event reaches the agent's routers with `source: composio`, the trigger's slug in `trigger`, and the event's data in the file `data.json`; route it as any event ([send events](send_events.md)). An event Composio sends again is added once.
@@ -65,7 +65,7 @@ Use one Composio project per environment: a project has one webhook URL. On a la
 
 An agent can have a Telegram bot: people in the chats you list write to it, and it answers there ([Telegram service](../architecture/coordinator-runtime/services/telegram/README.md)).
 
-1. Make a bot with [@BotFather](https://t.me/BotFather) for each agent, and put its token in `agent-x/.env.services` as `TELEGRAM_BOT_TOKEN_<AGENT>`, such as `TELEGRAM_BOT_TOKEN_MAIN` for `main`. Each agent needs a bot of its own.
+1. Make a bot with [@BotFather](https://t.me/BotFather) for each agent, and put its token in `agent-x/.env` as `TELEGRAM_BOT_TOKEN_<AGENT>`, such as `TELEGRAM_BOT_TOKEN_MAIN` for `main`. Each agent needs a bot of its own.
 2. In `agent-x/agentx.json`, set `publicUrl` and list the agent with its chats:
 
    ```json
@@ -75,6 +75,6 @@ An agent can have a Telegram bot: people in the chats you list write to it, and 
 
    A private chat's id is the person's Telegram user id; a group's is negative. In a group, the bot gets only commands and replies to it, unless you turn its privacy mode off with @BotFather's `/setprivacy`. A message from a chat not listed is dropped, and its id is in `agentx serve`'s log, so to find a chat's id, write to the bot and read the log.
 3. Forward `/services/telegram/` from the internet to `agentx serve`, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
-4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env.services` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
+4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY`, each in its `.env` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
 
 Each message reaches the agent's routers with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder. When the agent asks a question with buttons, a tap reaches it the same way, with the button's text as content and the button in `button`, and the buttons leave the question with the choice written under it.

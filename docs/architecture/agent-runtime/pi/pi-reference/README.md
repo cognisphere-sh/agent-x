@@ -76,6 +76,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - A package carries extensions, skills, prompt templates and themes. MCP servers are not a package resource; an extension adds them with `pi.registerMcpServer` (`docs/mcp.md`).
 - Project-scope npm and git packages are installed into `<cwd>/.pi/npm` and `<cwd>/.pi/git` (`getNpmInstallRoot`, `getGitInstallRoot` in `src/core/package-manager.ts`).
 - On start, Pi installs an npm package that is missing, or whose installed version differs from an exact version in the settings. A package it cannot install is skipped, and the session starts without it. With `PI_OFFLINE` set, nothing is installed (`resolvePackageSources`, `installedNpmMatchesConfiguredVersion`). An exact version is never updated (`docs/packages.md`).
+- A package's source ends with its version or ref after its last `@`: `npm:@scope/name@1.2.3`, `git:github.com/user/repo@v1` (`docs/packages.md`). `agentx upgrade-agent` finds the template's version of an agent's package by the source without it.
 - Pi warns when a package's `package.json` lists a host package, such as `@earendil-works/pi-coding-agent`, in `dependencies` (`src/core/resource-loader.ts`).
 
 ## Extensions

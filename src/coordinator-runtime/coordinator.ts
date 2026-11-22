@@ -4,10 +4,9 @@
 // its own routes, which control the agents, and each service's routes under /services/<name>/. With a person's `agentx event deliver`, it is the only
 // way into an agent from outside it.
 
-import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { withEnvFile } from "../agent-runtime/agent-env.js";
-import { agentIn, configFile, isAgentFolder, projectConfig } from "../agent-runtime/project-config.js";
+import { agentFolders, agentIn, configFile, projectConfig } from "../agent-runtime/project-config.js";
 import { centralStorage, ensureStorage, storageProblem } from "../agent-runtime/storage.js";
 import { AgentManager } from "./agent-manager.js";
 import { deliverTo } from "./deliver-event.js";
@@ -37,8 +36,7 @@ export class Coordinator {
 		const config = projectConfig(agentX);
 		// The agents agentx.json lists, found once, so adding one means starting agentx serve again. A folder it does not list is not run.
 		const listed = Object.keys(config.agents).sort();
-		const agentsDir = join(agentX, "agents");
-		const folders = existsSync(agentsDir) ? readdirSync(agentsDir).filter((name) => isAgentFolder(join(agentsDir, name))) : [];
+		const folders = agentFolders(agentX);
 		for (const name of listed) if (!folders.includes(name)) console.error(`${configFile(agentX)} lists agent "${name}", which has no folder in agents/; it is not run.`);
 		for (const name of folders) if (!listed.includes(name)) console.error(`agents/${name} is not listed in ${configFile(agentX)}; it is not run.`);
 		const roots = listed.flatMap((name) => agentIn(agentX, name) ?? []).filter((root) => usesCentralStorage(root));
@@ -54,7 +52,7 @@ export class Coordinator {
 	/** Starts the services, then the agents and the API server; resolves to the address it listens on. */
 	async start(host: string, port: number): Promise<string> {
 		this.services = await this.chooseServices();
-		const available = withEnvFile(join(this.agentX, ".env.services"));
+		const available = withEnvFile(join(this.agentX, ".env"));
 		const agents = this.agents.map(({ agent, root }) => ({ name: agent, root, storage: centralStorage(root) }));
 		// One at a time, in order: the relay first, so that it stops last.
 		for (const runner of this.services) {
@@ -77,7 +75,7 @@ export class Coordinator {
 			.flatMap(({ name, service }) => (service.routes ?? []).map((route) => ({ ...route, path: `services/${name}/${route.path}` })));
 		this.routes = [...this.ownRoutes(), ...serviceRoutes];
 		const token = available.AGENTX_API_TOKEN || undefined;
-		if (token === undefined) console.error("AGENTX_API_TOKEN is not set, in the environment or agent-x/.env.services: private routes answer 503.");
+		if (token === undefined) console.error("AGENTX_API_TOKEN is not set, in the environment or agent-x/.env: private routes answer 503.");
 		return this.api.listen(host, port, this.routes, token);
 	}
 

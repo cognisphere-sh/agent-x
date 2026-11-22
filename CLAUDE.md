@@ -16,7 +16,7 @@ agentx is a meta harness around the [pi coding agent](https://github.com/earendi
 
 ```
 agentx (this repo, npm package `agent-x`, command `agentx`)
-  CLI        init-project, init-agent, remove-agent, serve, run, chat, remove-thread, event send|deliver (later: upgrade)
+  CLI        init-project, init-agent, remove-agent, upgrade-project, upgrade-agent, serve, run, chat, remove-thread, event send|deliver
   templates  copied by the CLI into a user's project
   pi-package `src/agent-runtime/pi/pi-package`, loaded by Pi into every agent: system prompt extension and harness prompt, event queue extension, Composio extension (each thread's Composio session, for the agent's Composio user id, and its search answers, trimmed), skills extension (each skill a section with its version, read on every run), episode extension (episodes, each of Pi's runs, ended by a message with its id and the tokens it added, from the model's usage), context extension (folds of episodes the agent makes when a fold nudge after an episode asks and says how; Pi compacts by itself), memory extension (an index of every thread's episodes, `storage/knowledge/memory/index.db`, which each session updates with its own file when a run settles, and the agent searches by keyword and reads back); its skills, such as the browser skill
   queue      an agent's event queue (SQLite), `src/agent-runtime/events/queue.ts`, used by the CLI, both runtimes and the event queue extension, which imports it from source
@@ -33,13 +33,13 @@ my-project/ (created by init-project)
       event_router.ts  the developer's event router, asked after the agent's; a new agent's sends every event to main
       workflows.json workflows/   the developer's workflows, scripts that handle events without the model, and the scripts
       schedules.json    the developer's schedules: cron patterns that send the agent events
+    .env                the agent's keys (COMPOSIO_API_KEY), which only its processes read; gitignored; the environment wins
     storage             a link to agent-x/storage/<agent>/, the agent's gitignored runtime state: sessions/<thread>/ (a folder per thread), workspace/ (with workflow and router logs, inbox/ and outbox/, and browser/, its browser profiles), event_queue.db, heartbeat, schedule-state.json,
                         knowledge/ (what the agent learns: its own skills and prompt text, loaded through the agent's settings; its event_router.ts, its own workflows.json with workflows/, and schedules.json; memory/index.db, the index of its episodes)
   agent-x/storage/      every agent's runtime state, a folder per agent, which each agent's storage links to (a mount in a sandbox later); the coordinator uses it directly; gitignored
   agent-x/agentx.json   the project's agents: each one's description and canSendTo; agentx serve runs the agents it lists; each service's config under `services`
   agent-x/.pi/          Pi's agent directory for all agents: login, Pi's state; gitignored
-  agent-x/.env          keys for all agents (COMPOSIO_API_KEY); gitignored; the environment wins
-  agent-x/.env.services the coordinator's services' secrets, which no agent reads; gitignored
+  agent-x/.env          the secrets of the coordinator and its services, which no agent reads; gitignored; the environment wins
   agent-x/services/<name>/index.ts  the project's own coordinator services, written by its developer; on when agentx.json lists them
 ```
 

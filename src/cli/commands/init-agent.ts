@@ -1,11 +1,12 @@
 // `agentx init-agent <name>`: creates an agent in the project's agent-x/agents/ directory and lists it in agent-x/agentx.json.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
+import { agentEnvFile } from "../../agent-runtime/agent-env.js";
 import { nameRule } from "../../agent-runtime/events/queue.js";
 import { configFile, type ProjectConfig, projectConfig, saveProjectConfig } from "../../agent-runtime/project-config.js";
 import { ensureStorage } from "../../agent-runtime/storage.js";
-import { copyTemplate } from "../copy-template.js";
+import { copyTemplate, writeJson } from "../copy-template.js";
 import { projectAgentX } from "../agent-root.js";
 
 /** Creates `agent-x/agents/<name>` from templates/agent and lists it in agentx.json. `cwd` is the project root, its agent-x/ or agent-x/agents/. */
@@ -21,7 +22,7 @@ export function initAgent(name: string, cwd: string): void {
 	const settingsPath = join(root, ".pi", "settings.json");
 	const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
 	settings.agentx.composio = { userId: `${name}@${project}`, ...settings.agentx.composio };
-	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
+	writeJson(settingsPath, settings);
 	// Its state, in agent-x/storage/<name>/, which storage/ links to; neither is checked in.
 	ensureStorage(root);
 	// Listed with an empty description, which the developer fills in: the agents that may send to it see it. An entry already there is kept.
@@ -32,5 +33,6 @@ export function initAgent(name: string, cwd: string): void {
 
 Next:
   describe it in ${configFile(agentX)}, for the other agents
+  put its keys, such as COMPOSIO_API_KEY, in ${agentEnvFile(root)}
   cd ${root} && agentx chat    # talk to the agent; agentx run runs it on its own`);
 }

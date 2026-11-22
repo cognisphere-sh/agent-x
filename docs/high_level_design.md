@@ -13,8 +13,7 @@ my-project/
   web/                          Next.js app, its own package (checked in)
   agent-x/                      its own package, which pins agentx (checked in)
     agentx.json                 the agents: description and canSendTo of each; agentx serve runs the ones it lists; the services' config (developer)
-    .env                        keys for every agent, such as COMPOSIO_API_KEY (developer, gitignored)
-    .env.services               the coordinator's services' secrets, which no agent reads (developer, gitignored)
+    .env                        the secrets of the coordinator and its services, such as AGENTX_API_TOKEN, which no agent reads (developer, gitignored)
     services/<name>/index.ts    the project's own coordinator services, on when agentx.json lists them (developer, checked in)
     .pi/                        Pi's agent directory for all agents: login and Pi's state (Pi, gitignored)
     agents/<agent>/             one agent
@@ -24,6 +23,7 @@ my-project/
         event_router.ts         picks the thread of an event that has none
         workflows.json workflows/  scripts that handle events without the model
         schedules.json          cron patterns that send the agent events
+      .env                      its keys, such as COMPOSIO_API_KEY, which only its processes read (developer, gitignored)
       storage                   link to agent-x/storage/<agent>/
     storage/<agent>/            the agent's runtime state (gitignored)
       workspace/inbox/          events delivered to it (the coordinator and agentx event deliver write it)
@@ -70,7 +70,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Module | Files | Responsibility | Depends on | Doc |
 |---|---|---|---|---|
-| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file | [cli](architecture/cli/README.md) |
+| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates and upgrades projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file | [cli](architecture/cli/README.md) |
 | Project | `templates/` | The generated repo: `web/` and `agent-x/` | | [cli/project](architecture/cli/project/README.md) |
 | Agent | `agent-env.ts`, `storage.ts`, `project-config.ts`, `time-zone.ts` | An agent's directory, its storage and the link to it, the environment of its processes, its time zone and times as it reads them, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
@@ -93,7 +93,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 ## Lifecycles
 
-**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs. `agentx remove-thread <id>`, in an agent, deletes one thread's sessions and its episodes in the agent's memory, the same way; not while the thread runs or has events waiting.
+**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs. `agentx remove-thread <id>`, in an agent, deletes one thread's sessions and its episodes in the agent's memory, the same way; not while the thread runs or has events waiting. `agentx upgrade-project` moves the project to the latest agentx, then adds the settings, keys and ignored files of its templates that the project and its agents lack; `agentx upgrade-agent main` does it for one agent.
 
 **The coordinator** (`agentx serve`). It starts, reads `agentx.json` once, and starts its services: the core ones, the relay, the scheduler and Composio's webhook, on when its secret is set, then the optional ones `agentx.json` lists, then the project's own in `agent-x/services/` that it lists. One that fails to load or start is off; the rest go on. Then it starts an AgentManager per listed agent with a folder, and its API server, with its own routes, which report, start and stop the agents with the API token, and the services' routes under `/services/<name>/`. Each second the scheduler fires the schedules that are due, and the relay delivers every outbox. The first SIGINT or SIGTERM lets the agents finish their running work, the second stops it, while the services go on, except the scheduler, which fires nothing during a stop. Then the services stop, the last started first, so the relay delivers once more, and the server closes.
 
@@ -121,11 +121,11 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Built | Planned |
 |---|---|
-| CLI: `init-project`, `init-agent`, `remove-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver` | `agentx upgrade` |
-| `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Sandboxes |
-| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | Composio's triggers, made for each agent by its service |
-| Pi package: harness prompt, event queue, Composio, skills as sections with versions, the browser skill | The web app's use of the API: agent controls, events from people, answers back |
-| Each agent's state in `agent-x/storage/` | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
+| CLI: `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver` | Sandboxes |
+| `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Composio's triggers, made for each agent by its service |
+| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | The web app's use of the API: agent controls, events from people, answers back |
+| Pi package: harness prompt, event queue, Composio, skills as sections with versions, the browser skill | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
+| Each agent's state in `agent-x/storage/` | |
 | The agent's browser: `agentx-browser` and its profiles | |
 | The agent's context: episodes and the tokens each added, folds of episodes, fold nudges | |
 | Episodic memory: every thread's episodes, searched by keyword and read back | |

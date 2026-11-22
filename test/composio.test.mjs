@@ -153,9 +153,17 @@ test("when Composio cannot be reached, the session starts without Composio tools
 	assert.equal(unavailable(before), "Composio tools are unavailable in this session: Composio could not be reached: fetch failed.");
 });
 
-test("the project's agent-x/.env gives every agent its keys, and a variable already in the environment wins", async () => {
+test("the agent's own .env gives it its keys, the project's agent-x/.env does not, and a variable already in the environment wins", async () => {
 	const project = setup(false);
-	writeFileSync(join(project.agent, "..", "..", ".env"), `COMPOSIO_API_KEY=${composio.env.COMPOSIO_API_KEY}\nCOMPOSIO_BASE_URL=${composio.env.COMPOSIO_BASE_URL}\n`);
+	const keys = `COMPOSIO_API_KEY=${composio.env.COMPOSIO_API_KEY}\nCOMPOSIO_BASE_URL=${composio.env.COMPOSIO_BASE_URL}\n`;
+	// The coordinator's file.
+	writeFileSync(join(project.agent, "..", "..", ".env"), keys);
+	const first = model.requests.length;
+	assert.equal((await agentx(project, ["chat", "--thread-id", "coordinator", "-p", "hello"])).status, 0);
+	assert.equal(unavailable(first), "Composio tools are unavailable in this session: COMPOSIO_API_KEY is not set where the agent runs.");
+	assert.equal(composio.created.length, 0);
+
+	writeFileSync(join(project.agent, ".env"), keys);
 	assert.equal((await agentx(project, ["chat", "-p", "hello"])).status, 0);
 	assert.equal(composio.created.length, 1);
 

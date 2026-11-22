@@ -1,5 +1,16 @@
-# Keys for every agent of the project. Gitignored; a variable already in the environment wins.
-# Uncomment a line and set its value.
+# Secrets of the project's coordinator (agentx serve) and its services, such as a webhook's signing secret. Only agentx serve reads this file; no agent
+# does: each agent's keys are in its own agents/<name>/.env. Gitignored; a variable already in the environment wins. Uncomment a line and set its value.
 
-# Composio's scoped key for the agents' sessions (Composio's dashboard: Settings, API Keys).
-# COMPOSIO_API_KEY=your-composio-api-key
+# The API token. The project's own systems, such as the web app's server, send it as "Authorization: Bearer <token>" to the coordinator's private
+# routes: the agents' state, starting and stopping them, and services' private routes. Without it, those routes answer 503. Make one: openssl rand -hex 32
+# AGENTX_API_TOKEN=your-api-token
+
+# Composio's webhook: the signing secret of the Composio project's webhook subscription. Without it, Composio's events are not taken.
+# COMPOSIO_WEBHOOK_SECRET=your-composio-webhook-secret
+
+# Telegram: each agent's bot token, from @BotFather, for an agent listed under services.telegram in agentx.json. TELEGRAM_BOT_TOKEN_MAIN is main's.
+# TELEGRAM_BOT_TOKEN_MAIN=your-telegram-bot-token
+
+# The coordinator's Composio key, which no agent gets: a scoped key of the agents' Composio project with Auth configs and Connected accounts
+# (read and write). With it, Telegram connects each agent's bot in Composio, so the agent can answer. Not an agent's COMPOSIO_API_KEY, which may only make sessions.
+# COMPOSIO_COORDINATOR_API_KEY=your-composio-coordinator-key

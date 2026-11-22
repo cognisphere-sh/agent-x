@@ -80,7 +80,7 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 
 - **Core, optional and the project's own.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). The project's own start last, each when `agentx.json` lists it, so they stop first. A name that neither agentx nor `agent-x/services/` has is logged and skipped.
 - **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.
-- **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it. It gets their values from the coordinator's environment, which wins, or `agent-x/.env.services`, which only the coordinator reads; agents read `agent-x/.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
+- **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it. It gets their values from the coordinator's environment, which wins, or `agent-x/.env`, which only the coordinator reads; each agent reads its own `.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
 - **A service that fails to start** is off, says why, and stays off until `agentx serve` starts again; the agents and the other services start all the same.
 - **Polling.** `every` never starts a run while the last one goes on, and logs a failure, so no service can end the coordinator.
 
@@ -108,7 +108,7 @@ A segment that starts with `:` is a parameter. The handler gets the parameters, 
 
 **Who may call** ([D70](#d70)):
 
-- **`private`**, the default: the project's own systems, such as the web app's server, with `Authorization: Bearer <AGENTX_API_TOKEN>`. Without it, or with another, 401. The token comes from the coordinator's environment or `agent-x/.env.services`; when it is not set, private routes answer 503, and `agentx serve` says so.
+- **`private`**, the default: the project's own systems, such as the web app's server, with `Authorization: Bearer <AGENTX_API_TOKEN>`. Without it, or with another, 401. The token comes from the coordinator's environment or `agent-x/.env`; when it is not set, private routes answer 503, and `agentx serve` says so.
 - **`public`**: anyone. A route that must know its caller, such as a webhook, checks it itself, by the signature or the token of the external service that calls it, before it does anything.
 
 People are never authenticated here. The web app signs them in, and calls the coordinator with the token.
@@ -191,11 +191,11 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - **Rejected.** A timer of the service's own; a `tick` the coordinator calls each second, which makes every service count its own interval.
 
 <a id="d68"></a>
-### D68. A service's config is in `agentx.json`, and its secrets in `agent-x/.env.services`
+### D68. A service's config is in `agentx.json`, and its secrets in `agent-x/.env`
 
-- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service or one of the project's own to turn it on. A service names its secrets, or a prefix of them with `*` when they are one per agent, such as `TELEGRAM_BOT_TOKEN_*`, and gets only those, from the coordinator's environment or `agent-x/.env.services`. `publicUrl` in `agentx.json` is the project's address from outside.
-- **Why.** The project's config is already read once by `agentx serve` and checked in. Agents read only `agent-x/.env`, so a file of the services' own keeps their secrets out of what Pi, the routers and the workflows get, with no list of names to leave out.
-- **Rejected.** A `services.json` of its own; the services' secrets in `agent-x/.env`, which every agent's process reads; `--public-url` on `agentx serve`, which every deployment would have to pass.
+- **Decision.** `services.<name>` in `agentx.json` is a service's config, and lists an optional service or one of the project's own to turn it on. A service names its secrets, or a prefix of them with `*` when they are one per agent, such as `TELEGRAM_BOT_TOKEN_*`, and gets only those, from the coordinator's environment or `agent-x/.env`. `publicUrl` in `agentx.json` is the project's address from outside.
+- **Why.** The project has one config file, `agentx.json`, read once by `agentx serve` and checked in, and one secrets file, `agent-x/.env`. Each agent reads only its own `.env` ([D43](../agent-runtime/agent/README.md#d43)), so the project's file keeps the coordinator's secrets out of what Pi, the routers and the workflows get, with no list of names to leave out.
+- **Rejected.** A config file of the services' own, `services.json`; `--public-url` on `agentx serve`, which every deployment would have to pass.
 - **Consequence.** A secret the host sets in the coordinator's environment is inherited by the agents' processes. Sandboxes, which start agents apart from it, end that.
 
 <a id="d69"></a>

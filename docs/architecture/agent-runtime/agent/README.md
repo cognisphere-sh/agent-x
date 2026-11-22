@@ -17,6 +17,7 @@ agent-x/agents/<name>/
     skills/  extensions/   the developer's
     event_router.ts     the developer's router; the template's sends every event to main
     workflows.json  workflows/  schedules.json
+  .env                  its keys, such as COMPOSIO_API_KEY (D43), gitignored
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
     knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json, and memory/index.db, the index of its episodes
     sessions/<thread>/  the thread's Pi sessions
@@ -78,6 +79,8 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
 | `timezone` | The agent's time zone: its processes run in it, every time the harness shows the agent is in it, and so are its schedules ([D98](#d98)). `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
 | `memory` | `compaction`: folds, fold nudges and summaries ([context](../pi/pi-package/context/README.md#settings)). |
+
+- A later agentx may add settings. `agentx upgrade-agent` adds each `agentx` setting the agent lacks, with the template's value, and moves the packages the template pins to their new versions ([D100](../../cli/README.md#d100)). It brings back a setting that was deleted, so turn one off by its value, such as `"systemPrompt": []`.
 
 ## System prompt
 
@@ -182,11 +185,12 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 - **Consequence.** Outside Pi, `agentx` keys in the shared `agent-x/.pi/settings.json` do not apply.
 
 <a id="d43"></a>
-### D43. Keys for all agents of a project go in the gitignored `agent-x/.env`; the environment wins
+### D43. Each agent's keys go in its own gitignored `.env`; the environment wins
 
-- **Decision.** Every process of the agent gets the environment of `agent-env.ts`: the process's own, plus the variables of `agent-x/.env` it does not have, and `AGENTX_AGENT`, the agent's name.
-- **Why.** A developer keeps keys in one file next to the project's agent state; a deployment sets the same variables in the environment and needs no file.
-- **Rejected.** `web/.env.local`, which belongs to the app; a file per agent, when the keys are the project's.
+- **Decision.** Every process of the agent gets the environment of `agent-env.ts`: the process's own, plus the variables of the agent's `.env` it does not have, and `AGENTX_AGENT`, the agent's name. `init-agent` writes the file, with each key the agent uses commented out. The project's `agent-x/.env` is the coordinator's, and no agent reads it ([D68](../../coordinator-runtime/README.md#d68)).
+- **Why.** An agent's processes get its keys, and no other agent's or the coordinator's. Its secrets are in one file next to its settings; a deployment sets the same variables in the environment and needs no file.
+- **Rejected.** `web/.env.local`, which belongs to the app; one file for every agent and the coordinator, which would put the coordinator's keys, such as one that connects Composio accounts for any agent, into every agent's processes.
+- **Consequence.** A key that several agents use, such as the Composio project's, is in each one's `.env`. A variable set in the environment of `agentx serve` reaches every agent, until they run in sandboxes.
 
 <a id="d65"></a>
 ### D65. An agent's state lives in `agent-x/storage/<agent>/`, reached as `storage/` through a link

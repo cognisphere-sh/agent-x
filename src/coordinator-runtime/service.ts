@@ -17,7 +17,7 @@ export interface ServiceAgent {
 export interface ServiceContext {
 	/** Its config, `services.<name>` in agentx.json; `{}` when there is none. The service checks it. */
 	config: unknown;
-	/** The values of its own `secrets`, from the coordinator's environment or `agent-x/.env.services`; a missing one is left out. */
+	/** The values of its own `secrets`, from the coordinator's environment or `agent-x/.env`; a missing one is left out. */
 	secrets: Record<string, string>;
 	/** The agents the coordinator runs. */
 	agents: ServiceAgent[];
@@ -40,7 +40,7 @@ export interface ServiceContext {
  * `export default class implements ServiceDefinition`. Each member may be left out.
  */
 export interface ServiceDefinition {
-	/** Environment variables it needs, from the coordinator's environment or `agent-x/.env.services`. A name that ends with `*` takes every variable that starts with it. */
+	/** Environment variables it needs, from the coordinator's environment or `agent-x/.env`. A name that ends with `*` takes every variable that starts with it. */
 	secrets?: string[];
 	/** Its routes, below `/services/<name>/`, served while it is on. */
 	routes?: Route[];
@@ -52,7 +52,7 @@ export interface ServiceDefinition {
 
 /** A part of the coordinator that ships with agentx, in a folder of its own under services/. Each hook may be left out. */
 export abstract class Service implements ServiceDefinition {
-	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env.services`, which no agent reads. A name that ends with `*` takes every variable that starts with it. */
+	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env`, which no agent reads. A name that ends with `*` takes every variable that starts with it. */
 	readonly secrets: string[] = [];
 
 	/** Its API contract: each route, with its path below `/services/<name>/`, who may call it, and its handler. Served only while the service is on. */

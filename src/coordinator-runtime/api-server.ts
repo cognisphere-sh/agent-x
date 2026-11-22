@@ -77,7 +77,7 @@ export class ApiServer {
 		const found = matches.find(({ route }) => route.method === request.method);
 		if (found === undefined) return { status: 405, body: { error: `Only ${matches.map(({ route }) => route.method).join(", ")}.` } };
 		if ((found.route.access ?? "private") === "private") {
-			if (this.token === undefined) return { status: 503, body: { error: "No API token is set: set AGENTX_API_TOKEN in agent-x/.env.services." } };
+			if (this.token === undefined) return { status: 503, body: { error: "No API token is set: set AGENTX_API_TOKEN in agent-x/.env." } };
 			if (!sameText(request.headers.authorization ?? "", `Bearer ${this.token}`)) return { status: 401, body: { error: "This route needs the API token." } };
 		}
 		const body = await readBody(request);

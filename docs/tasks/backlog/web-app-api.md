@@ -16,7 +16,7 @@ The coordinator's [API server](../../architecture/coordinator-runtime/README.md#
 
 ## The idea
 
-- **The token** is in the web app's server environment, such as `web/.env`, and `init-project` writes a placeholder for it there, as for `agent-x/.env.services`. The web app's route handlers call the coordinator at its address, such as `http://127.0.0.1:3100`.
+- **The token** is in the web app's server environment, such as `web/.env`, and `init-project` writes a placeholder for it there, as for `agent-x/.env`. The web app's route handlers call the coordinator at its address, such as `http://127.0.0.1:3100`.
 - **Agents.** A page lists the agents from `GET /agents`, and starts, stops and restarts them with `POST /agents/:agent/start`, `/stop` and `/restart`.
 - **Events from people.** A new private route, such as `POST /agents/:agent/events`, delivers what a person sends, with `deliverTo`, as `agentx event deliver` does. The web app names the person who sent it in a header, which the coordinator trusts because the call carries the token, and the coordinator puts it in a harness fact, such as `agentX-FromUser`, so no sender can claim it.
 - **The API's list.** `GET /routes` tells the web app what the coordinator and its services offer.

@@ -77,9 +77,9 @@ async function request(address, method, path, { body, token } = {}) {
 	return { status: response.status, body: await response.text() };
 }
 
-/** Starts `agentx serve` in the project's root on a free port, with an API token and the lines `secrets` of agent-x/.env.services; killed when the test ends. */
+/** Starts `agentx serve` in the project's root on a free port, with an API token and the lines `secrets` of agent-x/.env; killed when the test ends. */
 async function serve(t, project, secrets = "") {
-	writeFileSync(join(projectRoot(project), "agent-x", ".env.services"), `AGENTX_API_TOKEN=the-token\n${secrets}`);
+	writeFileSync(join(projectRoot(project), "agent-x", ".env"), `AGENTX_API_TOKEN=the-token\n${secrets}`);
 	const server = background(projectRoot(project), project.env, ["serve", "--port", "0"]);
 	t.after(() => {
 		try {
@@ -387,7 +387,7 @@ test("services start with their config, the public URL and only their own secret
 	const errors = t.mock.method(console, "error", () => {}).mock;
 	const agentX = mkdtempSync(join(tmpdir(), "agentx-services-"));
 	writeFileSync(join(agentX, "agentx.json"), JSON.stringify({ agents: {}, publicUrl: "https://agents.example.com", services: { probe: { greeting: "hi" }, broken: {}, missing: {} } }));
-	writeFileSync(join(agentX, ".env.services"), "PROBE_KEY=from-file\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
+	writeFileSync(join(agentX, ".env"), "PROBE_KEY=from-file\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
 	process.env.PROBE_ENV = "from-env";
 	const log = [];
 	let running = 0;
@@ -532,7 +532,7 @@ export default class Echo implements ServiceDefinition {
 	service("badshape", 'export default class BadShape { routes = "not a list"; }\n');
 	service("relay", "export default class Relay {}\n");
 	editConfig(project, (config) => ({ ...config, services: { echo: { greeting: "hi" }, throws: {}, noclass: {}, badshape: {} } }));
-	writeFileSync(join(agentX, ".env.services"), "ECHO_KEY=the-key\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
+	writeFileSync(join(agentX, ".env"), "ECHO_KEY=the-key\nOTHER_KEY=not-its-own\nAGENTX_API_TOKEN=the-token\n");
 
 	const coordinator = new Coordinator(agentX);
 	t.after(() => coordinator.stop(true));
@@ -778,7 +778,7 @@ test("Telegram is off without publicUrl, or without an agent's bot token, or whe
 	];
 	for (const [config, secrets, why, bots = main] of cases) {
 		editConfig(project, (old) => ({ agents: old.agents, ...config, services: { telegram: { apiUrl: telegram.url, agents: bots } } }));
-		writeFileSync(join(agentX, ".env.services"), secrets);
+		writeFileSync(join(agentX, ".env"), secrets);
 		const coordinator = new Coordinator(agentX);
 		await coordinator.start("127.0.0.1", 0);
 		await coordinator.stop(true);
@@ -799,7 +799,7 @@ test("Telegram connects each agent's bot in Composio for the agent's user id, wi
 	const agentX = join(projectRoot(project), "agent-x");
 	editConfig(project, (old) => ({ ...old, publicUrl: "https://agents.example.com", services: { telegram: { apiUrl: telegram.url, agents: { main: { chats: [1] }, b: { chats: [2] } } } } }));
 	const start = async (key, bToken = "2:b") => {
-		writeFileSync(join(agentX, ".env.services"), `COMPOSIO_BASE_URL=${composio.url}\n${key ? `COMPOSIO_COORDINATOR_API_KEY=${key}\n` : ""}TELEGRAM_BOT_TOKEN_MAIN=1:main\nTELEGRAM_BOT_TOKEN_B=${bToken}\n`);
+		writeFileSync(join(agentX, ".env"), `COMPOSIO_BASE_URL=${composio.url}\n${key ? `COMPOSIO_COORDINATOR_API_KEY=${key}\n` : ""}TELEGRAM_BOT_TOKEN_MAIN=1:main\nTELEGRAM_BOT_TOKEN_B=${bToken}\n`);
 		const coordinator = new Coordinator(agentX);
 		await coordinator.start("127.0.0.1", 0);
 		await coordinator.stop(true);

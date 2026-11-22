@@ -20,7 +20,7 @@ agentx chat                             # talk to the agent
 
 The first time, type `/login` in the session and pick a provider. The login is saved in `agent-x/.pi/auth.json` (gitignored), and all agents of the project share it. The first session also installs the agent's [Pi packages](customize_an_agent.md#packages) from npm, which takes up to half a minute.
 
-For Gmail, Calendar, Drive and other services, put a Composio key in `agent-x/.env` (gitignored): `COMPOSIO_API_KEY=...`. See [External services](customize_an_agent.md#external-services-composio).
+For Gmail, Calendar, Drive and other services, put a Composio key in the agent's `.env`, `agent-x/agents/main/.env` (gitignored): `COMPOSIO_API_KEY=...`. See [External services](customize_an_agent.md#external-services-composio).
 
 What you get:
 

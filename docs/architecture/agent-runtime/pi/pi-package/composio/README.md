@@ -82,7 +82,7 @@ Composio's tool descriptions already say how to use them. The harness prompt's "
 
 ## The key
 
-`COMPOSIO_API_KEY` comes from the environment or `agent-x/.env` ([D43](../../../agent/README.md#d43)). It is a scoped project key with **Session management** (read, write) and **Session tool execution** (write) only. What needs more, such as connecting an agent's Telegram bot, the coordinator does with a key of its own, `COMPOSIO_COORDINATOR_API_KEY`, which no agent gets ([D77](../../../../coordinator-runtime/services/telegram/README.md#d77)).
+`COMPOSIO_API_KEY` comes from the environment or the agent's `.env` ([D43](../../../agent/README.md#d43)). It is a scoped project key with **Session management** (read, write) and **Session tool execution** (write) only. What needs more, such as connecting an agent's Telegram bot, the coordinator does with a key of its own, `COMPOSIO_COORDINATOR_API_KEY`, which no agent gets ([D77](../../../../coordinator-runtime/services/telegram/README.md#d77)).
 
 ## Known limits
 

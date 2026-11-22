@@ -67,7 +67,7 @@ The runner frees the thread of its dead process at once, instead of waiting for 
 | Pi CLI | agentx's own dependency | [D1](../agent/README.md#d1) |
 | `cwd` | the agent directory | Pi reads `.pi/` from `cwd` ([D2](../agent/README.md#d2)) |
 | `PI_CODING_AGENT_DIR` | `agent-x/.pi` | one per project, without `~/.pi/agent` ([D17](../agent/README.md#d17)) |
-| environment | agentx's own, plus `agent-x/.env` | keys for all agents ([D43](../agent/README.md#d43)) |
+| environment | agentx's own, plus the agent's `.env` | the agent's keys ([D43](../agent/README.md#d43)) |
 | `PATH` | `agent-x/node_modules/.bin` first | `agentx` in Pi's bash is the pinned one |
 | `AGENTX_AGENT` | the agent's name | `agentx event send` works in Pi's bash, and `agentx event deliver` does not ([Events](../events/README.md#sending-and-delivering)) |
 | `TZ` | the agent's `agentx.timezone`, when it names one | the agent's processes tell the time in its time zone ([D98](../agent/README.md#d98)) |

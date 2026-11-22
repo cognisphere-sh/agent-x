@@ -65,11 +65,11 @@ A server named `composio` would replace the agent's Composio tools; give yours a
 Every agent can use [Composio](https://docs.composio.dev)'s tools to work in external services, such as Gmail, Google Calendar and Drive, through accounts of its own. Create a Composio project and a scoped API key with only **Session management** (read, write) and **Session tool execution** (write), and set it where agents run. Without it, the agent has no Composio tools and says so when a task needs them.
 
 ```sh
-# agent-x/.env in the project, which git ignores
+# agent-x/agents/<name>/.env, the agent's own, which git ignores
 COMPOSIO_API_KEY=...
 ```
 
-Every agent of the project gets the variables of `agent-x/.env`. On a server, set them in the environment of the process that runs agentx instead; a variable there wins over the file.
+Only that agent gets the variables of its `.env`; each agent that uses Composio needs the key in its own. On a server, you can set them in the environment of the process that runs agentx instead, which every agent gets; a variable there wins over the file.
 
 A new agent's `.pi/settings.json` has its Composio user id, `<agent>@<project>`. Keep it as it is: the agent's connected accounts are kept under it. To connect an account, ask the agent in `agentx chat`, for example "connect my Gmail"; it gives you a link to sign in.
 
@@ -97,7 +97,7 @@ Pi packages bundle extensions, skills, prompt templates and themes, from npm, gi
 "packages": ["npm:@example/pi-tools@1.0.0"]
 ```
 
-A new agent lists two: `pi-web-access`, which searches and reads the web, and `pi-doc-reader`, which lets `read` open PDF and office files ([what each gives](../architecture/agent-runtime/agent/README.md#pisettingsjson)). Change a version, or remove a line to leave a package out. Keys for more search providers go in `agent-x/.pi/web-search.json`.
+A new agent lists two: `pi-web-access`, which searches and reads the web, and `pi-doc-reader`, which lets `read` open PDF and office files ([what each gives](../architecture/agent-runtime/agent/README.md#pisettingsjson)). Change a version, or remove a line to leave a package out. [`agentx upgrade-agent`](upgrade_agentx.md) moves these two to the versions a new agentx pins, and adds neither back once removed. Keys for more search providers go in `agent-x/.pi/web-search.json`.
 
 Pi installs missing packages on the next start, into `.pi/npm/` and `.pi/git/` (gitignored). `agentx chat install -l <package> --approve` adds the entry for you; `--approve` is needed because Pi changes a project's packages only when it trusts the project. Without `-l`, the package goes to `agent-x/.pi`, which is not checked in and loads in every agent of the project.
 

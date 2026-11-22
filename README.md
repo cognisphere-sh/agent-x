@@ -20,7 +20,7 @@ CLAUDE.md                 Goals, mental model, and how docs are kept current.
 docs/                     High-level design, one folder per module as in src/, user guides, tasks.
 src/
   index.ts                The package's types, for the routers, workflows and services a project writes.
-  cli/                    The agentx command: entry point, the hand-over to the pinned copy, one file per command.
+  cli/                    The agentx command: entry point, the hand-over to the pinned copy, one file per command, and what the upgrade adds from the templates.
   agent-runtime/          Everything that runs one agent.
     supervisor/           agentx run: three loops, their limits, stopping, and the agent's process the coordinator starts.
     events/               The queue (SQLite), the inbox and outbox, sending, and the router loop.
@@ -30,6 +30,6 @@ src/
     browser/              The agent's browser: agentx-browser, agent-browser on its profiles.
   coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services, agentx's and the project's own.
     services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots).
-test/                     The queue, and end to end agentx run, agentx serve and Composio, against a fake model and a fake Composio.
+test/                     The queue, and end to end agentx run, agentx serve, Composio and the upgrade, against a fake model and a fake Composio.
 templates/                project/ for init-project, agent/ for init-agent.
 ```

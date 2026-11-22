@@ -4,7 +4,7 @@ What `agentx init-project [name]` creates from `templates/project/`.
 
 ```
 my-project/
-  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env, agent-x/.env.services, agent-x/storage/, and per agent its storage link, .pi/npm/, .pi/git/
+  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env, agent-x/storage/, and per agent its .env, its storage link, .pi/npm/, .pi/git/
   package.json          scripts only: install, dev, build, agentx
   web/                  Next.js (App Router); its own package
     app/api/health/route.ts   GET -> { ok: true }
@@ -12,14 +12,13 @@ my-project/
     package.json        depends on agent-x, at an exact version; `"type": "module"`, for the routers, workflows and services, which are `.ts` (D74)
     agentx.json         the project's agents: description and canSendTo (coordinator D63); the coordinator's services' config under `services`, and `publicUrl` (D68)
     .pi/                Pi's agent directory, shared by all agents; gitignored
-    .env                keys for all agents, such as COMPOSIO_API_KEY; gitignored; starts with each key the agents use, commented out
-    .env.services       the coordinator's API token and its services' secrets, which no agent reads; gitignored; starts with each secret the services use, commented out
-    agents/<name>/      one folder per agent
+    .env                the coordinator's API token and its services' secrets, which no agent reads; gitignored; starts with each secret the services use, commented out
+    agents/<name>/      one folder per agent, with its keys in its own .env (agent D43)
     services/           the project's own coordinator services, a folder each (coordinator D75); empty
     storage/<name>/     each agent's runtime state; gitignored
 ```
 
-The template ships `gitignore`, `agent-x/env` and `agent-x/env.services`, which `init-project` renames to their dotted names, because npm drops `.gitignore`, and may drop `.env` files, from published packages.
+The templates ship `gitignore`, `agent-x/env` and the agent's `env`, which `init-project` and `init-agent` copy with a dot before their names, because npm drops `.gitignore`, and may drop `.env` files, from published packages. `agentx upgrade-project` adds to `agentx.json`, `agent-x/.env` and `.gitignore` what a later version's templates add ([CLI](../README.md#d100)).
 
 ## Packages
 
