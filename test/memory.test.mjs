@@ -1,7 +1,7 @@
 // End-to-end tests of the memory extension: real Pi sessions under `agentx run`, on two threads, and the fake model, which can call any tool.
 
 import assert from "node:assert/strict";
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { after, before, test } from "node:test";
@@ -28,14 +28,14 @@ function indexOf(t, project) {
 	return db;
 }
 
-/** A fresh project (see `scratch`) with `agentx run` started, and `run(thread, content)`, which queues an event and resolves to the id of its episode, once
- * that episode's end message is written. */
+/** A fresh project (see `scratch`) with `agentx run` started as `server`, and `run(thread, content)`, which queues an event and resolves to the id of its
+ * episode, once that episode's end message is written. */
 function setup(t, settings = {}) {
 	const base = scratch(t, model.port);
 	editSettings(base.project.agent, (current) => ({ ...current, ...settings, agentx: { ...current.agentx, ...settings.agentx } }));
 	const queue = new Queue(base.project.agent);
 	t.after(() => queue.close());
-	base.start();
+	const server = base.start();
 	const run = async (thread, content) => {
 		const id = queue.enqueue({ threadId: thread, content });
 		await base.reach("done", id);
@@ -43,7 +43,7 @@ function setup(t, settings = {}) {
 		await until(() => (episode = episodeOf(base.project, base.event(id).entryId)));
 		return episode;
 	};
-	return { ...base, run };
+	return { ...base, server, run };
 }
 
 test("episode_search finds the episodes of every thread by keyword, best first, without the one in progress; episode_read gives one back with those around it, without its end message and fold nudges", async (t) => {
@@ -115,6 +115,49 @@ test("a run's episode is in the index once the run settles, with no search, in c
 	assert.ok(chunks[1].startsWith("### Tool call: bash\n") && chunks[1].length === 4000, chunks[1]);
 	assert.ok(chunks[2].endsWith("zebra \n```\n\n"), chunks[2]);
 	assert.match(chunks[3], /^### You\n\nreply \d+$/);
+});
+
+test("episode_read gives a long answer in pages and says which is the last, refuses a page past it, and takes a count below 0 for none", async (t) => {
+	const { project, run } = setup(t, { agentx: { memory: { compaction: { enabled: false } } } });
+	await run("other", "the giraffe task");
+	// About 42,000 characters: two pages.
+	const long = await run("other", "[bash printf 'zebra%.0s ' $(seq 7000)]");
+	await ended(project, "other");
+	const read = async (args) => {
+		await run("main", `[tool episode_read ${JSON.stringify({ episode: long, ...args })}]`);
+		return lastResult(project, "main");
+	};
+	// SQLite would take a LIMIT of -1 for none, and give every episode before it.
+	const first = await read({ before: -1 });
+	assert.match(first, /\n\n\[Page 1 of 2\. Call episode_read with page 2 for more\.\]$/);
+	assert.ok(!first.includes("giraffe"));
+	assert.match(await read({ page: 2 }), /\n\n\[Page 2 of 2, the last\.\]$/);
+	assert.equal(await read({ page: 3 }), "There is no page 3: the answer has 2 pages.");
+});
+
+test("a time without an offset is in the agent's time zone, as its events show times", async (t) => {
+	// UTC+14, far from the machine's own zone.
+	const timeZone = "Pacific/Kiritimati";
+	const { project, run } = setup(t, { agentx: { timezone: timeZone, memory: { compaction: { enabled: false } } } });
+	const giraffe = await run("other", "the giraffe task");
+	await ended(project, "other");
+	const startedAt = Number(indexOf(t, project).prepare("SELECT started_at FROM episodes WHERE id = ?").get(giraffe).started_at);
+	// The minute before the episode started, as a clock in that zone shows it: 2026-11-22T14:05.
+	const minuteBefore = new Intl.DateTimeFormat("sv-SE", { timeZone, dateStyle: "short", timeStyle: "short" }).format(startedAt - 60_000).replace(" ", "T");
+	const search = async (window) => {
+		await run("main", `[tool episode_search ${JSON.stringify({ query: "giraffe", thread: "other", ...window })}]`);
+		return lastResult(project, "main");
+	};
+	assert.match(await search({ since: minuteBefore }), /^1 episode found/);
+	assert.equal(await search({ until: minuteBefore }), "No episode found.");
+});
+
+test("an index that cannot be updated is reported, and the run goes on", async (t) => {
+	const { project, server, run } = setup(t);
+	// A folder where the index's file goes: SQLite cannot open it.
+	mkdirSync(join(project.agent, "storage", "knowledge", "memory", "index.db"), { recursive: true });
+	await run("main", "the giraffe task");
+	await until(() => server.output().includes("main: The memory index could not be updated, and the thread's next run tries again: "));
 });
 
 test("agentx remove-thread deletes a thread's sessions and its episodes in the index; only a person runs it, and not while the thread runs", async (t) => {

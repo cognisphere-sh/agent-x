@@ -17,7 +17,7 @@ It adds two tools, `episode_search` and `episode_read`. The harness prompt, `cor
 - **Its text** is Markdown: its messages as they were written, the model's text, each tool call with its arguments, each result in a code block. Images are named, not shown: the agent opens their files with `read`. Its end message is left out. A fold nudge and its turn come after an end message, in no episode.
 - The text is kept in chunks of about 4,000 characters, each of whole turns, as many as fit. A turn is one answer of the model with the results of its tool calls, after the messages that led to it, as Pi's turns are; the boundaries come from the messages, not the Markdown. A turn longer than a chunk has chunks of its own, each cut at a blank line when one is in its second half. The chunks joined are the text again. FTS5 indexes them with Porter stemming, so a word finds its other forms.
 - **An update** ([D91](#d91)) takes the session's own entries, as Pi holds them in memory in the order they were written ([Pi](../../pi-reference/README.md#sessions)), not the file. For each session file the index keeps, in its `sessions` table, the id of the last end message it indexed. The update takes the entries after it, all of them when the index holds none of the file, and puts every episode that ended in the index, in one transaction. What follows the last end message is no whole episode yet, and is taken again next time.
-- **Updates run** when each run settles, for the session's own file only, so an episode is in the index as soon as it ends. A thread's session indexes its own file, which no other process writes, and never another thread's. A run that a crash or a kill cut off has no end message: the thread's next episode takes it in, and it goes in with that one. Searches and reads make no update. A run that ended no episode, such as a fold nudge's turn, costs a search back to the last end message.
+- **Updates run** when each run settles, for the session's own file only, so an episode is in the index as soon as it ends. A thread's session indexes its own file, which no other process writes, and never another thread's. A run that a crash or a kill cut off has no end message: the thread's next episode takes it in, and it goes in with that one. Searches and reads make no update. A run that ended no episode, such as a fold nudge's turn, costs a search back to the last end message. An update that fails, such as on an index another process keeps locked, is a notice, which `agentx run` logs and `agentx chat` shows, and the thread's next run tries again from the same point.
 - **A thread removed** with `agentx remove-thread` ([CLI](../../../../cli/README.md#d94)) leaves the index with its episodes, its chunks and what the index knew of its files.
 - Several processes share the file in WAL mode, opened as the event queue's is (`src/agent-runtime/sqlite.ts`).
 
@@ -29,8 +29,8 @@ It adds two tools, `episode_search` and `episode_read`. The harness prompt, `cor
 
 - It matches any word of the query, in any of its forms. FTS5's BM25 ranks the chunks with more of the words, and rarer ones, first.
 - Each word is a phrase of its own, so no character is query syntax: `auth.ts` finds "auth" followed by "ts".
-- It gives one hit per episode, from its best chunk, up to `limit` (10 when left out, at most 50): the episode's id, its thread, when it ran, and FTS5's snippet of the lines around the match, the words in bold.
-- `thread` limits it to one thread, and `since` and `until`, times in ISO 8601, to the episodes that started in that window.
+- It gives one hit per episode, from its best chunk, up to `limit` (10 when left out, at least 1, at most 50): the episode's id, its thread, when it ran, and FTS5's snippet of the lines around the match, the words in bold.
+- `thread` limits it to one thread, and `since` and `until`, times in ISO 8601, to the episodes that started in that window. A time without an offset, `2026-11-20` or `2026-11-20T14:00`, is in the agent's time zone, as its events show times.
 - The episode in progress, which holds the query itself, is not in the index: an episode goes in once it ends.
 
 ```
@@ -43,7 +43,7 @@ Thread `ops`, from Friday 2026-11-20 10:31:02 GMT+5:30 to Friday 2026-11-20 10:3
 > …the telegram **webhook** failed with a **signature** error…
 ```
 
-**`episode_read({ episode, before?, after?, page? })`** gives back an episode of any thread by its id, also when it was folded or summarized, with `before` and `after` episodes of its thread around it, in the order they started. Each comes under a heading with its id, its thread and its times, as in a search. A long answer comes in pages of about 8K tokens.
+**`episode_read({ episode, before?, after?, page? })`** gives back an episode of any thread by its id, also when it was folded or summarized, with `before` and `after` episodes of its thread around it, in the order they started. Each comes under a heading with its id, its thread and its times, as in a search. A long answer comes in pages of about 8K tokens: each but the last names the next, the last says it is, and a page past it is refused. A count below 0 counts as none.
 
 Times are in the agent's time zone, `agentx.timezone`, as on its events.
 

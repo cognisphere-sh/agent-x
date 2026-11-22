@@ -14,19 +14,34 @@ const pageChars = 32_000;
 
 const answer = (text: string) => ({ content: [{ type: "text" as const, text }], details: undefined });
 
+// A count the agent gives, whole and at least 0: SQLite takes a negative LIMIT as none.
+const count = (value: number) => Math.max(0, Math.trunc(value));
+
+// How far `timeZone` is ahead of UTC at `at`, in milliseconds, from the offset Intl gives it, such as "GMT+05:30". Near a change of the clocks, a wall time
+// read with the offset of the other side is an hour off.
+function offsetOf(at: number, timeZone: string | undefined): number {
+	const name = new Intl.DateTimeFormat("en", { timeZone, timeZoneName: "longOffset" }).formatToParts(at).find((part) => part.type === "timeZoneName")?.value ?? "";
+	const [, sign = "+", hours = "0", minutes = "0"] = /GMT([+-])(\d{2}):(\d{2})/.exec(name) ?? [];
+	return (sign === "-" ? -1 : 1) * (Number(hours) * 60 + Number(minutes)) * 60_000;
+}
+
 /** Gives each Pi session the agent's episode index and its tools. */
 export default function (pi: ExtensionAPI) {
 	let index: EpisodeIndex | undefined;
 	const opened = (ctx: ExtensionContext) => (index ??= new EpisodeIndex(ctx.cwd));
 
 	// Times in the agent's time zone, `agentx.timezone`, as on its events; the event queue extension reports a zone that Node does not know.
-	const when = (time: number) => dayDateTime(time, knownTimeZone((pi.getSettings() as { agentx?: { timezone?: string | null } }).agentx?.timezone));
+	const zone = () => knownTimeZone((pi.getSettings() as { agentx?: { timezone?: string | null } }).agentx?.timezone);
+	const when = (time: number) => dayDateTime(time, zone());
 	const heading = (episode: StoredEpisode) => `## Episode ${episode.id}\n\nThread \`${episode.thread}\`, from ${when(episode.startedAt)} to ${when(episode.endedAt)}.`;
+	// A time the agent gives. One without an offset is in its time zone, as its events show times: JavaScript would read a date in UTC, and a date and
+	// time in the machine's zone.
 	const time = (value: string | undefined) => {
 		if (value === undefined) return undefined;
-		const parsed = Date.parse(value);
+		const zoned = /(Z|[+-]\d{2}:?\d{2})$/i.test(value);
+		const parsed = Date.parse(zoned ? value : `${value.includes("T") ? value : `${value}T00:00`}Z`);
 		if (Number.isNaN(parsed)) throw new Error(`"${value}" is not a time: use ISO 8601, such as 2026-11-20 or 2026-11-20T14:00+05:30.`);
-		return parsed;
+		return zoned ? parsed : parsed - offsetOf(parsed, zone());
 	};
 
 	// Within the handler, which Pi awaits: a worker session may end once its run has settled.
@@ -34,8 +49,10 @@ export default function (pi: ExtensionAPI) {
 		const file = ctx.sessionManager.getSessionFile();
 		try {
 			if (file) opened(ctx).updateSession(file, ctx.sessionManager.getEntries());
-		} catch {
+		} catch (error) {
 			// A failure, such as an index that another process keeps locked, leaves the episode to the thread's next run, which indexes from the same point.
+			// Said, so that one that keeps failing is seen: `agentx run` logs it, and `agentx chat` shows it.
+			ctx.ui.notify(`The memory index could not be updated, and the thread's next run tries again: ${error instanceof Error ? error.message : String(error)}`, "warning");
 		}
 	});
 
@@ -54,8 +71,8 @@ export default function (pi: ExtensionAPI) {
 			properties: {
 				query: { type: "string", description: "Words to find, each in any of its forms (fix, fixed, fixing). Episodes with more of them, and with rarer ones, come first." },
 				thread: { type: "string", description: "Only this thread's episodes." },
-				since: { type: "string", description: "Only episodes that started at or after this time, in ISO 8601, such as 2026-11-20 or 2026-11-20T14:00+05:30." },
-				until: { type: "string", description: "Only episodes that started before this time, in ISO 8601." },
+				since: { type: "string", description: "Only episodes that started at or after this time, in ISO 8601, such as 2026-11-20 or 2026-11-20T14:00+05:30; without an offset, in your time zone." },
+				until: { type: "string", description: "Only episodes that started before this time, in ISO 8601; without an offset, in your time zone." },
 				limit: { type: "number", description: "How many episodes at most, up to 50; 10 when left out." },
 			},
 			required: ["query"],
@@ -63,7 +80,7 @@ export default function (pi: ExtensionAPI) {
 		async execute(_id, params, _signal, _update, ctx) {
 			const { query, thread, since, until, limit = 10 } = params as { query: string; thread?: string; since?: string; until?: string; limit?: number };
 			const window = { since: time(since), until: time(until) };
-			const hits = opened(ctx).search({ words: query, thread, ...window, limit: Math.min(limit, 50) });
+			const hits = opened(ctx).search({ words: query, thread, ...window, limit: Math.min(Math.max(count(limit), 1), 50) });
 			if (hits.length === 0) return answer("No episode found.");
 			const found = hits.map((hit) => `${heading(hit)}\n\n> ${hit.snippet.replace(/\n/g, "\n> ")}`);
 			return answer([`${plural(hits.length, "episode")} found, best first.`, ...found].join("\n\n"));
@@ -87,11 +104,13 @@ export default function (pi: ExtensionAPI) {
 		},
 		async execute(_id, params, _signal, _update, ctx) {
 			const { episode, before = 0, after = 0, page = 1 } = params as { episode: string; before?: number; after?: number; page?: number };
-			const episodes = opened(ctx).read(episode, before, after);
+			const episodes = opened(ctx).read(episode, count(before), count(after));
 			const text = episodes.map((found) => `${heading(found)}\n\n${found.text}`).join("\n\n");
 			const pages = Math.max(1, Math.ceil(text.length / pageChars));
+			if (!Number.isInteger(page) || page < 1 || page > pages) throw new Error(`There is no page ${page}: the answer has ${plural(pages, "page")}.`);
 			const part = text.slice((page - 1) * pageChars, page * pageChars);
-			return answer(pages === 1 ? part : `${part}\n\n[Page ${page} of ${pages}. Call episode_read with page ${page + 1} for more.]`);
+			if (pages === 1) return answer(part);
+			return answer(`${part}\n\n[Page ${page} of ${pages}${page < pages ? `. Call episode_read with page ${page + 1} for more.` : ", the last."}]`);
 		},
 	});
 }
