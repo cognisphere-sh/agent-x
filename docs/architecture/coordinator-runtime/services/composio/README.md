@@ -15,7 +15,7 @@ What the route does with a request:
    - key `composio:<webhook-id>`, so an event Composio sends again is one event;
    - content `Composio trigger <slug> fired. Its event's data is in data.json.`, and the files line;
    - `data.json`, the event's `data`, in the event's folder: it can be large, such as a raw email, so the model reads it only when it needs to;
-   - metadata `source: composio`, `trigger` (the trigger's slug), `trigger-id`, `account` (the connected account's id) and `event-time`, with the fact `agentX-Service: composio`.
+   - metadata `source: composio`, `trigger` (the trigger's slug), `trigger-id`, `account` (the connected account's id) and `event-time` (when Composio sent it, in the agent's time zone, [D98](../../../agent-runtime/agent/README.md#d98)), with the fact `agentX-Service: composio`.
 4. **Answers** 200 with the event's id once it is in the inbox, and 503 when it cannot be written, so Composio sends it again.
 
 The agent need not be running: the event waits in its inbox. A router tells Composio's events apart by `source`, and one trigger's by `trigger`.

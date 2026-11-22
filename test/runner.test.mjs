@@ -796,7 +796,7 @@ test("an agent whose storage has no knowledge folder, as after a fresh clone, st
 	assert.ok(!model.systemPrompts.at(-1).includes("<agentx-knowledge-"));
 });
 
-test("events show the machine's time, or the time zone that the agent's settings name", async (t) => {
+test("events show the machine's time, or the time zone that the agent's settings name, which the agent's processes run in", async (t) => {
 	const { project, queue, start, reach } = setup(t);
 	const withZone = (timezone) => editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone } }));
 	const server = start();
@@ -812,8 +812,12 @@ test("events show the machine's time, or the time zone that the agent's settings
 	assert.doesNotMatch(server.output(), /time zone/);
 
 	withZone("Asia/Tokyo");
-	await answered("a zone named", 2);
+	await answered("a zone named [bash date +%z]", 2);
 	assert.match(sessions(project)[0].users[1].text, /\nagentX-CurrentTime: [^\n]+ GMT\+9\n/);
+	// The model's bash tells the time in it too.
+	const said = sessions(project)[0].entries.filter((entry) => entry.type === "message" && entry.message.role === "toolResult").map((entry) => entry.message.content[0].text);
+	assert.equal(said.length, 1);
+	assert.match(said[0], /^\+0900\s*$/);
 
 	// A zone that does not exist is reported, and the message still arrives, with the machine's time.
 	withZone("Mars/Olympus");

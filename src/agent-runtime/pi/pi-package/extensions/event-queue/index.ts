@@ -9,7 +9,8 @@
 import { basename } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Queue, workflowPrefix } from "../../../../events/queue.js";
-import { eventIds, knownTimeZone, render } from "./render.js";
+import { knownTimeZone } from "../../../../time-zone.js";
+import { eventIds, render } from "./render.js";
 
 // How often an idle session looks for events, and every session checks that it still holds its thread. Pi has no event for "a queued event arrived"; a timer is how an extension waits.
 const tickMs = 1000;

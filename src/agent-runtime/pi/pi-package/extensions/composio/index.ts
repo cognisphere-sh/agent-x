@@ -6,6 +6,7 @@
 // A search's answer reaches the model trimmed (trim.ts).
 
 import type { CustomEntry, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { knownTimeZone } from "../../../../time-zone.js";
 import { policy } from "./policy.js";
 import { trimSearch } from "./trim.js";
 
@@ -16,7 +17,7 @@ const section = "composio";
 const timeoutMs = 10_000;
 
 interface Settings {
-	agentx?: { composio?: { userId?: string; session?: Record<string, unknown> } };
+	agentx?: { timezone?: string | null; composio?: { userId?: string; session?: Record<string, unknown> } };
 }
 
 // What the thread's Pi session keeps: the Composio session, and the request that made it.
@@ -98,7 +99,7 @@ export default function (pi: ExtensionAPI) {
 	// Before the model reads the answer and before Pi saves it, so the session file keeps the answer as the model read it.
 	pi.on("tool_result", (event) => {
 		if (event.toolName !== "mcp__composio__COMPOSIO_SEARCH_TOOLS" || event.isError || event.content.length !== 1 || event.content[0].type !== "text") return;
-		const text = trimSearch(event.content[0].text);
+		const text = trimSearch(event.content[0].text, knownTimeZone((pi.getSettings() as Settings).agentx?.timezone));
 		return text === undefined ? undefined : { content: [{ type: "text", text }] };
 	});
 }

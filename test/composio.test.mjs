@@ -219,8 +219,9 @@ const trimmedResults = [
 	},
 ];
 
-test("a search's answer reaches the model trimmed, and the thread's Pi session keeps it so", async () => {
+test("a search's answer reaches the model trimmed, with its time in the agent's time zone, and the thread's Pi session keeps it so", async () => {
 	const project = setup();
+	editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone: "Asia/Tokyo" } }));
 	const answer = searchAnswer(true);
 	composio.searchAnswer = JSON.stringify(answer);
 	assert.equal((await agentx(project, ["chat", "-p", "[tool mcp__composio__COMPOSIO_SEARCH_TOOLS {}]"])).status, 0);
@@ -231,7 +232,7 @@ test("a search's answer reaches the model trimmed, and the thread's Pi session k
 			results: trimmedResults,
 			toolkit_connection_statuses: [{ toolkit: "chat", has_active_connection: true }],
 			tool_schemas: { CHAT_SEND: answer.data.tool_schemas.CHAT_SEND, CHAT_SEND_FILE: answer.data.tool_schemas.CHAT_SEND_FILE },
-			time_info: { current_time_utc: "2026-11-22T08:43:45.083Z" },
+			time_info: { current_time: "Sunday 2026-11-22 17:43:45 GMT+9" },
 			session: { id: "fall" },
 			success: true,
 			error: null,

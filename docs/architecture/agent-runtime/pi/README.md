@@ -70,6 +70,7 @@ The runner frees the thread of its dead process at once, instead of waiting for 
 | environment | agentx's own, plus `agent-x/.env` | keys for all agents ([D43](../agent/README.md#d43)) |
 | `PATH` | `agent-x/node_modules/.bin` first | `agentx` in Pi's bash is the pinned one |
 | `AGENTX_AGENT` | the agent's name | `agentx event send` works in Pi's bash, and `agentx event deliver` does not ([Events](../events/README.md#sending-and-delivering)) |
+| `TZ` | the agent's `agentx.timezone`, when it names one | the agent's processes tell the time in its time zone ([D98](../agent/README.md#d98)) |
 | `-nc`, `--approve` | except for Pi subcommands | skip `AGENTS.md` and `CLAUDE.md`; trust `.pi/` ([D6](../agent/README.md#d6)) |
 | `-e <agentx>/src/agent-runtime/pi/pi-package` | except for Pi subcommands | load agentx's Pi package ([D16](pi-package/README.md#d16)) |
 | `--session-dir storage/sessions/<thread>` | `--thread-id`, or `main`; except for Pi subcommands | the thread is the folder of its sessions ([D21](#d21)) |

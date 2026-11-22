@@ -69,7 +69,7 @@ For each task it is given, `COMPOSIO_SEARCH_TOOLS` answers with a plan, its pitf
 | Each result's `execution_guidance`, `plan_id` and `cached_plan_usecase` | Orders to follow the plan step by step, and ids of Composio's cache of plans. |
 | Each stub, a schema with `hasFullSchema: false`, of a tool that is not among the results' `primary_tool_slugs` | The results still name the tool, and the prompt says to load its schema with `COMPOSIO_GET_TOOL_SCHEMAS`. |
 | Everything in `session` but `id` | The order to pass the id in every call: [the prompt](#the-prompt) says a run needs none. |
-| Everything in `time_info` but `current_time_utc` | Advice on using the time. The time stays, because a message typed in `agentx chat` carries none. |
+| Everything in `time_info` but the time, which stays as `current_time`, in the agent's time zone | Advice on using the time. The time stays, because a message typed in `agentx chat` carries none, in the zone of every time the agent reads ([D98](../../../agent/README.md#d98)). |
 | When every service the answer names is connected: everything in each connection but `toolkit` and `has_active_connection`, and `next_steps_guidance` | Account details, and "proceed". When a service has no account, both stay whole: they tell the model to connect it. |
 
 - It removes only the fields it names, so a field Composio adds still reaches the model. An answer that failed, that is not JSON or that is not one text stays as it is.

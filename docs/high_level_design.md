@@ -66,13 +66,13 @@ flowchart TD
   ST --> PC --> Q
 ```
 
-Arrows are imports; dotted ones start a process. The runtimes never import the CLI. `events/queue.ts`, `sqlite.ts` and `project-config.ts` import nothing of agentx but each other: Pi loads them as source, through the Pi package.
+Arrows are imports; dotted ones start a process. The runtimes never import the CLI. `events/queue.ts`, `sqlite.ts`, `project-config.ts` and `time-zone.ts` import nothing of agentx but each other: Pi loads them as source, through the Pi package.
 
 | Module | Files | Responsibility | Depends on | Doc |
 |---|---|---|---|---|
 | CLI | `src/cli/` | Parses commands and hands each to a runtime: creates projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file | [cli](architecture/cli/README.md) |
 | Project | `templates/` | The generated repo: `web/` and `agent-x/` | | [cli/project](architecture/cli/project/README.md) |
-| Agent | `agent-env.ts`, `storage.ts`, `project-config.ts` | An agent's directory, its storage and the link to it, the environment of its processes, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
+| Agent | `agent-env.ts`, `storage.ts`, `project-config.ts`, `time-zone.ts` | An agent's directory, its storage and the link to it, the environment of its processes, its time zone and times as it reads them, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
 | Events | `src/agent-runtime/events/`, `sqlite.ts` | The queue (SQLite, opened by `sqlite.ts`, as the memory index is), the inbox and outbox (`mailbox.ts`), `sendEvent`, and the EventRouter loop, the only writer of new events to the queue | functions, workflows, storage | [events](architecture/agent-runtime/events/README.md) |
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |

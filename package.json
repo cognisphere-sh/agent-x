@@ -13,6 +13,7 @@
 		"src/agent-runtime/pi/pi-package",
 		"src/agent-runtime/events/queue.ts",
 		"src/agent-runtime/sqlite.ts",
+		"src/agent-runtime/time-zone.ts",
 		"src/agent-runtime/project-config.ts",
 		"dist",
 		"templates"

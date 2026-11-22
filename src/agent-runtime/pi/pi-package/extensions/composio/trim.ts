@@ -2,6 +2,8 @@
 // and the stubs of schemas the model loads with COMPOSIO_GET_TOOL_SCHEMAS when it needs them.
 // It removes only fields it names, so a field Composio adds still reaches the model, and it leaves alone an answer that failed or does not parse.
 
+import { dayDateTime } from "../../../../time-zone.js";
+
 type Fields = Record<string, unknown>;
 
 const isFields = (value: unknown): value is Fields => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -9,8 +11,8 @@ const isFields = (value: unknown): value is Fields => typeof value === "object" 
 // Each result's orders to follow Composio's plan step by step, and the ids of Composio's own cache of plans.
 const resultNoise = ["execution_guidance", "plan_id", "cached_plan_usecase"];
 
-/** The search answer `text` trimmed, or undefined when it is not a successful search answer, which then stays as it is. */
-export function trimSearch(text: string): string | undefined {
+/** The search answer `text` trimmed, with its time in `timeZone`, or undefined when it is not a successful search answer, which then stays as it is. */
+export function trimSearch(text: string, timeZone?: string): string | undefined {
 	let answer: unknown;
 	try {
 		answer = JSON.parse(text);
@@ -30,8 +32,12 @@ export function trimSearch(text: string): string | undefined {
 	}
 	// The harness's prompt says a run needs no session id, so Composio's order to pass it in every call goes, and the id stays.
 	if (isFields(data.session)) data.session = { id: data.session.id };
-	// The time stays, since a message typed to the agent carries none; Composio's advice on using it goes.
-	if (isFields(data.time_info)) data.time_info = { current_time_utc: data.time_info.current_time_utc };
+	// The time stays, since a message typed to the agent carries none, and is given in the agent's time zone, as every time it reads; Composio's advice
+	// on using it goes. A time that does not parse stays as it is.
+	if (isFields(data.time_info)) {
+		const now = Date.parse(String(data.time_info.current_time_utc));
+		data.time_info = Number.isNaN(now) ? { current_time_utc: data.time_info.current_time_utc } : { current_time: dayDateTime(now, timeZone) };
+	}
 	// With every service connected, that is all the model needs to know of the connections, and the next steps say only to go on. A service with
 	// no account keeps both whole: they tell the model to connect it.
 	const statuses = data.toolkit_connection_statuses;

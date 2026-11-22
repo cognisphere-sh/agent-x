@@ -7,6 +7,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingHttpHeaders } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { agentTimeZone, dayDateTime } from "../../../agent-runtime/time-zone.js";
 import type { ApiRequest, ApiResponse, Route } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
 import { composioUserId } from "./composio-user-id.js";
@@ -62,6 +63,9 @@ export class ComposioService extends Service {
 		const { trigger_slug: trigger, trigger_id: triggerId, connected_account_id: account, user_id: userId } = event.metadata ?? {};
 		const agent = typeof userId === "string" ? this.context.agents.find((candidate) => composioUserId(candidate.root) === userId) : undefined;
 		if (agent === undefined) return ignore(`no agent has Composio user id ${JSON.stringify(userId)}.`);
+		// Composio gives the event's time in UTC; the agent reads every time in its own time zone. One that does not parse goes in as it is.
+		const sentAt = Date.parse(String(event.timestamp));
+		const eventTime = Number.isNaN(sentAt) ? event.timestamp : dayDateTime(sentAt, agentTimeZone(agent.root));
 		// Composio's data can be large, as a raw email, so it goes in as a file the agent reads when it needs to.
 		const folder = mkdtempSync(join(tmpdir(), "agentx-composio-"));
 		try {
@@ -72,7 +76,7 @@ export class ComposioService extends Service {
 				{
 					key: `composio:${id}`,
 					content: `Composio trigger ${String(trigger)} fired. Its event's data is in data.json.`,
-					metadata: { source: "composio", trigger, "trigger-id": triggerId, account, "event-time": event.timestamp },
+					metadata: { source: "composio", trigger, "trigger-id": triggerId, account, "event-time": eventTime },
 				},
 				[data],
 			);

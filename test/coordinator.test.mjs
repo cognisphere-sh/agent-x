@@ -583,9 +583,10 @@ function composioHeaders(secret, id, body, seconds = Math.floor(Date.now() / 100
 	return { "webhook-id": id, "webhook-timestamp": String(seconds), "webhook-signature": `v1,${signature}` };
 }
 
-test("Composio's webhook delivers a signed trigger event to the agent whose Composio user id it names, once per webhook-id, with its data in data.json; a request not signed with the secret, or old, gets 401, and one for no agent 200 and no event", async (t) => {
+test("Composio's webhook delivers a signed trigger event to the agent whose Composio user id it names, once per webhook-id, with its data in data.json and its time in the agent's time zone; a request not signed with the secret, or old, gets 401, and one for no agent 200 and no event", async (t) => {
 	const project = createAgent(model.port);
 	const b = addAgent(project, "b");
+	editSettings(b, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone: "Asia/Kolkata" } }));
 	const userId = JSON.parse(readFileSync(join(b, ".pi", "settings.json"), "utf8")).agentx.composio.userId;
 	const secret = "0f".repeat(32);
 	const server = await serve(t, project, `COMPOSIO_WEBHOOK_SECRET=${secret}\n`);
@@ -608,7 +609,7 @@ test("Composio's webhook delivers a signed trigger event to the agent whose Comp
 	assert.equal(got.threadId, "main");
 	assert.equal(got.content, "Composio trigger GMAIL_NEW_GMAIL_MESSAGE fired. Its event's data is in data.json.\n\nFiles: `data.json`");
 	const { trigger, "trigger-id": triggerId, account, "event-time": eventTime, "agentX-Service": service } = got.metadata;
-	assert.deepEqual([trigger, triggerId, account, eventTime, service], ["GMAIL_NEW_GMAIL_MESSAGE", "ti_1", "ca_1", "2026-11-15T10:00:00.000Z", "composio"]);
+	assert.deepEqual([trigger, triggerId, account, eventTime, service], ["GMAIL_NEW_GMAIL_MESSAGE", "ti_1", "ca_1", "Sunday 2026-11-15 15:30:00 GMT+5:30", "composio"]);
 	assert.deepEqual(JSON.parse(readFileSync(join(b, "storage", "workspace", "inbox", got.id, "data.json"), "utf8")), { subject: "hello" });
 
 	// Not signed with the secret, a signature of another length, none, a changed body, or older than 300 s: 401.

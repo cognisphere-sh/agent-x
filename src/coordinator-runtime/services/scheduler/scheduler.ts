@@ -6,6 +6,7 @@ import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { Cron } from "croner";
 import { checkEvent, nameRule, type NewEvent, withoutBlockTag, workflowPrefix } from "../../../agent-runtime/events/queue.js";
+import { agentTimeZone } from "../../../agent-runtime/time-zone.js";
 import { deliverEvent } from "../../deliver-event.js";
 import { forEachAgent, Service, type ServiceContext } from "../../service.js";
 
@@ -98,7 +99,7 @@ export class Scheduler {
 	// Reads the schedule files again. A broken entry is left out and reported on the agent's main thread.
 	private load(): void {
 		for (const file of [...this.lists, this.settings]) this.seen.set(file, changedAt(file));
-		const timeZone = this.timeZone();
+		const timeZone = agentTimeZone(this.agentRoot);
 		const schedules = new Map<string, Schedule>();
 		for (const file of this.lists) {
 			if (!existsSync(file)) continue;
@@ -117,18 +118,6 @@ export class Scheduler {
 			}
 		}
 		this.schedules = schedules;
-	}
-
-	// The agent's time zone, `agentx.timezone` in its settings; the machine's when it names none or one that does not exist.
-	private timeZone(): string | undefined {
-		try {
-			const timeZone = (JSON.parse(readFileSync(this.settings, "utf8")) as { agentx?: { timezone?: unknown } }).agentx?.timezone;
-			if (typeof timeZone !== "string") return undefined;
-			new Intl.DateTimeFormat("en", { timeZone });
-			return timeZone;
-		} catch {
-			return undefined;
-		}
 	}
 
 	// The event of the fire due at `due`. Its key holds the time, so a fire put twice, as after a crash, is one event; it is sent at the time it was due.

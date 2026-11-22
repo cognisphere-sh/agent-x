@@ -38,7 +38,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D98**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D99**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -124,6 +124,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D95](architecture/agent-runtime/pi/pi-package/episodes/README.md#d95) | An episode's tokens come from the model's usage: what its last answer used, less what its first answer read, plus its event | agent-runtime/pi/pi-package/episodes |
 | [D96](architecture/agent-runtime/events/README.md#d96) | The thread `pass` drops an event, which stays on the queue as `passed` | agent-runtime/events |
 | [D97](architecture/agent-runtime/pi/pi-package/composio/README.md#d97) | The Composio extension trims a search's answer by removing the fields it names | agent-runtime/pi/pi-package/composio |
+| [D98](architecture/agent-runtime/agent/README.md#d98) | Every time the agent sees is in its time zone: its processes run with `TZ`, and the harness writes its times in it | agent-runtime/agent |
 
 ## User guides
 

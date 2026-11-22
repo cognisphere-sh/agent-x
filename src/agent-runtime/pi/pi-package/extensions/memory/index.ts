@@ -5,8 +5,8 @@
 // - `episode_read` gives back an episode, and those before and after it in its thread, folded and compacted ones too.
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { dayDateTime, knownTimeZone } from "../../../../time-zone.js";
 import { plural } from "../episodes/episodes.js";
-import { dayDateTime, knownTimeZone } from "../event-queue/render.js";
 import { EpisodeIndex, type StoredEpisode } from "./episode-index.js";
 
 // The most `episode_read` returns at once, about 8K tokens.

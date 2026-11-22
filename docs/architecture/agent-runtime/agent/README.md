@@ -76,7 +76,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 | `systemPrompt` | Folders whose `*.md` files follow `.pi/system_prompt/` in the system prompt, each a section `agentx-knowledge-<file name>`, whatever the folder. The template adds the agent's knowledge. |
 | `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). The template enables eight toolkits; `init-agent` adds the user id. |
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
-| `timezone` | The time zone of event times and schedules. `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
+| `timezone` | The agent's time zone: its processes run in it, every time the harness shows the agent is in it, and so are its schedules ([D98](#d98)). `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
 | `memory` | `compaction`: folds, fold nudges and summaries ([context](../pi/pi-package/context/README.md#settings)). |
 
 ## System prompt
@@ -203,3 +203,11 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 - **Decision.** The template's `.pi/settings.json` lists `pi-web-access` and `pi-doc-reader` in `packages`, each at an exact version. Pi installs them on the agent's first start.
 - **Why.** The settings file is the developer's ([D4](#d4)), so changing the versions or removing a line is enough to override them. Pi never updates an exact version, and on start installs it again when the installed one differs, so each session starts on the versions the settings name.
 - **Rejected.** Adding them to agentx's Pi package, which loads in every agent and which a developer cannot leave out. Listing them in the shared `agent-x/.pi/settings.json`, which is gitignored and written by Pi ([D17](#d17)).
+
+<a id="d98"></a>
+### D98. Every time the agent sees is in its time zone: its processes run with `TZ`, and the harness writes its times in it
+
+- **Problem.** The agent reasons about when things happened and when to act. Times in other zones mislead it: UTC from services, and the machine's from `date` or a workflow's `new Date()`, which on a server is often UTC.
+- **Decision.** The agent's time zone is `agentx.timezone`, or the machine's when it is `null`. `agent-env.ts` sets `TZ` to it for every process of the agent: Pi under `agentx chat` and `agentx run`, the commands its bash runs, its routers and its workflows. The harness writes every time it shows the agent in it too, read from the agent's settings (`time-zone.ts`): the times on events, the times of episodes in memory, Composio's `event-time`, and the time in Composio's search answers.
+- **Why.** One variable reaches everything the agent runs, commands and scripts agentx does not write included. The coordinator runs every agent in one process, so what it writes for an agent, such as a Composio event, takes the zone from that agent's settings.
+- **Consequence.** A changed time zone applies to each process from its next start. A zone Node does not know is the machine's, and the event queue extension says so in the session.

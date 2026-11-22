@@ -22,7 +22,7 @@ Pi loads the extensions the manifest lists, in that order, and the skills in `sk
 
 `agentx chat` and the Pi runner pass the package's folder to Pi with `-e` ([D16](#d16)). Pi loads it in place ([Pi](../pi-reference/README.md#packages)). Nothing in the agent directory points to it, and upgrading agentx upgrades it for every agent. With agentx linked from a checkout, edits apply from the next session.
 
-The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a peer dependency. Pi loads TypeScript source, so the npm package ships this folder as source, with the three files its extensions import: `events/queue.ts`, `sqlite.ts` and `project-config.ts`. A test packs the package and follows every import of the folder.
+The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a peer dependency. Pi loads TypeScript source, so the npm package ships this folder as source, with the four files its extensions import: `events/queue.ts`, `sqlite.ts`, `project-config.ts` and `time-zone.ts`. A test packs the package and follows every import of the folder.
 
 ## The system prompt extension
 

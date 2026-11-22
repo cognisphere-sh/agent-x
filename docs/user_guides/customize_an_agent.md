@@ -173,7 +173,7 @@ The agent's system prompt lists the agents it may send to, each with its `descri
 
 ## Time zone
 
-Events tell the agent when they were sent and what time it is. A new agent's `.pi/settings.json` has `"timezone": null`, the machine's time zone. Name a zone to fix it, for example so that an agent on a UTC server keeps your time:
+Every time the agent sees is in its time zone: when its events were sent and what time it is, when its past episodes ran, the times Composio gives, and what `date` says in its bash and `new Date()` in its workflows. Its schedules' crons are in it too. A new agent's `.pi/settings.json` has `"timezone": null`, the machine's time zone. Name a zone to fix it, for example so that an agent on a UTC server keeps your time:
 
 ```json
 "agentx": {
