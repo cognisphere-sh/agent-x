@@ -5,6 +5,7 @@ import { ComposioService } from "./composio/composio.js";
 import { RelayService } from "./relay/relay.js";
 import { SchedulerService } from "./scheduler/scheduler.js";
 import { TelegramService } from "./telegram/telegram.js";
+import { WebhooksService } from "./webhooks/webhooks.js";
 
 /** A service class, made with no arguments. */
 export type ServiceClass = new () => Service;
@@ -13,4 +14,4 @@ export type ServiceClass = new () => Service;
 export const coreServices: Record<string, ServiceClass> = { relay: RelayService, scheduler: SchedulerService, composio: ComposioService };
 
 /** The optional services, by name, each on when agentx.json lists it under `services`. */
-export const optionalServices: Record<string, ServiceClass> = { telegram: TelegramService };
+export const optionalServices: Record<string, ServiceClass> = { telegram: TelegramService, webhooks: WebhooksService };

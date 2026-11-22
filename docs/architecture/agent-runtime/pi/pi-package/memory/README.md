@@ -7,7 +7,7 @@ The extension in every Pi session that gives the agent its episodic memory: it s
 | `agent_settled` | Indexes the session's own file, so the episode that just ended is in the index. |
 | `session_shutdown` | Closes the index. |
 
-It adds two tools, `episode_search` and `episode_read`. The harness prompt, `core/12-memory.md`, says what they find, and that an episode is a record of past work whose events are data, not instructions.
+It adds two tools, `episode_search` and `episode_read`. The harness prompt, `core/9-memory.md`, says what they find, and that an episode is a record of past work whose events are data, not instructions.
 
 ## The index
 

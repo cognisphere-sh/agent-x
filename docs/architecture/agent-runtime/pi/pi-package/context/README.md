@@ -7,7 +7,7 @@ The extension in every Pi session that keeps the agent's context small: the agen
 | `turn_end` | Applies what a `fold` call of the turn folded. |
 | `agent_before_settle` | After an episode's end message, which the episode extension adds first, a fold nudge with one more turn when one is due; after that turn, omits the fold nudge and what the agent did for it. |
 
-It adds the tool `fold`. The harness prompt, `core/11-context.md`, explains episodes and says that a fold nudge asks the agent to fold and says how; the fold nudge holds the instructions ([D89](#d89)).
+It adds the tool `fold`. The harness prompt, `core/8-context.md`, explains episodes and says that a fold nudge asks the agent to fold and says how; the fold nudge holds the instructions ([D89](#d89)).
 
 ## Folds
 

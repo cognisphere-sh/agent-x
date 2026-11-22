@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// `agentx` command line: creates and upgrades projects and agents, runs an agent or all of them, opens Pi on one of its threads or removes one, and gives
-// it events.
+// `agentx` command line: creates and upgrades projects and agents, runs an agent or all of them, opens Pi on one of its threads or removes one, gives
+// it events, and keeps its webhooks.
 
 import { ensureStorage } from "../agent-runtime/storage.js";
 import { agentRoot } from "./agent-root.js";
@@ -13,6 +13,7 @@ import { removeThread } from "./commands/remove-thread.js";
 import { serve } from "./commands/serve.js";
 import { upgradeAgent } from "./commands/upgrade-agent.js";
 import { upgradeProject } from "./commands/upgrade-project.js";
+import { webhook } from "./commands/webhook.js";
 import { runAgent } from "../agent-runtime/supervisor/run-agent.js";
 import { pinnedCli, runCli } from "./pinned-cli.js";
 
@@ -36,7 +37,9 @@ in an agent directory:
                                delete a thread: its sessions and its episodes in the agent's memory; asks first, unless --yes
   agentx event deliver [--thread-id <id>] [--agent <name>] [--meta <name>=<value> ...] [--file <path> ...] <content>
                                give the agent, or another, an event; without a thread, the agent's router picks one
-  agentx event send ...        the agent's own send, from its processes, such as the model's bash`;
+  agentx event send ...        the agent's own send, from its processes, such as the model's bash
+  agentx webhook create|list|rotate|delete ...
+                               the agent's webhooks: URLs that outside services call to run one of its workflows`;
 
 const [command, name] = process.argv.slice(2);
 const args = process.argv.slice(3);
@@ -65,6 +68,7 @@ try {
 	else if (command === "chat") process.exit(chatAgent(agentAt(cwd), args));
 	else if (command === "remove-thread") await removeThread(agentAt(cwd), args);
 	else if (command === "event") event(agentAt(cwd), args);
+	else if (command === "webhook") webhook(agentAt(cwd), args);
 	else throw new Error(usage);
 } catch (error) {
 	console.error((error as Error).message);

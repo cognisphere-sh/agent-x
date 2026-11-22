@@ -28,11 +28,11 @@ my-project/
     storage/<agent>/            the agent's runtime state (gitignored)
       workspace/inbox/          events delivered to it (the coordinator and agentx event deliver write it)
       workspace/outbox/         events it sends (the agent writes it, the coordinator takes it)
-      workspace/                its working files, router and workflow logs (the agent)
+      workspace/                its working files (the agent); router and workflow logs (agentx run); webhook logs (the coordinator)
       workspace/browser/        its browser profiles (the agent)
       event_queue.db            its queue (its router adds, Pi sessions and workflows settle)
       sessions/<thread>/        one folder of Pi sessions per thread (Pi)
-      knowledge/                what it learns: skills, prompt text, its own router, workflows and schedules (the agent)
+      knowledge/                what it learns: skills, prompt text, its own router, workflows, schedules and webhooks (the agent)
       knowledge/memory/index.db the index of its episodes (its Pi sessions)
       heartbeat                 written by agentx run while it works; read by the coordinator
       schedule-state.json       what each schedule has fired (the coordinator)
@@ -45,9 +45,11 @@ The agentx repository itself is laid out in [README.md](../README.md#repository-
 ```mermaid
 flowchart TD
   CLI["cli/"] --> SUP["supervisor/"] & SEND["events/send-event"] & DELIV["coordinator-runtime/deliver-event"] & COORD["coordinator-runtime/coordinator"] & LAUNCH["pi/pi-launch"] & MEMDB["pi-package memory/index-db"]
-  COORD --> MGR["agent-manager"] & SVC["service"] & DELY["services/relay"] & SCHED["services/scheduler"] & CMP["services/composio"] & TG["services/telegram"]
-  DELY & SCHED & CMP & TG --> SVC
-  DELY & SCHED & CMP & TG --> DELIV
+  CLI --> HOOKS["services/webhooks/hooks"]
+  COORD --> MGR["agent-manager"] & SVC["service"] & DELY["services/relay"] & SCHED["services/scheduler"] & CMP["services/composio"] & TG["services/telegram"] & WH["services/webhooks"]
+  DELY & SCHED & CMP & TG & WH --> SVC
+  DELY & SCHED & CMP & TG & WH --> DELIV
+  WH --> HOOKS
   BR["browser/"] --> ST & PC
   MGR -. "spawns agent-process" .-> SUP
   SUP --> ER["events/event-router"] & PR["pi/pi-runner"] & WR["workflows/workflow-runner"]
@@ -70,7 +72,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Module | Files | Responsibility | Depends on | Doc |
 |---|---|---|---|---|
-| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates and upgrades projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file | [cli](architecture/cli/README.md) |
+| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates and upgrades projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events, keeps an agent's webhooks. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file, the webhooks file | [cli](architecture/cli/README.md) |
 | Project | `templates/` | The generated repo: `web/` and `agent-x/` | | [cli/project](architecture/cli/project/README.md) |
 | Agent | `agent-env.ts`, `storage.ts`, `project-config.ts`, `time-zone.ts` | An agent's directory, its storage and the link to it, the environment of its processes, its time zone and times as it reads them, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
@@ -78,7 +80,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |
 | Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types; a workflow's `ctx.composio` | agent env, send-event, Composio's policy | [functions](architecture/agent-runtime/functions/README.md) |
 | Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
-| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions | queue, sqlite, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
+| Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions, and agentx's skills, such as how to write a workflow | queue, sqlite, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
 | Composio | `pi-package/extensions/composio/` | Each agent's access to external services, and the policy its workflows' sessions get too | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
 | Episodes | `pi-package/extensions/episodes/` | Divides a thread into episodes, each of Pi's runs, ended by a message with its id and the tokens it added, from the model's usage | | [episodes](architecture/agent-runtime/pi/pi-package/episodes/README.md) |
 | Context | `pi-package/extensions/context/` | The episodes the agent folds when a fold nudge asks; Pi compacts by itself | episodes | [context](architecture/agent-runtime/pi/pi-package/context/README.md) |
@@ -89,6 +91,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Relay | `src/coordinator-runtime/services/relay/` | Core service: each agent's outbox into the inboxes it names, or a refusal back to the sending thread | service, deliverEvent, mailbox, project config | [relay](architecture/coordinator-runtime/services/relay/README.md) |
 | Scheduler | `src/coordinator-runtime/services/scheduler/` | Core service: each agent's schedules, fired into its inbox | service, deliverEvent, queue | [scheduler](architecture/coordinator-runtime/services/scheduler/README.md) |
 | Composio webhook | `src/coordinator-runtime/services/composio/` | Core service: Composio's signed trigger events, each into the inbox of the agent with its Composio user id | service, deliverEvent | [composio](architecture/coordinator-runtime/services/composio/README.md) |
+| Webhooks | `src/coordinator-runtime/services/webhooks/` | Optional service: each agent's webhooks, which the agent keeps with `agentx webhook` in its knowledge; a request with a webhook's token into the inbox, for the workflow it names | service, deliverEvent, workflows | [webhooks](architecture/coordinator-runtime/services/webhooks/README.md) |
 | Telegram | `src/coordinator-runtime/services/telegram/` | Optional service: each listed agent's bot webhook, its bot connected in Composio for its user id, and its chats' messages, with their files, and taps on its buttons into its inbox | service, deliverEvent | [telegram](architecture/coordinator-runtime/services/telegram/README.md) |
 
 ## Lifecycles
@@ -103,7 +106,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 **An event.**
 
-1. Delivered: a folder in the inbox and a marker that waits. From the coordinator (another agent, the agent itself, a schedule, a refusal) or a person's `agentx event deliver`.
+1. Delivered: a folder in the inbox and a marker that waits. From the coordinator (another agent, the agent itself, a schedule, a webhook, a refusal) or a person's `agentx event deliver`.
 2. Routed: the EventRouter takes the inbox oldest first. An event without a thread gets one from the routers, else `main`. It goes on the queue as `queued`, and its marker goes. One it cannot read moves to `.rejected/`.
 3. Taken: `in_flight`, by the Pi session or the workflow run that holds its thread.
 4. Settled: `done`, or `failed`. A Pi event whose process failed goes back to `queued`, three attempts at most. A workflow event is never tried again.
@@ -115,16 +118,18 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 **A schedule.** The scheduler reads the schedule files when they change. A due fire becomes an event in the inbox, keyed by its time, so a fire is never put twice. Fires missed while the coordinator was down become one late fire with `catchUp`, else none. A `fireOnce` schedule fires once. `schedule-state.json` remembers what was fired.
 
+**A webhook.** The agent makes it with `agentx webhook create`, which writes it, with a random token, into its knowledge and prints its URL, and sets the URL at the calling service with a Composio tool. Each request whose URL holds the token becomes an event for the webhook's workflow, with the request's body and headers as files, and gets 200 once it is in the inbox. `rotate` gives it a new URL, `delete` removes it.
+
 **A chat.** `agentx chat` in the agent directory starts the pinned Pi on the thread `main`, or `--thread-id`. Its event queue extension works the thread's events while it is open.
 
 ## Status
 
 | Built | Planned |
 |---|---|
-| CLI: `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver` | Sandboxes |
+| CLI: `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver`, `webhook` | Sandboxes |
 | `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Composio's triggers, made for each agent by its service |
-| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook and Telegram, and the project's own in `agent-x/services/` | The web app's use of the API: agent controls, events from people, answers back |
-| Pi package: harness prompt, event queue, Composio, skills as sections with versions, the browser skill | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
+| `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook, Telegram and the agents' webhooks, and the project's own in `agent-x/services/` | The web app's use of the API: agent controls, events from people, answers back |
+| Pi package: harness prompt, event queue, Composio, skills as sections with versions, and skills for the browser, Telegram, routers, workflows, schedules and webhooks | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
 | Each agent's state in `agent-x/storage/` | |
 | The agent's browser: `agentx-browser` and its profiles | |
 | The agent's context: episodes and the tokens each added, folds of episodes, fold nudges | |

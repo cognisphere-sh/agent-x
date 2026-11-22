@@ -35,10 +35,11 @@ New here: [quick start](user_guides/quick_start.md).
 | [coordinator-runtime/services/scheduler](architecture/coordinator-runtime/services/scheduler/README.md) | Core service: fires each agent's schedules |
 | [coordinator-runtime/services/composio](architecture/coordinator-runtime/services/composio/README.md) | Core service: Composio's webhook, each trigger event to its agent |
 | [coordinator-runtime/services/telegram](architecture/coordinator-runtime/services/telegram/README.md) | Optional service: each agent's Telegram bot, its chats' messages and button taps to the agent |
+| [coordinator-runtime/services/webhooks](architecture/coordinator-runtime/services/webhooks/README.md) | Optional service: each agent's webhooks, which it keeps with `agentx webhook`, each request to its workflow |
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D99**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D105**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -127,6 +128,10 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D98](architecture/agent-runtime/agent/README.md#d98) | Every time the agent sees is in its time zone: its processes run with `TZ`, and the harness writes its times in it | agent-runtime/agent |
 | [D99](architecture/cli/README.md#d99) | `agentx upgrade-project` installs the latest agentx, and the new copy brings the files up to its own templates | cli |
 | [D100](architecture/cli/README.md#d100) | An upgrade adds what the templates have and the files lack, and changes no value | cli |
+| [D101](architecture/coordinator-runtime/services/webhooks/README.md#d101) | An agent's webhook is a URL with a random token, which the agent makes and keeps with `agentx webhook`, and each request runs one of its workflows | coordinator-runtime/services/webhooks |
+| [D102](architecture/coordinator-runtime/services/webhooks/README.md#d102) | The URL's token is a webhook's only check, and the workflow confirms what a request says through Composio | coordinator-runtime/services/webhooks |
+| [D103](architecture/coordinator-runtime/services/webhooks/README.md#d103) | A webhook answers 200 once the event is in the inbox, and never with an answer its caller waits for | coordinator-runtime/services/webhooks |
+| [D104](architecture/agent-runtime/pi/pi-package/README.md#d104) | How to write a router, a workflow, a schedule or a webhook is a skill of the package, and the harness's rules name it | agent-runtime/pi/pi-package |
 
 ## User guides
 
@@ -135,7 +140,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [quick_start.md](user_guides/quick_start.md) | From nothing to a running app and agent |
 | [chat_with_an_agent.md](user_guides/chat_with_an_agent.md) | Threads, sessions, one-shot runs |
 | [send_events.md](user_guides/send_events.md) | Run an agent, give it events and files, route them, write workflows |
-| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram |
+| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram, webhooks |
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
 | [give_an_agent_a_browser.md](user_guides/give_an_agent_a_browser.md) | The agent's browser: setting it up, and its profiles |
 | [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |

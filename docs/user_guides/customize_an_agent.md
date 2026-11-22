@@ -8,7 +8,7 @@ Add or edit `.md` files in `.pi/system_prompt/`. Each file is a section of the p
 
 ## Skills
 
-Every agent has agentx's own skills too, such as its [browser](give_an_agent_a_browser.md). Add one of the agent's own as `.pi/skills/<skill-name>/SKILL.md`:
+Every agent has agentx's own skills too: its [browser](give_an_agent_a_browser.md), Telegram, and how to write its router, workflows, schedules and [webhooks](run_on_a_server.md#webhooks). Add one of the agent's own as `.pi/skills/<skill-name>/SKILL.md`:
 
 ```markdown
 ---
@@ -21,7 +21,7 @@ metadata:
 Steps the agent follows...
 ```
 
-Each skill is a section of the agent's prompt of its own, with its name, description, version and file; the agent reads the file when a task needs it. A new skill, or a change to one, shows from the agent's next run. When you change a skill, raise its version and say what changed at the top of a `CHANGELOG.md` next to it: the agent's conversations see the new version, and read the changelog. The agent does the same with its own skills. When one of its skills has the name of one of yours, the agent's is used.
+Each skill is a section of the agent's prompt of its own, with its name, description, version and file; the agent reads the file when a task needs it. A new skill, or a change to one, shows from the agent's next run. When you change a skill, raise its version and say what changed at the top of a `CHANGELOG.md` next to it: the agent's conversations see the new version, and read the changelog. The agent does the same with its own skills. When one of its skills has the name of one of yours, the agent's is used. agentx's skills come before both: one of yours or the agent's named `browser`, `telegram`, `routing`, `workflows`, `schedules` or `webhooks` is left out.
 
 ## Extensions
 
@@ -220,4 +220,4 @@ The agent keeps what it learns in `storage/knowledge/`: text for its own system 
 
 Without these lines the agent loads none of its knowledge. Remove a line to stop the agent from teaching itself that way. Know that:
 
-- The agent writes there when it decides to, also when an event tells it to, and what it writes applies to every later session. That includes its event router and its own workflows, which are code that `agentx run` runs. Read the folder from time to time.
+- The agent writes there when it decides to, also when an event tells it to, and what it writes applies to every later session. That includes its event router and its own workflows, which are code that `agentx run` runs, and its webhooks, URLs that anyone who has one can call once the webhooks service is on. Read the folder from time to time.

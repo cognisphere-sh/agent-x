@@ -1,6 +1,6 @@
 # Workflows
 
-A workflow handles an event with a fixed script instead of the model, such as filing an invoice email. Each workflow has a thread, `workflow.<name>`. The [routers](../events/README.md#routing) send events there, the agent can with `agentx event send --thread-id workflow.<name>`, and a person with `agentx event deliver`. The `WorkflowRunner` (`src/agent-runtime/workflows/workflow-runner.ts`), one of the loops of [`agentx run`](../supervisor/README.md), runs them. Pi never runs a workflow's thread, and `agentx chat` refuses one.
+A workflow handles an event with a fixed script instead of the model, such as filing an invoice email. Each workflow has a thread, `workflow.<name>`. The [routers](../events/README.md#routing) send events there, and so do the agent's [schedules](../../coordinator-runtime/services/scheduler/README.md) and [webhooks](../../coordinator-runtime/services/webhooks/README.md); the agent can with `agentx event send --thread-id workflow.<name>`, and a person with `agentx event deliver`. The `WorkflowRunner` (`src/agent-runtime/workflows/workflow-runner.ts`), one of the loops of [`agentx run`](../supervisor/README.md), runs them. Pi never runs a workflow's thread, and `agentx chat` refuses one.
 
 ## The list of workflows
 

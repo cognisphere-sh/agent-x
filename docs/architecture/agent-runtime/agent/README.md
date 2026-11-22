@@ -19,9 +19,9 @@ agent-x/agents/<name>/
     workflows.json  workflows/  schedules.json
   .env                  its keys, such as COMPOSIO_API_KEY (D43), gitignored
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
-    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json, and memory/index.db, the index of its episodes
+    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json, webhooks.json, and memory/index.db, the index of its episodes
     sessions/<thread>/  the thread's Pi sessions
-    workspace/          the agent's files; workflow-logs/, router-logs/, inbox/, outbox/, browser/ (its browser profiles)
+    workspace/          the agent's files; workflow-logs/, router-logs/, webhook-logs/, inbox/, outbox/, browser/ (its browser profiles)
     event_queue.db      the event queue
     heartbeat           the time agentx run last saw all its loops working
     schedule-state.json what the coordinator fired of each schedule
@@ -97,6 +97,7 @@ The system prompt extension builds the prompt: the harness's preamble, then, aft
 | `event_router.ts` | for every event without a thread ([routing](../events/README.md#routing)) |
 | `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
 | `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |
+| `webhooks.json` | by the coordinator, on every request to one of the agent's webhooks; kept with `agentx webhook` ([webhooks](../../coordinator-runtime/services/webhooks/README.md)) |
 | anything else | when the agent reads it |
 
 All threads of the agent share it.

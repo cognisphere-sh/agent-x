@@ -18,7 +18,7 @@ import { deliverOutbox } from "../dist/coordinator-runtime/services/relay/relay.
 import { Scheduler, SchedulerService } from "../dist/coordinator-runtime/services/scheduler/scheduler.js";
 import { startFakeComposio } from "./fake-composio.mjs";
 import { startFakeModel } from "./fake-model.mjs";
-import { addAgent, agentSend, agentx, alive, background, cli, createAgent, editConfig, editSettings, events, inboxEvents, projectRoot, send, until } from "./project.mjs";
+import { addAgent, agentSend, agentx, alive, asAgent, background, cli, createAgent, editConfig, editSettings, events, inboxEvents, projectRoot, send, until } from "./project.mjs";
 
 let model;
 before(async () => {
@@ -626,6 +626,83 @@ test("Composio's webhook delivers a signed trigger event to the agent whose Comp
 	assert.deepEqual(readdirSync(join(b, "storage", "workspace", "inbox")).filter((name) => !name.startsWith(".")), [got.id]);
 	assert.equal(events(project.agent).filter((found) => found.metadata.source === "composio").length, 0);
 	assert.equal(events(b).filter((found) => found.metadata.source === "composio").length, 1);
+});
+
+test("an agent's webhook runs the workflow it names with the request's body and headers; agentx webhook makes, lists, rotates and deletes webhooks; a wrong token, a deleted webhook or an old URL gets 404, and a webhook whose workflow is gone 503, which main hears of once", async (t) => {
+	const project = createAgent(model.port);
+	const knowledge = join(project.agent, "storage", "knowledge");
+	const workspace = join(project.agent, "storage", "workspace");
+	// The workflow reads the request from the event's folder, as the webhooks skill shows.
+	writeFileSync(join(knowledge, "workflows.json"), JSON.stringify({ "call-ended": { description: "Notes a call that ended.", script: "workflows/call-ended.ts" } }));
+	writeFileSync(
+		join(knowledge, "workflows", "call-ended.ts"),
+		`import { readFileSync, writeFileSync } from "node:fs";
+export default async function (event) {
+	const body = JSON.parse(readFileSync(\`storage/workspace/inbox/\${event.id}/body\`, "utf8"));
+	const headers = JSON.parse(readFileSync(\`storage/workspace/inbox/\${event.id}/headers.json\`, "utf8"));
+	writeFileSync(\`storage/workspace/\${body.call_id}.json\`, JSON.stringify({ body, provider: headers["x-provider"], metadata: event.metadata }));
+}`,
+	);
+	const webhook = (...args) => agentx(asAgent(project), ["webhook", ...args]);
+	const create = ["create", "calls", "--workflow", "call-ended", "--description", "Retell agent a1's webhook_url"];
+	const path = (output) => /^https:\/\/agents\.example\.com(\/services\/webhooks\/main\/[\w-]+\/[\w-]{43})$/m.exec(output)?.[1];
+
+	// Without publicUrl, or without the service, a webhook's URL would not work; nor without its workflow.
+	assert.match((await webhook(...create)).stderr, /agentx\.json has no "publicUrl"/);
+	editConfig(project, (config) => ({ ...config, publicUrl: "https://agents.example.com/" }));
+	assert.match((await webhook(...create)).stderr, /does not turn on the webhooks service/);
+	editConfig(project, (config) => ({ ...config, services: { webhooks: {} } }));
+	assert.match((await webhook("create", "calls", "--workflow", "nope", "--description", "Retell")).stderr, /no workflow "nope"/);
+	const made = await webhook(...create);
+	assert.equal(made.status, 0, made.stderr);
+	const first = path(made.stdout);
+	assert.ok(first, made.stdout);
+
+	const server = await serve(t, project);
+	const call = (to, body = JSON.stringify({ event: "call_ended", call_id: "c1" })) =>
+		fetch(`${server.address}${to}`, { method: "POST", body, headers: { "content-type": "application/json", "x-provider": "retell" } }).then((response) => response.status);
+	assert.equal(await call(first), 200);
+	const got = JSON.parse(await until(() => existsSync(join(workspace, "c1.json")) && readFileSync(join(workspace, "c1.json"), "utf8")));
+	assert.deepEqual(got.body, { event: "call_ended", call_id: "c1" });
+	assert.equal(got.provider, "retell");
+	const { source, webhook: name, "content-type": contentType, "agentX-Service": service } = got.metadata;
+	assert.deepEqual([source, name, contentType, service], ["webhook", "calls", "application/json", "webhooks"]);
+	const run = await until(() => events(project.agent).find((found) => found.metadata.webhook === "calls" && found.status === "done"));
+	assert.equal(run.threadId, "workflow.call-ended");
+
+	// A wrong token, a webhook or an agent the project does not have: 404, all alike.
+	assert.equal(await call(first.replace(/[\w-]{43}$/, "x".repeat(43))), 404);
+	assert.equal(await call(`/services/webhooks/main/other/${"x".repeat(43)}`), 404);
+	assert.equal(await call(first.replace("/main/", "/nobody/")), 404);
+	// A token shortened by hand never matches.
+	const hooks = JSON.parse(readFileSync(join(knowledge, "webhooks.json"), "utf8"));
+	writeFileSync(join(knowledge, "webhooks.json"), JSON.stringify({ ...hooks, short: { workflow: "call-ended", description: "By hand.", token: "abc" } }));
+	assert.equal(await call("/services/webhooks/main/short/abc"), 404);
+
+	// The list shows each webhook's URL, workflow, description and its log's last line, in the agent's time zone.
+	assert.match((await webhook("list")).stdout, /^calls: https:\/\/agents\.example\.com\/services\/webhooks\/main\/calls\/[\w-]{43}\n {2}workflow: call-ended\n {2}description: Retell agent a1's webhook_url\n {2}last request: \w+day \d{4}-\d{2}-\d{2} [\d:]+ GMT\S* 200 event [\w-]{12}$/m);
+
+	// Made again, it keeps its URL; rotated, it gets a new one and the old answers 404; deleted, it answers 404.
+	assert.equal(path((await webhook(...create)).stdout), first);
+	const second = path((await webhook("rotate", "calls")).stdout);
+	assert.ok(second && second !== first);
+	assert.equal(await call(first), 404);
+	assert.equal(await call(second, JSON.stringify({ call_id: "c2" })), 200);
+	await until(() => existsSync(join(workspace, "c2.json")));
+	assert.match((await webhook("delete", "calls")).stdout, /If it is still set where it was \(Retell agent a1's webhook_url\), take it off there\./);
+	assert.equal(await call(second), 404);
+
+	// A webhook whose workflow is gone answers 503, so its caller sends again, and main hears of it once.
+	const gone = path((await webhook("create", "sms", "--workflow", "call-ended", "--description", "ClickSend inbound SMS rule 7")).stdout);
+	writeFileSync(join(knowledge, "workflows.json"), "{}");
+	assert.equal(await call(gone), 503);
+	assert.equal(await call(gone), 503);
+	const report = await until(() => events(project.agent).find((found) => found.metadata.webhook === "sms"));
+	assert.equal(report.threadId, "main");
+	assert.match(report.content, /^Webhook `sms` was called, but its workflow `call-ended` is gone, so the request got 503/);
+	await until(() => inboxEvents(project.agent).length === 0);
+	assert.equal(events(project.agent).filter((found) => found.metadata.webhook === "sms").length, 1);
+	assert.match(readFileSync(join(workspace, "webhook-logs", "sms.log"), "utf8"), / 503 no workflow "call-ended"\n.* 503 no workflow "call-ended"\n$/);
 });
 
 /** A fake Telegram Bot API on a free port: it records each call, refuses a token it does not know, and serves one small file and one too big. */

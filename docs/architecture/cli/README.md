@@ -27,10 +27,11 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | `agentx remove-thread <thread-id> [--yes]` | Deletes a Pi thread of the agent: its sessions, `storage/sessions/<thread-id>/`, and its episodes in the agent's [memory](../agent-runtime/pi/pi-package/memory/README.md) ([D94](#d94)). Says what it deletes and asks first, as `remove-agent` does; `--yes` skips the question. Refuses in the agent's processes, while a process holds the thread, and while events wait for it, before the question and again after. |
 | `agentx event deliver [options] [--] <content>` | A person gives an agent an event, straight into its inbox, with no `agentx serve`. Refuses to run in the agent's processes. |
 | `agentx event send [options] [--] <content>` | The agent sends an event, from its own processes, such as the model's bash, into its outbox. Refuses to run elsewhere. |
+| `agentx webhook create\|list\|rotate\|delete ...` | The agent's [webhooks](../coordinator-runtime/services/webhooks/README.md#an-agents-webhooks), URLs that outside services call to run one of its workflows: makes one with a random token and prints its URL, changes one and keeps its URL, lists them with each one's last request, gives one a new URL, or deletes one. `create` and `rotate` refuse until `agentx.json` has `publicUrl` and turns on the webhooks service. |
 
 Both `event` commands take `--agent <name>` (another agent of the project), `--thread-id <id>` (without it, the routers pick), `--key`, `--do-not-steer`, `--silent`, `--meta <name>=<value>` ([D30](#d30)) and `--file <path>`. Both add `source: cli` unless `--meta source=…` says otherwise, and print the event's id ([Events](../agent-runtime/events/README.md#sending-and-delivering)).
 
-`run`, `chat`, `remove-thread` and `event` run in an agent directory, and make its storage when it is missing, as after a fresh clone. Flags are lower case with dashes, like Pi's; `--thread-id` names the folder of the thread's Pi sessions ([D21](../agent-runtime/pi/README.md#d21)).
+`run`, `chat`, `remove-thread`, `event` and `webhook` run in an agent directory, and make its storage when it is missing, as after a fresh clone. Flags are lower case with dashes, like Pi's; `--thread-id` names the folder of the thread's Pi sessions ([D21](../agent-runtime/pi/README.md#d21)).
 
 ## Where the command comes from
 
@@ -44,9 +45,9 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 
 ## Conventions
 
-- `run`, `serve` and `event` only read their arguments and call the agent runtime or the coordinator runtime. `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
+- `run`, `serve`, `event` and `webhook` only read their arguments and call the agent runtime or the coordinator runtime: `webhook` keeps the file through the webhooks service's `hooks.ts`. `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
 - Commands throw an `Error` with a message for the user; only `agentx.ts` prints it and exits.
-- `event` reads its options with Node's `parseArgs` in strict mode, so an unknown option is an error. `chat` reads its own flags by hand and passes the rest to Pi.
+- `event` and `webhook` read their options with Node's `parseArgs` in strict mode, so an unknown option is an error. `chat` reads its own flags by hand and passes the rest to Pi.
 
 ## Decisions
 

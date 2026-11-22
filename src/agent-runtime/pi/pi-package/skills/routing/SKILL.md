@@ -1,3 +1,10 @@
+---
+name: routing
+description: How to write your event router, which picks the thread of each event that names none, such as invoice emails to a workflow and support emails to a thread of their own. Use it before you write or change storage/knowledge/event_router.ts, and when an event has agentX-RouterError.
+metadata:
+  version: 1
+---
+
 # Routing
 
 An event that names no thread goes to the routers, which pick its thread:
@@ -21,4 +28,4 @@ const route: Router = async (event, ctx) => {
 export default route;
 ```
 
-Routers and workflows are TypeScript, which Node runs by stripping the types without checking them: no `enum`, `namespace` or constructor parameter properties, and a relative import names its `.ts` file. Any `.js` file you write is an ES module: use `import`, or name a CommonJS script `.cjs`. Each event runs a router in a new process, so an edit applies to the next event. A router may read files, import the project's packages and ask a model, within 60 seconds unless your developer set another limit.
+Routers are TypeScript, which Node runs by stripping the types without checking them: no `enum`, `namespace` or constructor parameter properties, and a relative import names its `.ts` file. Any `.js` file you write is an ES module: use `import`, or name a CommonJS script `.cjs`. Each event runs a router in a new process, so an edit applies to the next event. A router may read files, import the project's packages and ask a model, within 60 seconds unless your developer set another limit.

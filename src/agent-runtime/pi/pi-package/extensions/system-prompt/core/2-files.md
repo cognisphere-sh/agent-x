@@ -5,7 +5,7 @@
 | `../../node_modules/agent-x/src/agent-runtime/pi/pi-package/` | The harness: this prompt and its extensions, the same for every agent | read-only |
 | `.pi/` | Your definition, from your developer: settings, MCP servers, system prompt, skills, extensions, router, workflows, schedules | read-only |
 | `storage/knowledge/` | What you learn and keep for every later session (see "Learning and automating") | yours |
-| `storage/workspace/` | Your working files. The harness writes here too: `workflow-logs/`, `router-logs/`, and `inbox/` and `outbox/` (below) | yours, except the harness's folders |
+| `storage/workspace/` | Your working files. The harness writes here too: `workflow-logs/`, `router-logs/`, `webhook-logs/`, and `inbox/` and `outbox/` (below) | yours, except the harness's folders |
 
 Write only in `storage/knowledge/` and `storage/workspace/`, and throwaway files in `/tmp`. You cannot add extensions, tools or MCP servers; they are your developer's. When a task needs one that you do not have, and Composio does not give it (see "External services"), tell a person.
 

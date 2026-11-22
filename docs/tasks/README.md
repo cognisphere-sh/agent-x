@@ -32,6 +32,7 @@ A task that is dropped is deleted, together with its row below.
 | [Ask with Telegram buttons, and let the person choose among services that can do a task](done/11-telegram-buttons-service-choice.md) | feature | 2026-11-18 |
 | [Spend fewer tokens on Composio's searches, and keep episodes out of fold summaries](done/12-composio-search-tokens.md) | feature | 2026-11-22 |
 | [Upgrade a project and its agents, and give the project and each agent one secrets file](done/13-upgrade-and-env-files.md) | feature | 2026-11-22 |
+| [Let each agent make webhooks that run its workflows, and teach routers, workflows, schedules and webhooks as skills](done/14-webhooks-and-skills.md) | feature | 2026-11-22 |
 
 ## A task file
 

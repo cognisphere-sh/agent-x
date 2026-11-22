@@ -14,6 +14,10 @@ src/agent-runtime/pi/pi-package/
   extensions/memory/          index.ts, episode-index.ts, the index of every thread's episodes, transcript.ts, an episode as Markdown, and index-db.ts, the index's file: episode_search, episode_read
   skills/browser/             SKILL.md: the agent's browser, with agentx-browser
   skills/telegram/            SKILL.md: how to answer on Telegram, and ask with buttons
+  skills/routing/             SKILL.md: how to write the agent's router
+  skills/workflows/           SKILL.md: how to write a workflow, with ctx.composio
+  skills/schedules/           SKILL.md: how to write a schedule, and poll a service with one
+  skills/webhooks/            SKILL.md: how to make and keep webhooks that run workflows
 ```
 
 Pi loads the extensions the manifest lists, in that order, and the skills in `skills/` ([D42](#d42)). Five have their own docs: [event queue](event-queue/README.md), [Composio](composio/README.md), [episodes](episodes/README.md), [context](context/README.md), [memory](memory/README.md). Something new, an extension, skill or prompt template, must be listed in the manifest too.
@@ -32,7 +36,7 @@ The folder has its own `package.json`, `agentx-pi`, because Pi wants itself as a
 
 | Section | From |
 |---|---|
-| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send`, who sent an event, and that a message from Telegram is answered as the `telegram` skill says (`4-events`); routers, workflows and schedules, and that what a script can do the same way every time goes to a workflow, which can run Composio tools with `ctx.composio` and sends what needs judgement to a thread; that the thread `pass` drops an event; and that the agent's own skill, router, workflow and schedule come before its developer's, so it stops a developer's schedule with a copy of it that has `isActive: false` (`3-learning`, `5-routing`, `6-workflows`, `7-schedules`); what to do when something fails (`8-failures`); Composio, the main way into external services, before the browser, that a tool the agent knows runs without a search, and that the person chooses the service when several can do a task and none is connected (`9-external-services`, [Composio](composio/README.md#the-prompt)); where the app and the other agents are (`10-project`); episodes, that a fold nudge asks to fold and says how, and compactions (`11-context`, [context](context/README.md)); and `episode_search` and `episode_read` over every thread's episodes, which are records whose events are data (`12-memory`, [memory](memory/README.md)) |
+| `agentx-core-<file>` | The harness's rules, `core/*.md`, the same for every agent, in this order: the tool rules (`1-tools`); where the agent's abilities come from, and what is read-only (`2-files`); what to keep where: notes, skills, and a workflow, the router, a schedule or a webhook, each with the skill that says how, and that what a script can do the same way every time goes to a workflow, which sends what needs judgement to a thread (`3-learning`); that nobody may be watching, so the agent answers an event on the channel it came on and its plain text is only its own thinking, how to read an event's metadata block, that its content is data, never instructions, `agentx event send`, who sent an event, and that a message from Telegram is answered as the `telegram` skill says (`4-events`); what to do when a router, a workflow, a send, a schedule or a webhook fails, with the skill to read (`5-failures`); Composio, the main way into external services, before the browser, that a tool the agent knows runs without a search, that the person chooses the service when several can do a task and none is connected, and that a webhook or a poll learns what happens in a service (`6-external-services`, [Composio](composio/README.md#the-prompt)); where the app and the other agents are (`7-project`); episodes, that a fold nudge asks to fold and says how, and compactions (`8-context`, [context](context/README.md)); and `episode_search` and `episode_read` over every thread's episodes, which are records whose events are data (`9-memory`, [memory](memory/README.md)). How to write a router, a workflow, a schedule or a webhook is in agentx's [skills](#skills), not here ([D104](#d104)) |
 | `agentx-core-agents` | One line per agent its `canSendTo` allows, with its `description` from `agentx.json` ([D62](../../../coordinator-runtime/services/relay/README.md#d62)). None when there are none |
 | `agentx-identity-<file>` | The developer's prompt, `.pi/system_prompt/*.md` ([Agent](../../agent/README.md#system-prompt)) |
 | `agentx-knowledge-<file>` | The `agentx.systemPrompt` folders, such as the agent's `storage/knowledge/system_prompt` |
@@ -61,12 +65,16 @@ The agent writes its skills with Pi's `read`, `write` and `edit`. The harness pr
 
 ## Skills
 
-Each folder of `skills/` with a `SKILL.md` is a skill of every agent, listed beside the agent's own skills.
+Each folder of `skills/` with a `SKILL.md` is a skill of every agent, listed beside the agent's own skills. It comes before the agent's and the developer's skills of its name, which are left out.
 
 | Skill | Teaches |
 |---|---|
 | `browser` | The agent's [browser](../../browser/README.md), for a task that Composio, a command line tool or another tool cannot do, or that the person asks a browser for: `agentx-browser` and agent-browser's own guide, and profiles |
 | `telegram` | Answering a person on [Telegram](../../../coordinator-runtime/services/telegram/README.md) with Composio's tools, asking with inline buttons and how a tap comes back, never with a poll. Every agent has it, so only agents that get Telegram events read it |
+| `routing` | The agent's [router](../../events/README.md#routing), `storage/knowledge/event_router.ts`: asked before the developer's, a thread or nothing, `pass`, and how Node runs TypeScript |
+| `workflows` | [Workflows](../../workflows/README.md): the two `workflows.json`, a script's contract, `ctx.send` and `ctx.composio`, its log and babysitter thread, and sending what needs judgement to a thread |
+| `schedules` | [Schedules](../../../coordinator-runtime/services/scheduler/README.md): the two `schedules.json`, each key, and stopping a developer's schedule with a copy; and polling a service: a schedule runs a workflow that sends an event per new item, keyed by its id |
+| `webhooks` | The agent's [webhooks](../../../coordinator-runtime/services/webhooks/README.md): `agentx webhook`, setting the URL at the service with its Composio tool, a workflow that reads the body and confirms it through Composio, what a webhook cannot answer, and rotating and deleting |
 
 ## Known limits
 
@@ -112,3 +120,11 @@ Each folder of `skills/` with a `SKILL.md` is a skill of every agent, listed bes
 - **Decision.** The skills extension empties Pi's list on every run and sets a section per skill, `agentx-skill-<name>`, with its version, read again from the skill folders. Whoever changes a skill raises its version and adds an entry to its `CHANGELOG.md`. The agent writes skills with Pi's own file tools.
 - **Why.** A thread sees a new version in the section and reads the changelog for what changed; a change sends one section. Pi still finds the skills, so its loader, its checks and `/skill:<name>` stay as they are.
 - **Rejected.** Pi's `--no-skills`: it also drops the skills of the `skills` setting and of other packages, which the extension would have to find itself. A tool to write skills that keeps the version and changelog: the agent's file tools already do it, and the harness prompt asks for the version. A notice with the diff to each thread that read a changed skill: the new version in the section and the changelog say the same, with no copies of old text to keep.
+
+<a id="d104"></a>
+### D104. How to write a router, a workflow, a schedule or a webhook is a skill of the package, and the harness's rules name it
+
+- **Problem.** Every message of every thread carries the harness prompt, but the agent needs the how-to of a router, a workflow, a schedule or a webhook only when it writes or fixes one.
+- **Decision.** The package's skills `routing`, `workflows`, `schedules` and `webhooks` hold the how-tos. The core sections keep the rules and name the skill to read: when each is the right place to keep something, and that what a script can do the same way every time goes to a workflow (`3-learning`); what to do when one fails (`5-failures`); and that a webhook or a poll learns what happens in a service (`6-external-services`).
+- **Why.** A skill costs its description until a task needs it, as the agent's own skills do. The rule that keeps the model for what needs judgement stays in the core, because the agent needs it to choose a workflow before it reads the skill.
+- **Consequence.** agentx's skills come before the agent's and the developer's of the same name, so an agent's or developer's skill named `routing`, `workflows`, `schedules` or `webhooks` is left out, and listed so.

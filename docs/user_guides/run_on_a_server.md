@@ -78,3 +78,20 @@ An agent can have a Telegram bot: people in the chats you list write to it, and 
 4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY`, each in its `.env` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
 
 Each message reaches the agent's routers with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder. When the agent asks a question with buttons, a tap reaches it the same way, with the button's text as content and the button in `button`, and the buttons leave the question with the choice written under it.
+
+## Webhooks
+
+An agent can give an outside service a URL to call when something happens, such as Retell when a call ends, and each request runs one of the agent's workflows. The agent makes and keeps these webhooks itself, with `agentx webhook`, and sets each URL at the service with its Composio tool ([webhooks service](../architecture/coordinator-runtime/services/webhooks/README.md)). Until you turn the service on, the agent's `agentx webhook create` refuses and says what to set.
+
+1. In `agent-x/agentx.json`, set `publicUrl` and turn the service on:
+
+   ```json
+   "publicUrl": "https://agents.example.com",
+   "services": { "webhooks": {} }
+   ```
+
+2. Forward `/services/webhooks/` from the internet to `agentx serve`, and start it again. Without `publicUrl`, it logs `Service "webhooks" is off`.
+
+Ask the agent for a webhook in plain words, such as "tell me each time a Retell call ends": it writes the workflow, makes the webhook and sets its URL in Retell. `agentx webhook list`, in the agent's directory, shows its webhooks and each one's last request; each has a log in `storage/workspace/webhook-logs/`.
+
+A webhook's URL holds a random token, its only check: anyone who has the URL can call it, and the agent's workflow fetches what a request names from the service before it acts. A webhook takes only POST, up to 1 MB, and answers 200 with JSON, so a service that waits for another answer, such as a handshake or TwiML for a call, cannot use one. On a laptop, use a tunnel, such as cloudflared or ngrok, and set `publicUrl` to its address.
