@@ -56,13 +56,13 @@ export class ApiServer {
 		return new Promise((resolve) => this.server.close(() => resolve()));
 	}
 
-	// Whatever goes wrong answers 500, never ends the coordinator.
+	// Whatever goes wrong answers 500, never ends the coordinator. A log names a route by its pattern, never by its URL, which may hold a webhook's token.
 	private async handle(request: IncomingMessage, response: ServerResponse): Promise<void> {
 		try {
 			const { status, body } = await this.answer(request);
 			response.writeHead(status, { "content-type": "application/json" }).end(body === undefined ? "" : JSON.stringify(body));
 		} catch (error) {
-			console.error(`${request.method} ${request.url}: ${(error as Error).message}`);
+			console.error(`${request.method} request: ${(error as Error).message}`);
 			if (!response.headersSent) response.writeHead(500, { "content-type": "application/json" }).end(JSON.stringify({ error: "The request failed." }));
 		}
 	}
@@ -80,9 +80,14 @@ export class ApiServer {
 			if (this.token === undefined) return { status: 503, body: { error: "No API token is set: set AGENTX_API_TOKEN in agent-x/.env." } };
 			if (!sameText(request.headers.authorization ?? "", `Bearer ${this.token}`)) return { status: 401, body: { error: "This route needs the API token." } };
 		}
-		const body = await readBody(request);
-		if (body === undefined) return { status: 413, body: { error: "The body is larger than 1 MB." } };
-		return found.route.handle({ params: found.params, headers: request.headers, body });
+		try {
+			const body = await readBody(request);
+			if (body === undefined) return { status: 413, body: { error: "The body is larger than 1 MB." } };
+			return await found.route.handle({ params: found.params, headers: request.headers, body });
+		} catch (error) {
+			console.error(`${request.method} /${found.route.path}: ${(error as Error).message}`);
+			return { status: 500, body: { error: "The request failed." } };
+		}
 	}
 }
 

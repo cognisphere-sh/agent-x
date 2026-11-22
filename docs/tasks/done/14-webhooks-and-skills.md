@@ -14,7 +14,7 @@ updated: 2026-11-22
 
 ## What was built
 
-- **The webhooks service**, optional ([webhooks](../../architecture/coordinator-runtime/services/webhooks/README.md)): `src/coordinator-runtime/services/webhooks/webhooks.ts` serves `POST /services/webhooks/<agent>/<name>/<token>`, checks the token, delivers the request to `workflow.<workflow>` with `body` and `headers.json`, answers 200 or 503, logs each request in `storage/workspace/webhook-logs/<name>.log`, and tells `main` once when a webhook's workflow is gone. `hooks.ts` reads and writes the agent's `storage/knowledge/webhooks.json`.
+- **The webhooks service**, optional ([webhooks](../../architecture/coordinator-runtime/services/webhooks/README.md)): `src/coordinator-runtime/services/webhooks/webhooks.ts` serves `POST /services/webhooks/<agent>/<name>/<token>`, checks the token, delivers the request to `workflow.<workflow>` with `body` and `headers.json`, answers 200 or 503, logs each request in `storage/workspace/webhook-logs/<name>.log`, and tells `main` once for each reason a request could not be delivered. `hooks.ts` keeps the agent's `storage/knowledge/webhooks.json`, which the command only calls.
 - **`agentx webhook create|list|rotate|delete`** (`src/cli/commands/webhook.ts`), in an agent directory: makes a webhook with a random token and prints its URL, keeps the URL when a webhook is made again, lists each with its last request, gives a new URL, deletes. `create` and `rotate` refuse without `publicUrl` or the service in `agentx.json`, and `create` refuses a workflow the agent does not have.
 - **Skills in the Pi package**: `routing`, `workflows`, `schedules` (with polling a service), and `webhooks`. The harness prompt's `5-routing.md`, `6-workflows.md` and `7-schedules.md` are gone; the rest of `core/` is numbered 1 to 9, and its rules name the skill to read.
 - Not committed yet.
@@ -28,7 +28,8 @@ updated: 2026-11-22
 
 ## Changes from the plan
 
-- A webhook whose workflow is gone answers 503 and tells `main` once per webhook and workflow; the plan did not say. The scheduler reports a fire the agent refuses in the same way.
+- A request the agent refuses, such as one for a workflow it no longer has, answers 503 and tells `main` once per webhook and reason; the plan did not say. The scheduler reports a fire the agent refuses in the same way.
+- The API server logs a failed route by its pattern, never by its URL, so a webhook's token stays out of the coordinator's log.
 - A token shorter than 32 characters never matches, so one shortened by hand in the file cannot be guessed.
 - The service is off without `publicUrl`, as Telegram is.
 - The rule that keeps the model for what needs judgement stayed in the harness prompt (`3-learning.md`), not in the `workflows` skill: the agent needs it to choose a workflow before it reads the skill.

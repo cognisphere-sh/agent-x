@@ -1,6 +1,7 @@
 // A coordinator service: a part of `agentx serve` besides running the agents, such as the relay between agents or the scheduler. Each one is set up in
 // onStart, polls with `context.every`, declares its API in `routes`, served under /services/<name>/, and stops in onStop, after the agents have stopped.
 
+import type { EventFile } from "../agent-runtime/events/mailbox.js";
 import type { NewEvent } from "../agent-runtime/events/queue.js";
 import type { Route } from "./api-server.js";
 
@@ -28,9 +29,10 @@ export interface ServiceContext {
 	/**
 	 * Delivers `event` into the inbox of the agent `agent`, with `agentX-Service: <the service's name>`, so no sender can claim a service sent it, and
 	 * returns its id. Its key is the service's own id for what it delivers, such as a webhook's delivery id, so the same one delivered again is one event.
-	 * `files` are copied into the event's folder. Throws when the project has no such agent, or the event is refused.
+	 * `files` go into the event's folder: a path is copied, and a name with its content, such as a download or a webhook's body, is written there with no
+	 * temporary file. Throws when the project has no such agent, or the event is refused.
 	 */
-	deliver(agent: string, event: NewEvent & { key: string }, files?: string[]): string;
+	deliver(agent: string, event: NewEvent & { key: string }, files?: EventFile[]): string;
 	/** Runs `work` every `ms` until the service stops. Never two runs at once; a failure is logged, and the next run goes on. */
 	every(ms: number, work: () => void | Promise<void>): void;
 }

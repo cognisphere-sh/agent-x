@@ -467,7 +467,7 @@ test("services start with their config, the public URL and only their own secret
 	assert.ok(said.includes("probe: a failing run"));
 });
 
-test("a service delivers into an agent's inbox with agentX-Service, once per key, and not to an agent the project does not have", async (t) => {
+test("a service delivers into an agent's inbox with agentX-Service, once per key, with files given by their content, and not to an agent the project does not have, nor a file whose name holds a folder", async (t) => {
 	const project = createAgent(model.port);
 	editConfig(project, (config) => ({ ...config, services: { courier: {} } }));
 	const outcomes = [];
@@ -475,12 +475,15 @@ test("a service delivers into an agent's inbox with agentX-Service, once per key
 		onStart(context) {
 			// Services start before the agents, so the event waits in the inbox.
 			const event = { content: "from a webhook", key: "delivery-1", metadata: { source: "courier" } };
-			const first = context.deliver("main", event);
+			// A file given by its content is written into the event's folder, with no file of the service's own.
+			const first = context.deliver("main", event, [{ name: "body", content: Buffer.from("the body") }]);
 			outcomes.push(first, context.deliver("main", event) === first);
-			try {
-				context.deliver("nobody", event);
-			} catch (error) {
-				outcomes.push(error.message);
+			for (const [agent, files] of [["nobody", []], ["main", [{ name: "../escape", content: "x" }]]]) {
+				try {
+					context.deliver(agent, { ...event, key: "delivery-2" }, files);
+				} catch (error) {
+					outcomes.push(error.message);
+				}
 			}
 		}
 	}
@@ -488,10 +491,13 @@ test("a service delivers into an agent's inbox with agentX-Service, once per key
 	t.after(() => coordinator.stop(true));
 	await coordinator.start("127.0.0.1", 0);
 	await coordinator.stop(true);
-	const [id, same, refused] = outcomes;
-	assert.deepEqual([same, refused], [true, 'This project has no agent "nobody".']);
-	const mail = read(join(project.agent, "storage", "workspace", "inbox"), id);
-	assert.deepEqual([mail.event.content, mail.event.metadata, mail.facts], ["from a webhook", { source: "courier" }, { "agentX-Service": "courier" }]);
+	const [id, same, ...refused] = outcomes;
+	assert.deepEqual([same, refused], [true, ['This project has no agent "nobody".', 'A file of an event cannot be called "../escape".']]);
+	const inbox = join(project.agent, "storage", "workspace", "inbox");
+	const mail = read(inbox, id);
+	assert.deepEqual([mail.event.content, mail.event.metadata, mail.facts], ["from a webhook\n\nFiles: `body`", { source: "courier" }, { "agentX-Service": "courier" }]);
+	assert.equal(readFileSync(join(inbox, id, "body"), "utf8"), "the body");
+	assert.ok(!existsSync(join(project.agent, "storage", "workspace", "escape")));
 });
 
 test("the project's own services, in agent-x/services/<name>/index.ts, run when agentx.json lists them, with their config, only their secrets and their routes; one that cannot load is off alone", async (t) => {
@@ -678,6 +684,8 @@ export default async function (event) {
 	const hooks = JSON.parse(readFileSync(join(knowledge, "webhooks.json"), "utf8"));
 	writeFileSync(join(knowledge, "webhooks.json"), JSON.stringify({ ...hooks, short: { workflow: "call-ended", description: "By hand.", token: "abc" } }));
 	assert.equal(await call("/services/webhooks/main/short/abc"), 404);
+	// Made again, such a webhook gets a token long enough, so a new URL.
+	assert.match((await webhook("create", "short", "--workflow", "call-ended", "--description", "By hand.")).stdout, /^Made webhook short/);
 
 	// The list shows each webhook's URL, workflow, description and its log's last line, in the agent's time zone.
 	assert.match((await webhook("list")).stdout, /^calls: https:\/\/agents\.example\.com\/services\/webhooks\/main\/calls\/[\w-]{43}\n {2}workflow: call-ended\n {2}description: Retell agent a1's webhook_url\n {2}last request: \w+day \d{4}-\d{2}-\d{2} [\d:]+ GMT\S* 200 event [\w-]{12}$/m);
@@ -699,10 +707,10 @@ export default async function (event) {
 	assert.equal(await call(gone), 503);
 	const report = await until(() => events(project.agent).find((found) => found.metadata.webhook === "sms"));
 	assert.equal(report.threadId, "main");
-	assert.match(report.content, /^Webhook `sms` was called, but its workflow `call-ended` is gone, so the request got 503/);
+	assert.match(report.content, /^Webhook `sms` was called, but the request could not be delivered, so it got 503 and its caller may send it again: Agent "main" has no workflow "call-ended"\./);
 	await until(() => inboxEvents(project.agent).length === 0);
 	assert.equal(events(project.agent).filter((found) => found.metadata.webhook === "sms").length, 1);
-	assert.match(readFileSync(join(workspace, "webhook-logs", "sms.log"), "utf8"), / 503 no workflow "call-ended"\n.* 503 no workflow "call-ended"\n$/);
+	assert.match(readFileSync(join(workspace, "webhook-logs", "sms.log"), "utf8"), /( 503 not delivered: Agent "main" has no workflow "call-ended"\.\n.*){2}$/);
 });
 
 /** A fake Telegram Bot API on a free port: it records each call, refuses a token it does not know, and serves one small file and one too big. */

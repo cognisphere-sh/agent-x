@@ -43,14 +43,14 @@ The agent sets the URL at the calling service with that service's Composio tool,
 
 1. **Finds the webhook.** The agent must be one the coordinator runs, and its file must list the name with a workflow and a token of at least 32 characters, equal to the URL's, compared in constant time. Otherwise: 404, the same for each case, so a caller learns nothing ([D102](#d102)). A file that cannot be read: 503, and a line in the coordinator's log.
 2. **Delivers** with `context.deliver`, on the thread `workflow.<workflow>`:
-   - key `webhook:<random UUID>`: each request is an event of its own ([D103](#d103));
+   - key `webhook:<random id>`: each request is an event of its own ([D103](#d103));
    - content `Webhook <name> was called. The request's body is in the file body, and its headers are in headers.json.`, and the files line;
    - `body`, the request's body byte for byte, and `headers.json`, its headers, in the event's folder;
    - metadata `source: webhook`, `webhook: <name>` and the request's `content-type`, with the fact `agentX-Service: webhooks`.
 3. **Answers** 200 with the event's id once it is in the inbox, and 503 when it cannot be written, so the caller sends it again.
 4. **Logs** a line in `storage/workspace/webhook-logs/<name>.log`: the time, in the agent's time zone, the status, and the event's id or why there is none. A request that matched no webhook is not logged.
 
-A webhook whose workflow is gone answers 503, so its caller sends the request again once the agent has fixed it, and tells the agent's `main` thread once per webhook and workflow, keyed `webhook:<name>:no-workflow:<workflow>`.
+A request the agent refuses, such as one for a workflow it no longer has, answers 503, so its caller sends it again once the agent has fixed it, and the agent's `main` thread hears why once per webhook and reason, keyed `webhook:<name>:<reason>`, as the [scheduler](../scheduler/README.md) tells of a fire the agent refuses.
 
 The agent need not be running: the event waits in its inbox. Nothing an agent writes runs while the caller waits for its answer.
 
@@ -64,7 +64,7 @@ The token is the only check at the door, so a workflow treats a request as a hin
 - **POST only**, with a body of up to 1 MB, the API server's limit: a larger one gets 413 and is never delivered. A service that sends GET, such as ClickSend with `webhook_type: get`, is set to POST.
 - **Anyone with the URL can wake the workflow** until the agent rotates it. The token is in every request, so in the service's own logs and dashboard.
 - **Events are lost** while `agentx serve` is down for longer than the calling service keeps sending them again. A [schedule](../scheduler/README.md) that polls the service covers the gap.
-- **A missing workflow is reported once** per webhook and workflow: removed, given back and removed again, it is not reported the second time. Its log still has every request.
+- **A refusal is reported once** per webhook and reason: a workflow removed, given back and removed again is not reported the second time. Its log still has every request.
 - Until sandboxes, an agent can write another agent's webhooks file, as it can any of its files.
 
 ## Decisions
@@ -90,6 +90,6 @@ The token is the only check at the door, so a workflow treats a request as a hin
 ### D103. A webhook answers 200 once the event is in the inbox, and never with an answer its caller waits for
 
 - **Problem.** Some services wait for a particular answer: a handshake that echoes a challenge, as Slack's and Meta's do, or an answer that steers a call, as Twilio's `voice_url` and Retell's `inbound_webhook_url` expect. A workflow runs later and cannot give it.
-- **Decision.** The service answers 200 with the event's id once the event is in the inbox, and 503 when it cannot be. Each request is an event of its own, with a random key, and the workflow keys what it sends by the item's id. A webhook whose workflow is gone answers 503, so the caller sends again, and the agent's `main` thread hears of it once per webhook and workflow, as the scheduler reports a fire the agent refuses.
+- **Decision.** The service answers 200 with the event's id once the event is in the inbox, and 503 when it cannot be. Each request is an event of its own, with a random key, and the workflow keys what it sends by the item's id. A request the agent refuses, such as one for a workflow it no longer has, answers 503, so the caller sends again, and the agent's `main` thread hears why once per webhook and reason, as the scheduler tells of a fire the agent refuses.
 - **Why.** The services that report what happened, such as a Retell agent's `webhook_url`, Twilio's `status_callback` and ClickSend's inbound rules, take any 200. Code that answers at once would be the first agent code the coordinator runs, in the agent's environment, and later in its sandbox.
 - **Rejected.** A function a webhook's workflow exports, which the service runs for each request to make the answer. A key made from a hash of the body: nothing prunes the queue, so a later request with the same body would be dropped for good.

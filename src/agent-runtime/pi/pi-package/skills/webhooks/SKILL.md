@@ -47,5 +47,5 @@ export default run;
 - To give a webhook another workflow or description, run `create` again with its name: its URL stays.
 - `agentx webhook rotate <name>`: a new URL, when the old one may have leaked. The old one answers 404 at once, so set the new one at the service straight away.
 - `agentx webhook delete <name>`: take its URL off at the service first, then delete it.
-- A webhook whose workflow is gone answers 503, and an event on `main` tells you once.
+- A request that cannot be delivered, such as one for a workflow you no longer have, gets 503, and an event on `main` tells you why, once for each reason.
 - Keep webhooks with these commands; never edit `storage/knowledge/webhooks.json` by hand.

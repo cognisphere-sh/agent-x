@@ -1,14 +1,13 @@
 // `agentx webhook create|list|rotate|delete`: the agent's webhooks, URLs that outside services call to run one of its workflows. Each is kept with a
 // random token in the agent's storage/knowledge/webhooks.json, which the coordinator's webhooks service reads on every request.
 
-import { existsSync, readFileSync } from "node:fs";
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { nameRule } from "../../agent-runtime/events/queue.js";
 import { agentXOf, projectConfig } from "../../agent-runtime/project-config.js";
 import { storageOf } from "../../agent-runtime/storage.js";
 import { loadWorkflows } from "../../agent-runtime/workflows/workflows.js";
-import { hookLog, hookUrl, loadHooks, newToken, saveHooks } from "../../coordinator-runtime/services/webhooks/hooks.js";
+import { deleteHook, hookUrl, lastLogLine, loadHooks, rotateHook, setHook } from "../../coordinator-runtime/services/webhooks/hooks.js";
 
 const usage = `usage:
   agentx webhook create <name> --workflow <workflow> --description <text>
@@ -38,14 +37,9 @@ function create(agentRoot: string, args: string[]): void {
 	if (!nameRule.test(name)) throw new Error(`A webhook's name has only letters, digits and dashes: "${name}" does not.`);
 	if (!loadWorkflows(agentRoot).has(workflow)) throw new Error(`This agent has no workflow "${workflow}": write it first, in storage/knowledge/workflows.json.`);
 	const publicUrl = servedAt(agentRoot);
-	const storage = storageOf(agentRoot);
-	const hooks = loadHooks(storage);
-	const kept = Object.hasOwn(hooks, name) ? hooks[name].token : undefined;
-	const token = typeof kept === "string" ? kept : newToken();
-	hooks[name] = { workflow, description, token };
-	saveHooks(storage, hooks);
+	const { token, kept } = setHook(storageOf(agentRoot), name, workflow, description);
 	const url = hookUrl(publicUrl, basename(agentRoot), name, token);
-	if (kept === token) console.log(`Changed webhook ${name}: it runs workflow ${workflow}. Its URL is the same:\n${url}`);
+	if (kept) console.log(`Changed webhook ${name}: it runs workflow ${workflow}. Its URL is the same:\n${url}`);
 	else console.log(`Made webhook ${name}: it runs workflow ${workflow}. Set this URL where the service that calls it is set up:\n${url}`);
 }
 
@@ -56,33 +50,19 @@ function list(agentRoot: string): void {
 	const { publicUrl } = projectConfig(agentXOf(agentRoot));
 	for (const [name, hook] of hooks) {
 		const url = publicUrl === undefined ? '(none: agentx.json has no "publicUrl")' : hookUrl(publicUrl, basename(agentRoot), name, String(hook.token));
-		console.log([`${name}: ${url}`, `  workflow: ${hook.workflow}`, `  description: ${hook.description}`, `  last request: ${lastRequest(storage, name)}`].join("\n"));
+		console.log([`${name}: ${url}`, `  workflow: ${hook.workflow}`, `  description: ${hook.description}`, `  last request: ${lastLogLine(storage, name) ?? "none"}`].join("\n"));
 	}
 }
 
 function rotate(agentRoot: string, name: string): void {
 	const publicUrl = servedAt(agentRoot);
-	const storage = storageOf(agentRoot);
-	const hooks = loadHooks(storage);
-	const hook = existing(hooks, name);
-	hook.token = newToken();
-	saveHooks(storage, hooks);
+	const hook = rotateHook(storageOf(agentRoot), name);
 	console.log(`Webhook ${name} has a new URL, and its old one answers 404. Set it where the old one was (${hook.description}):\n${hookUrl(publicUrl, basename(agentRoot), name, hook.token)}`);
 }
 
 function remove(agentRoot: string, name: string): void {
-	const storage = storageOf(agentRoot);
-	const hooks = loadHooks(storage);
-	const { description } = existing(hooks, name);
-	delete hooks[name];
-	saveHooks(storage, hooks);
+	const { description } = deleteHook(storageOf(agentRoot), name);
 	console.log(`Deleted webhook ${name}: its URL answers 404. If it is still set where it was (${description}), take it off there.`);
-}
-
-// The hook `name` of `hooks`; throws when there is none.
-function existing(hooks: ReturnType<typeof loadHooks>, name: string): ReturnType<typeof loadHooks>[string] {
-	if (!Object.hasOwn(hooks, name)) throw new Error(`This agent has no webhook "${name}". agentx webhook list shows its webhooks.`);
-	return hooks[name];
 }
 
 // The project's public address, which a webhook's URL starts with. Throws when the webhooks service cannot take requests: a person must set it up.
@@ -92,10 +72,4 @@ function servedAt(agentRoot: string): string {
 	if (publicUrl === undefined) throw new Error(`agentx.json has no "publicUrl", so a webhook has no URL: ${setUp}`);
 	if (!Object.hasOwn(services, "webhooks")) throw new Error(`agentx.json does not turn on the webhooks service, so a webhook's URL would answer 404: ${setUp}`);
 	return publicUrl;
-}
-
-// The last line of the hook's log, or that it has none.
-function lastRequest(storage: string, name: string): string {
-	const file = hookLog(storage, name);
-	return existsSync(file) ? (readFileSync(file, "utf8").trimEnd().split("\n").at(-1) ?? "none") : "none";
 }

@@ -3,10 +3,7 @@
 // when COMPOSIO_WEBHOOK_SECRET is set.
 
 import { createHmac, timingSafeEqual } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingHttpHeaders } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { agentTimeZone, dayDateTime } from "../../../agent-runtime/time-zone.js";
 import type { ApiRequest, ApiResponse, Route } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
@@ -66,11 +63,7 @@ export class ComposioService extends Service {
 		// Composio gives the event's time in UTC; the agent reads every time in its own time zone. One that does not parse goes in as it is.
 		const sentAt = Date.parse(String(event.timestamp));
 		const eventTime = Number.isNaN(sentAt) ? event.timestamp : dayDateTime(sentAt, agentTimeZone(agent.root));
-		// Composio's data can be large, as a raw email, so it goes in as a file the agent reads when it needs to.
-		const folder = mkdtempSync(join(tmpdir(), "agentx-composio-"));
 		try {
-			const data = join(folder, "data.json");
-			writeFileSync(data, JSON.stringify(event.data ?? null, null, "\t"));
 			const delivered = this.context.deliver(
 				agent.name,
 				{
@@ -78,14 +71,13 @@ export class ComposioService extends Service {
 					content: `Composio trigger ${String(trigger)} fired. Its event's data is in data.json.`,
 					metadata: { source: "composio", trigger, "trigger-id": triggerId, account, "event-time": eventTime },
 				},
-				[data],
+				// Composio's data can be large, as a raw email, so it goes in as a file the agent reads when it needs to.
+				[{ name: "data.json", content: JSON.stringify(event.data ?? null, null, "\t") }],
 			);
 			return { status: 200, body: { event: delivered } };
 		} catch (error) {
 			console.error(`composio: event ${id} for agent ${agent.name} was not delivered, and Composio sends it again: ${(error as Error).message}`);
 			return { status: 503, body: { error: "The event could not be delivered." } };
-		} finally {
-			rmSync(folder, { recursive: true, force: true });
 		}
 	}
 }

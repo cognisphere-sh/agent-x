@@ -41,23 +41,29 @@ export function hostBox(box: (storage: string) => string, storage: string): stri
 	return path;
 }
 
+/** A file that goes with an event: a path, whose file is copied into the event's folder by its name, or a name and its content, written there. */
+export type EventFile = string | { name: string; content: string | Uint8Array };
+
+// The file's name in the event's folder.
+const fileName = (file: EventFile) => (typeof file === "string" ? basename(file) : file.name);
+
 // The harness's file in an event's folder; every other file there is the event's, by its name.
 const eventFile = "event.json";
 
-// What a file of an event may be called, besides a plain name: nothing hidden, and not the harness's file.
-const isFileName = (name: string) => !name.startsWith(".") && name !== eventFile;
+// What a file of an event may be called: a plain name, with no folder in it, nothing hidden, and not the harness's file.
+const isFileName = (name: string) => name !== "" && name === basename(name) && !name.startsWith(".") && name !== eventFile;
 
 /** The id of the event with `key` for the agent `receiver`: sending again gets the same id, and the same key sent to two agents gets two. */
 export const mailId = (receiver: string, key: string) => createHash("sha256").update(`${receiver}\0${key}`).digest("base64url").slice(0, 12).replace(/^-/, "_");
 
 /**
- * A new event for the agent `receiver`, checked, with the files at `files`, sent at `sentAt`. Its id is made from the receiver and its key, a random one when it has none.
- * Its files are any the caller can read, so a sandbox decides what an agent can send.
+ * A new event for the agent `receiver`, checked, with `files`, sent at `sentAt`. Its id is made from the receiver and its key, a random one when it has none.
+ * A file given by its path is any the caller can read, so a sandbox decides what an agent can send.
  */
-export function newMail(event: NewEvent, receiver: string, files: string[] = [], facts: Record<string, string> = {}, sentAt = Date.now()): Mail {
-	for (const file of files) if (!statSync(file, { throwIfNoEntry: false })?.isFile()) throw new Error(`${file} is not a file.`);
+export function newMail(event: NewEvent, receiver: string, files: EventFile[] = [], facts: Record<string, string> = {}, sentAt = Date.now()): Mail {
+	for (const file of files) if (typeof file === "string" && !statSync(file, { throwIfNoEntry: false })?.isFile()) throw new Error(`${file} is not a file.`);
 	checkEvent(event);
-	const names = files.map((file) => basename(file));
+	const names = files.map(fileName);
 	for (const name of names) if (!isFileName(name)) throw new Error(`A file of an event cannot be called "${name}".`);
 	if (new Set(names).size < names.length) throw new Error("Two files of an event have the same name.");
 	const key = event.key ?? newId();
@@ -65,9 +71,9 @@ export function newMail(event: NewEvent, receiver: string, files: string[] = [],
 }
 
 /** `event` as it goes into an inbox: with files, its content ends with a line that names them, and the receiver finds them in the event's folder. Check it after: a file's name is the sender's word too. */
-export function withFilesLine(event: NewEvent, files: string[]): NewEvent {
+export function withFilesLine(event: NewEvent, files: EventFile[]): NewEvent {
 	if (files.length === 0) return event;
-	return { ...event, content: `${event.content}\n\nFiles: ${files.map((file) => `\`${basename(file)}\``).join(", ")}` };
+	return { ...event, content: `${event.content}\n\nFiles: ${files.map((file) => `\`${fileName(file)}\``).join(", ")}` };
 }
 
 // The time in the name of the last marker this process made. Each marker gets a later one, so one sender's events keep their order
@@ -75,10 +81,10 @@ export function withFilesLine(event: NewEvent, files: string[]): NewEvent {
 let lastAt = 0;
 
 /**
- * Puts `mail` into the mailbox `box`, with copies of the files at `files`, each by its name, and marks it waiting. The folder is written under a hidden name and then renamed,
+ * Puts `mail` into the mailbox `box`, with `files`, each by its name, and marks it waiting. The folder is written under a hidden name and then renamed,
  * so a reader never sees half of it; a folder of that id already there, from an earlier delivery of the same event, is kept.
  */
-export function put(box: string, mail: Mail, files: string[]): void {
+export function put(box: string, mail: Mail, files: EventFile[]): void {
 	const folder = join(box, mail.id);
 	// The folder is there when the event was put before, as one sent again with its key. While it waits, it needs no second marker. Otherwise it gets
 	// one: the earlier put may have died between the folder and its marker. If it was taken already, the queue ignores it the second time.
@@ -88,8 +94,13 @@ export function put(box: string, mail: Mail, files: string[]): void {
 		const temporary = join(box, `.${mail.id}.${process.pid}`);
 		rmSync(temporary, { recursive: true, force: true });
 		mkdirSync(temporary, { recursive: true });
-		// A clone where the file system can make one, so a large file costs no copying; still a file of its own, which the sender cannot change.
-		for (const file of files) copyFileSync(file, join(temporary, basename(file)), constants.COPYFILE_FICLONE);
+		for (const file of files) {
+			const to = join(temporary, fileName(file));
+			// A clone where the file system can make one, so a large file costs no copying; still a file of its own, which the sender cannot change.
+			if (typeof file === "string") copyFileSync(file, to, constants.COPYFILE_FICLONE);
+			// Content, as a service's download, goes straight into the event's folder, with no file of its own to copy.
+			else writeFileSync(to, file.content);
+		}
 		writeFileSync(join(temporary, eventFile), JSON.stringify(mail));
 		try {
 			renameSync(temporary, folder);

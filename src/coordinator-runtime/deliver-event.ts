@@ -3,7 +3,7 @@
 // with `agentx event deliver`, which calls it. It reaches the agent's state in the project's central storage, as a sandbox's host does.
 
 import { basename } from "node:path";
-import { hostBox, inbox, type Mail, newMail, put, withFilesLine } from "../agent-runtime/events/mailbox.js";
+import { type EventFile, hostBox, inbox, type Mail, newMail, put, withFilesLine } from "../agent-runtime/events/mailbox.js";
 import type { NewEvent } from "../agent-runtime/events/queue.js";
 import { agentIn } from "../agent-runtime/project-config.js";
 import { centralStorage, storageProblem } from "../agent-runtime/storage.js";
@@ -13,8 +13,8 @@ import { missingWorkflow } from "../agent-runtime/workflows/workflows.js";
 export interface DeliverOptions {
 	/** The harness's `agentX-` lines, which no sender may name. */
 	facts?: Record<string, string>;
-	/** Files that go with the event, copied into its folder; the last line of its content names them. */
-	files?: string[];
+	/** Files that go with the event, into its folder: a path is copied, a name with its content written. The last line of its content names them. */
+	files?: EventFile[];
 	/** When it was sent; now when left out. */
 	sentAt?: number;
 }
@@ -23,7 +23,7 @@ export interface DeliverOptions {
 export interface Prepared {
 	box: string;
 	mail: Mail;
-	files: string[];
+	files: EventFile[];
 }
 
 /** Delivers `event` to the agent `name` of the project whose `agent-x/` directory is `agentX`, and returns its id. Throws when agentx.json lists no such agent, or the event is refused. */

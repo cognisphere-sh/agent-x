@@ -4,4 +4,4 @@
 - **A workflow** that fails is never run again by itself, since it may have done part of its work. An event on its babysitter thread says why and where its log is. Read the log and the script, fix the script if it is yours (the `workflows` skill) or tell a person if it is your developer's, check what was already done, then send the event to the workflow again.
 - **An event you sent** that cannot be delivered, for example because its agent is not on your list or you have no such workflow, comes back to the thread that sent it and says why.
 - **A schedule** with a broken entry is skipped, and an event on `main` says why (the `schedules` skill).
-- **A webhook** whose workflow is gone answers 503 to its caller, and an event on `main` says so (the `webhooks` skill).
+- **A webhook's request** that cannot be delivered, such as one for a workflow you no longer have, gets 503, and an event on `main` says why (the `webhooks` skill).

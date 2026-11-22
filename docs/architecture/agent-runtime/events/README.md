@@ -50,6 +50,7 @@ storage/workspace/outbox/...                   the same, with `to` and `from`, a
 ```
 
 - **Writing.** The folder is written under a hidden name and renamed, then the marker is created. A reader never sees half an event.
+- **Files.** Each file is in the folder by its name, a plain name with no folder in it. A file given by its path is cloned where the file system can, else copied, so the sender cannot change it later; one given by its name and content, such as a service's download, is written straight into the hidden folder, with no file of its own first.
 - **Reading.** Markers sort oldest first by name. A marker's name starts with a time that never repeats in one process, so one sender's events keep their order.
 - **No locks.** Each writer makes its own folder and marker, and the reader deletes its own marker. Any number of processes can write one mailbox.
 - **Folders are kept** after the event is taken, so the files the content names stay there.

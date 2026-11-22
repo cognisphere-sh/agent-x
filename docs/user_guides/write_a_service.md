@@ -63,7 +63,7 @@ The default export is a class; each member may be left out.
 - `agents`: each agent's `name`, `root` and `storage`;
 - `publicUrl`, from `agentx.json`;
 - `stopping()`;
-- `deliver(agent, event, files)`, which puts an event into an agent's inbox with `agentX-Service: <name>`. Its `key` is your id for what you deliver, such as the webhook's delivery id, so a retry adds nothing. It throws when there is no such agent, or the event is refused.
+- `deliver(agent, event, files)`, which puts an event into an agent's inbox with `agentX-Service: <name>`. Its `key` is your id for what you deliver, such as the webhook's delivery id, so a retry adds nothing. Each file is a path, which is copied, or a name with its content, such as `{ name: "payload.json", content: body }`, which is written into the event's folder, so you need no temporary file. The type is `EventFile`, from `agent-x`. It throws when there is no such agent, or the event is refused.
 - `every(ms, work)`, which runs `work` every `ms` until the service stops. Runs never overlap, and a failure is logged. Poll with it, not with a timer of your own.
 
 The types come with the `agent-x` package. The file is TypeScript that Node runs by stripping its types, unchecked. So `enum`, `namespace` and constructor parameter properties are refused, and a relative import names its `.ts` file, such as `./signature.ts`. Check the types yourself with `tsc`.

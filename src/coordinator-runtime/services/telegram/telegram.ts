@@ -5,9 +5,7 @@
 // send as its bot.
 
 import { createHmac } from "node:crypto";
-import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename } from "node:path";
 import { withoutBlockTag } from "../../../agent-runtime/events/queue.js";
 import { type ApiRequest, type ApiResponse, type Route, sameText } from "../../api-server.js";
 import { Service, type ServiceContext } from "../../service.js";
@@ -74,12 +72,16 @@ const albumQuiet = 2000;
 // How long the service remembers an album's delivered parts, in ms, to drop one Telegram sends again.
 const albumMemory = 10 * 60_000;
 
+// A message's files, downloaded: each goes into the event's folder by its name, and one that could not be downloaded is said in `failures`.
+interface Download {
+	files: { name: string; content: Buffer }[];
+	failures: string[];
+}
+
 // An album on its way in.
 interface Album {
 	bot: Bot;
-	// A temporary folder of its own, with a folder in it for each part's files, removed once the album is delivered.
-	folder: string;
-	parts: { updateId: number | undefined; message: Message; download: Promise<{ files: string[]; failures: string[] }> }[];
+	parts: { updateId: number | undefined; message: Message; download: Promise<Download> }[];
 	timer?: NodeJS.Timeout;
 }
 
@@ -166,9 +168,8 @@ export class TelegramService extends Service {
 				return { status: 503, body: { error: "The message could not be delivered." } };
 			}
 		}
-		const folder = mkdtempSync(join(tmpdir(), "agentx-telegram-"));
 		try {
-			const { files, failures } = await this.download(bot, attached, folder);
+			const { files, failures } = await this.download(bot, attached);
 			const { from } = message;
 			const delivered = this.context.deliver(
 				bot.agent,
@@ -183,8 +184,6 @@ export class TelegramService extends Service {
 		} catch (error) {
 			console.error(`telegram: update ${update.update_id} for agent ${bot.agent} was not delivered, and Telegram sends it again: ${(error as Error).message}`);
 			return { status: 503, body: { error: "The message could not be delivered." } };
-		} finally {
-			rmSync(folder, { recursive: true, force: true });
 		}
 	}
 
@@ -206,12 +205,12 @@ export class TelegramService extends Service {
 		if (this.delivered.has(`${id}:${message.message_id}`)) return { status: 200, body: { ignored: "a part of an album delivered already" } };
 		let album = this.albums.get(id);
 		if (album === undefined) {
-			album = { bot, folder: mkdtempSync(join(tmpdir(), "agentx-telegram-")), parts: [] };
+			album = { bot, parts: [] };
 			this.albums.set(id, album);
 		}
 		// A part Telegram sends again, as when its answer was lost, is in already.
 		if (!album.parts.some((part) => part.message.message_id === message.message_id)) {
-			album.parts.push({ updateId, message, download: this.download(bot, attached, mkdtempSync(join(album.folder, "part-"))) });
+			album.parts.push({ updateId, message, download: this.download(bot, attached) });
 		}
 		clearTimeout(album.timer);
 		album.timer = setTimeout(() => void this.flush(id), albumQuiet);
@@ -233,18 +232,10 @@ export class TelegramService extends Service {
 		const order = album.parts.map((part, i) => ({ ...part, ...downloads[i] })).sort((a, b) => (a.message.message_id ?? 0) - (b.message.message_id ?? 0));
 		const [first] = order;
 		const { message } = first;
-		// Each part's files are in a folder of their own, so two may have the same name; the event refuses that, so the second gets its number first.
-		const files: string[] = [];
+		// Two parts may have files of the same name; the event refuses that, so the second gets its number first.
+		const files: Download["files"] = [];
 		for (const part of order) {
-			for (const file of part.files) {
-				const name = basename(file);
-				if (!files.some((other) => basename(other) === name)) files.push(file);
-				else {
-					const renamed = join(dirname(file), `${files.length + 1}-${name}`);
-					renameSync(file, renamed);
-					files.push(renamed);
-				}
-			}
+			for (const file of part.files) files.push(files.some((other) => other.name === file.name) ? { ...file, name: `${files.length + 1}-${file.name}` } : file);
 		}
 		const text = order.map((part) => part.message.caption ?? part.message.text ?? "");
 		const event = {
@@ -274,8 +265,6 @@ export class TelegramService extends Service {
 			}
 		} catch (error) {
 			console.error(`telegram: an album of ${order.length} messages from ${event.metadata.from} in chat ${message.chat.id}, for agent ${bot.agent}, was not delivered and is lost: ${(error as Error).message}`);
-		} finally {
-			rmSync(album.folder, { recursive: true, force: true });
 		}
 	}
 
@@ -310,10 +299,10 @@ export class TelegramService extends Service {
 		return { status: 200, body: { event: delivered } };
 	}
 
-	// Downloads the message's files into `folder`. One that cannot be, such as one over the Bot API's 20 MB, is said in `failures` instead, so the
-	// message still arrives and holds up none after it.
-	private async download(bot: Bot, ids: string[], folder: string): Promise<{ files: string[]; failures: string[] }> {
-		const files: string[] = [];
+	// Downloads the message's files. One that cannot be, such as one over the Bot API's 20 MB, is said in `failures` instead, so the message still
+	// arrives and holds up none after it.
+	private async download(bot: Bot, ids: string[]): Promise<Download> {
+		const files: Download["files"] = [];
 		const failures: string[] = [];
 		for (const id of ids) {
 			try {
@@ -322,9 +311,7 @@ export class TelegramService extends Service {
 				if (!response.ok) throw new Error(`Telegram answered ${response.status}.`);
 				// Named by Telegram, such as file_3.jpg, with its number first should two have the same name, so the event never refuses them.
 				const name = basename(path);
-				const file = join(folder, files.some((other) => basename(other) === name) ? `${files.length + 1}-${name}` : name);
-				writeFileSync(file, Buffer.from(await response.arrayBuffer()));
-				files.push(file);
+				files.push({ name: files.some((other) => other.name === name) ? `${files.length + 1}-${name}` : name, content: Buffer.from(await response.arrayBuffer()) });
 			} catch (error) {
 				failures.push(`A file of this message could not be downloaded: ${(error as Error).message}`);
 			}

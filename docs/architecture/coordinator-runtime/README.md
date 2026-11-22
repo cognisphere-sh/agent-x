@@ -69,7 +69,7 @@ Everything the coordinator does besides running the agents is a service ([D66](#
 
 A service declares its API in `routes`: each route's method, path below `/services/<name>/`, access and summary, and its handler ([the API server](#the-api-server)). They are served only while the service is on.
 
-The context gives a service its `config`, its own `secrets`, the `agents` the coordinator runs (each one's name, directory and central storage folder), the project's `publicUrl`, `stopping()`, true once a stop has begun, `deliver(agent, event, files)`, which puts an event into an agent's inbox with `deliverEvent` and `agentX-Service: <name>`, keyed by the service's own id for it, and `every(ms, work)`, which runs `work` every `ms` until the service stops ([D67](#d67)).
+The context gives a service its `config`, its own `secrets`, the `agents` the coordinator runs (each one's name, directory and central storage folder), the project's `publicUrl`, `stopping()`, true once a stop has begun, `deliver(agent, event, files)`, which puts an event into an agent's inbox with `deliverEvent` and `agentX-Service: <name>`, keyed by the service's own id for it, with its files, each a path or a name with its content, such as a download or a request's body, which goes straight into the event's folder, and `every(ms, work)`, which runs `work` every `ms` until the service stops ([D67](#d67)).
 
 | Service | Kind | What it does |
 |---|---|---|
@@ -105,7 +105,7 @@ Every route, the coordinator's and each service's, is a `Route` ([D69](#d69)):
 { method: "POST", path: "agents/:agent/stop", access: "private", summary: "Stops an agent once its running work is done.", handle: ({ params, headers, body }) => ({ status: 202, body: … }) }
 ```
 
-A segment that starts with `:` is a parameter. The handler gets the parameters, the headers and the body, up to 1 MB (413 over it), and answers a status and a JSON body; a throw answers 500. A path no route has is 404, and one with another method 405.
+A segment that starts with `:` is a parameter. The handler gets the parameters, the headers and the body, up to 1 MB (413 over it), and answers a status and a JSON body; a throw answers 500, and the log names the route by its pattern, never by its URL, which may hold a webhook's token. A path no route has is 404, and one with another method 405.
 
 **Who may call** ([D70](#d70)):
 
