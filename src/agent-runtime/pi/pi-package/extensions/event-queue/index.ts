@@ -43,6 +43,14 @@ export default function (pi: ExtensionAPI) {
 
 	// Tells whoever runs the session: in its UI when it has one, on the error output otherwise.
 	const say = (ctx: ExtensionContext, message: string) => (ctx.hasUI ? ctx.ui.notify(message, "error") : console.error(message));
+	// The last trouble said, so one that lasts is said once, not at every tick. Cleared when events go out.
+	let trouble: string | undefined;
+	const sayOnce = (ctx: ExtensionContext, message: string) => {
+		if (message !== trouble) say(ctx, message);
+		trouble = message;
+	};
+	const failed = (ctx: ExtensionContext, error: unknown) =>
+		sayOnce(ctx, `Queued events could not be taken, and the session tries again each second: ${error instanceof Error ? error.message : String(error)}`);
 
 	// A one-shot run (`-p`, `--mode json`) answers its own prompt and ends. Every other session stays open: a terminal, or RPC mode, in which agentx run starts Pi.
 	const oneShot = (ctx: ExtensionContext) => ctx.mode === "print" || ctx.mode === "json";
@@ -64,13 +72,20 @@ export default function (pi: ExtensionAPI) {
 	// Takes events off the queue and sends them as one user message: to join the run in progress (`steer`), or to start one.
 	// Pi does not tell an extension whether it accepted a send, so what happened shows later: the event gets a session entry, or it does not.
 	const deliver = async (ctx: ExtensionContext, steer: boolean) => {
+		// A person can still choose a model or log in, so in their session the events wait, not taken, and the session says why. In a worker's nobody
+		// does: its events are taken and fail, with the reason.
+		if (!steer && !isWorker() && queue?.hasWork(threadId)) {
+			const refusal = await cannotRun(ctx);
+			if (refusal !== undefined) return sayOnce(ctx, `Queued events wait until this session has a model to run them: ${refusal}`);
+		}
 		const batch = queue?.claim(threadId, steer) ?? [];
 		if (batch.length === 0) return;
 		sentAt = Date.now();
-		const refusal = steer ? undefined : await cannotRun(ctx);
-		if (refusal !== undefined) queue?.fail(threadId, refusal);
+		const refusal = steer || !isWorker() ? undefined : await cannotRun(ctx);
+		if (refusal !== undefined) return queue?.fail(threadId, refusal);
 		// "steer" joins a run in progress and starts one when Pi is idle.
-		else pi.sendUserMessage(render(batch, timeZone), { deliverAs: "steer" });
+		pi.sendUserMessage(render(batch, timeZone), { deliverAs: "steer" });
+		trouble = undefined;
 	};
 
 	// Two processes writing one session split the conversation in two, so a session that does not hold its thread takes no input.
@@ -123,10 +138,11 @@ export default function (pi: ExtensionAPI) {
 				ctx.shutdown();
 				return;
 			}
-			// Outside an event handler nothing reports a failure, such as a queue file that stayed locked; the next tick tries again.
-			deliver(ctx, false).catch(() => {});
-		} catch {
+			// Outside an event handler nothing else reports a failure, such as a queue file that stayed locked; the next tick tries again.
+			deliver(ctx, false).catch((error: unknown) => failed(ctx, error));
+		} catch (error) {
 			// The same, for the steps above.
+			failed(ctx, error);
 		}
 	};
 

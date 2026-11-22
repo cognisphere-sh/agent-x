@@ -347,6 +347,32 @@ test("aborting a run cancels the event it was working on and leaves a waiting on
 	child.stdin.end();
 });
 
+test("in a session a person keeps open, without a usable model the queued events wait, not taken, and the session says why once", async (t) => {
+	const { project, queue, event, start, reach } = setup(t);
+	const models = join(project.agent, "..", "..", ".pi", "models.json");
+	const saved = readFileSync(models, "utf8");
+	rmSync(models);
+	const child = open(project, ["chat", "--mode", "rpc"], t);
+	let output = "";
+	for (const stream of [child.stdout, child.stderr]) stream.on("data", (chunk) => (output += chunk));
+	await until(() => queue.heldElsewhere("main"));
+	const id = queue.enqueue({ threadId: "main", content: "waits for a model" });
+	const notice = "Queued events wait until this session has a model to run them: No model selected.";
+	await until(() => output.includes(notice));
+	// A few more ticks: the event is still not taken, and the notice is not said again.
+	await sleep(2500);
+	assert.deepEqual([event(id).status, event(id).attempts], ["queued", 0]);
+	assert.equal(output.split(notice).length - 1, 1);
+
+	// The person leaves, and with a model the event runs.
+	const exited = new Promise((resolve) => child.on("exit", resolve));
+	child.stdin.end();
+	await exited;
+	writeFileSync(models, saved);
+	start();
+	await reach("done", id);
+});
+
 test("without a usable model an event fails at once, with the reason", async (t) => {
 	const { project, queue, event, start, reach } = setup(t);
 	rmSync(join(project.agent, "..", "..", ".pi", "models.json"));

@@ -23,7 +23,8 @@ How this fits Pi ([Pi](../../pi-reference/README.md#delivering-messages)):
 
 - Pi has no event for "an event arrived" while idle, so the extension polls.
 - A one-shot run takes nothing from the queue ([D28](#d28)), nor does a session that is not saved (`--no-session`).
-- Pi does not say whether it took a message. So before a run, the extension checks that Pi has a model and a login, and fails the events with the reason if not. An event still in flight a minute after Pi went idle gets another attempt.
+- Pi does not say whether it took a message. So before a run, the extension checks that Pi has a model and a login. If not, a worker's events fail with the reason; in a person's session they wait, not taken, and the session says why once, since the person can still choose a model or log in. An event still in flight a minute after Pi went idle gets another attempt.
+- What goes wrong while the session is idle, such as a queue file that stays locked, is said once, in the session's UI or on its error output, which `agentx run` logs; the session tries again each second.
 - A session Pi picked itself (`-c`, `-r`, `/resume`) can lack the lease when another process runs that thread. The extension says so, and writes nothing to the session.
 
 ### Workers
