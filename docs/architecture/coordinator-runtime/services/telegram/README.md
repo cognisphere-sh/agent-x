@@ -44,6 +44,7 @@ Messages come in without Composio, so a failure here leaves the service on, with
    - content: the message's text or caption, then a line for each file that could not be downloaded, and the files line;
    - metadata `source: telegram`, `chat` (its id), `chat-type`, `from` (`@username`, or the sender's name), `from-id` and `message-id`, with the fact `agentX-Service: telegram`;
    - for a reply, also `reply-to`, the id of the message it answers, and `reply-to-bot`, whether that message is the bot's: the bot's user id is the part of its token before the colon. A router can then send answers to the agent and leave people's talk among themselves elsewhere.
+   - in a topic, of a forum supergroup or of a private chat with the bot, also `topic`, the topic's id (`message_thread_id`), so the agent answers there and a router can give each topic a thread. Only a message with `is_topic_message` has one, as `message_thread_id` may name a reply thread instead, and a message in a forum's General topic has none. A topic's message may name the topic's first message, the one that says the topic was made, as the one it answers; that is no reply, so it has no `reply-to`.
 5. **Answers** 200 with the event's id once it is in the inbox, and 503 when it cannot be written, so Telegram sends it again.
 
 ## Albums
@@ -66,7 +67,7 @@ The agent asks a question with fixed answers on inline buttons, which it sends w
 3. **Delivers** it as a message: key `telegram:<update_id>`, content the button's text, metadata as a message's with `button`, the button's `callback_data`, and `message-id` the message the button is on. 503 when it cannot be written.
 4. **Takes the buttons off** the message, so each question is answered once, and adds `✅ <from>: <button>` under its text, keeping its formatting, so the chat shows the choice. A message without text, such as a photo, or one too long to add to, only loses its buttons; when that fails too, a log line says the question can be answered again.
 
-The harness prompt tells the agent that an event with `agentX-Service: telegram` is from Telegram, and to read the harness's `telegram` skill, which says it is a person's message or tap, to answer in its `chat` with Composio's Telegram tools, and to put the answers to a question with fixed answers on inline buttons.
+The harness prompt tells the agent that an event with `agentX-Service: telegram` is from Telegram, and to read the harness's `telegram` skill, which says it is a person's message or tap, to answer in its `chat` with Composio's Telegram tools, in its `topic` as a reply to its `message-id`, and to put the answers to a question with fixed answers on inline buttons.
 
 ## Known limits
 
@@ -80,6 +81,7 @@ The harness prompt tells the agent that an event with `agentX-Service: telegram`
 - Until sandboxes, an agent can read `COMPOSIO_COORDINATOR_API_KEY` as it reads any file of its OS user, and with it change any agent's Composio accounts.
 - Answers depend on Composio: without the agents' `COMPOSIO_API_KEY`, or when the bot could not be connected, the agent gets the message but cannot answer in Telegram.
 - A bot that fails to connect in Composio is tried again only at the next start of `agentx serve`.
+- Composio's Telegram tools take no topic, so the agent answers in a topic only by replying to a message there, and cannot start a message in one.
 - Every inline button answers once: the service takes a message's buttons off at the first tap, so buttons that stay, such as a menu, are not possible. Two taps at the same moment, before the buttons are off, are two events.
 
 ## Decisions

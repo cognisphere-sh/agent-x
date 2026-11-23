@@ -764,6 +764,17 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	assert.deepEqual([toPerson.metadata["reply-to"], toPerson.metadata["reply-to-bot"]], [4, false]);
 	assert.equal("reply-to" in got.metadata, false);
 
+	// A message in a forum topic says its topic, and is no reply to the topic's first message, which Telegram gives as the one it answers.
+	// A message_thread_id without is_topic_message, as of a reply thread, is no topic.
+	const inTopic = { message_thread_id: 42, is_topic_message: true, chat: { id: 111, type: "supergroup" } };
+	assert.equal(await post("main", { update_id: 9, message: message(111, { text: "in a topic", ...inTopic, reply_to_message: { message_id: 42, from: { id: 6 }, forum_topic_created: { name: "Orders" } } }) }), 200);
+	assert.equal(await post("main", { update_id: 10, message: message(111, { text: "a reply in a group", chat: { id: 111, type: "supergroup" }, message_thread_id: 4, reply_to_message: { message_id: 4, from: { id: 6 } } }) }), 200);
+	const topicMessage = await until(() => events(project.agent).find((found) => found.content === "in a topic"));
+	assert.deepEqual([topicMessage.metadata.topic, "reply-to" in topicMessage.metadata], [42, false]);
+	const groupReply = await until(() => events(project.agent).find((found) => found.content === "a reply in a group"));
+	assert.deepEqual(["topic" in groupReply.metadata, groupReply.metadata["reply-to"]], [false, 4]);
+	assert.equal("topic" in got.metadata, false);
+
 	// Without the bot's secret token: 401. From a chat main does not list: 200, and no event. An agent without a bot: 404.
 	assert.equal(await post("main", { update_id: 3, message: message(111, { text: "forged" }) }, "a-guess"), 401);
 	assert.equal(await post("main", { update_id: 4, message: message(222, { text: "a stranger" }) }), 200);
@@ -772,7 +783,7 @@ test("Telegram: each listed agent's bot gets its webhook at start, and a message
 	assert.equal(await post("main", { update_id: 6, message: message(111, { pinned_message: { message_id: 7 } }) }), 200);
 	assert.match(server.output(), /telegram: a message to agent main from chat 222, which it does not list, is dropped\./);
 	await sleep(1500);
-	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one", "the foil pan", "me too"]);
+	assert.deepEqual(events(project.agent).filter((found) => found.metadata.source === "telegram").map((found) => found.content.split("\n")[0]), ["look", "a big one", "the foil pan", "me too", "in a topic", "a reply in a group"]);
 });
 
 test("Telegram: an album, which comes as one message per photo, goes into the inbox as one event once no part has come for a while; a part sent again is not a second photo, a late part still arrives, and an album on its way in at a stop is delivered", async (t) => {
@@ -786,12 +797,14 @@ test("Telegram: an album, which comes as one message per photo, goes into the in
 	const albums = (group) => events(project.agent).filter((found) => found.metadata.album === group);
 
 	// Three parts, answered at once, the caption on the second, the reply on the first; the first sent again; the third the same file as the first.
-	const first = part(10, 20, "g1", "front", { reply_to_message: { message_id: 3, from: { id: 1, is_bot: true } } });
-	for (const update of [first, part(11, 21, "g1", "back", { caption: "SKU-1" }), first, part(12, 22, "g1", "front")]) assert.equal(await post(update), 200);
+	// The album is in a forum topic.
+	const inTopic = { message_thread_id: 30, is_topic_message: true };
+	const first = part(10, 20, "g1", "front", { ...inTopic, reply_to_message: { message_id: 3, from: { id: 1, is_bot: true } } });
+	for (const update of [first, part(11, 21, "g1", "back", { ...inTopic, caption: "SKU-1" }), first, part(12, 22, "g1", "front", inTopic)]) assert.equal(await post(update), 200);
 	const album = await until(() => albums("g1")[0]);
 	assert.equal(album.content, "SKU-1\n\nFiles: `front.jpg`, `back.jpg`, `3-front.jpg`");
-	const { from, "message-id": messageId, "reply-to": replyTo, "reply-to-bot": toBot, "agentX-Service": service } = album.metadata;
-	assert.deepEqual([from, messageId, replyTo, toBot, service], ["@ana", 20, 3, true, "telegram"]);
+	const { from, "message-id": messageId, topic, "reply-to": replyTo, "reply-to-bot": toBot, "agentX-Service": service } = album.metadata;
+	assert.deepEqual([from, messageId, topic, replyTo, toBot, service], ["@ana", 20, 30, 3, true, "telegram"]);
 	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "inbox", album.id, "back.jpg"), "utf8"), "the bytes of photos/back.jpg");
 	// A part that comes after the album went in is an event of its own, not lost; the first part sent again then is the album's event again.
 	assert.equal(await post(part(13, 23, "g1", "side")), 200);
@@ -821,11 +834,12 @@ test("Telegram: a tap on an inline button goes into the agent's inbox as the but
 	const tap = (id, message) => ({ update_id: id, callback_query: { id: `tap-${id}`, from: { id: 5, username: "ana" }, data: "outlook", message: { message_id: 9, date: 1, chat: { id: 111, type: "private" }, reply_markup: keyboard, ...message } } });
 	const calls = (method) => telegram.calls.filter((call) => call.method === method).map((call) => call.params);
 
-	assert.equal(await post(tap(1, { text: "Which mail?", entities: [{ type: "bold", offset: 0, length: 5 }] })), 200);
+	// The question is in a forum topic: the tap says it.
+	assert.equal(await post(tap(1, { text: "Which mail?", entities: [{ type: "bold", offset: 0, length: 5 }], message_thread_id: 12, is_topic_message: true })), 200);
 	const got = await until(() => events(project.agent).find((found) => found.metadata.source === "telegram"));
 	assert.equal(got.content, "Outlook");
-	const { chat, from, "from-id": fromId, "message-id": messageId, button } = got.metadata;
-	assert.deepEqual([chat, from, fromId, messageId, button], [111, "@ana", 5, 9, "outlook"]);
+	const { chat, from, "from-id": fromId, "message-id": messageId, topic, button } = got.metadata;
+	assert.deepEqual([chat, from, fromId, messageId, topic, button], [111, "@ana", 5, 9, 12, "outlook"]);
 	assert.deepEqual(calls("editMessageText"), [{ chat_id: 111, message_id: 9, reply_markup: { inline_keyboard: [] }, text: "Which mail?\n\n✅ @ana: Outlook", entities: [{ type: "bold", offset: 0, length: 5 }] }]);
 
 	// A photo has no text to add to: it only loses its buttons. A tap from a chat main does not list, or on a message Telegram no longer gives: no event.

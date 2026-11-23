@@ -50,7 +50,11 @@ interface Message {
 	photo?: { file_id: string }[];
 	// The album the message is a part of: each of an album's photos and files comes as a message of its own, with the same media_group_id.
 	media_group_id?: string;
-	reply_to_message?: { message_id?: number; from?: User };
+	// In a topic, Telegram may give the topic's first message here, the one that says the topic was made, which is no reply.
+	reply_to_message?: { message_id?: number; from?: User; forum_topic_created?: unknown };
+	// A reply thread or a forum topic; only is_topic_message says it is a topic.
+	message_thread_id?: number;
+	is_topic_message?: boolean;
 	reply_markup?: { inline_keyboard?: { text: string; callback_data?: string }[][] };
 	[kind: string]: unknown;
 }
@@ -176,7 +180,7 @@ export class TelegramService extends Service {
 				{
 					key: `telegram:${update.update_id}`,
 					content: withoutBlockTag([message.text ?? message.caption ?? "", ...failures].filter(Boolean).join("\n\n")),
-					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(senderName(from)), "from-id": from?.id, "message-id": message.message_id, ...replyTo(bot, message) },
+					metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(senderName(from)), "from-id": from?.id, "message-id": message.message_id, ...topic(message), ...replyTo(bot, message) },
 				},
 				files,
 			);
@@ -249,6 +253,7 @@ export class TelegramService extends Service {
 				"from-id": message.from?.id,
 				"message-id": message.message_id,
 				album: message.media_group_id,
+				...topic(message),
 				...(order.map((part) => replyTo(bot, part.message)).find((reply) => "reply-to" in reply) ?? {}),
 			},
 		};
@@ -283,7 +288,7 @@ export class TelegramService extends Service {
 			delivered = this.context.deliver(bot.agent, {
 				key: `telegram:${updateId}`,
 				content: withoutBlockTag(choice),
-				metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(sender), "from-id": tap.from.id, "message-id": message.message_id, button: withoutBlockTag(tap.data ?? "") },
+				metadata: { source: "telegram", chat: message.chat.id, "chat-type": message.chat.type, from: withoutBlockTag(sender), "from-id": tap.from.id, "message-id": message.message_id, ...topic(message), button: withoutBlockTag(tap.data ?? "") },
 			});
 		} catch (error) {
 			console.error(`telegram: update ${updateId} for agent ${bot.agent} was not delivered, and Telegram sends it again: ${(error as Error).message}`);
@@ -344,8 +349,13 @@ function listed(bot: Bot, message: Message, what: "message" | "tap"): boolean {
 // The message a reply answers, and whether it is the bot's, so a router can send answers to the agent and leave people's talk among themselves.
 function replyTo(bot: Bot, message: Message): Record<string, number | boolean> {
 	const replied = message.reply_to_message;
-	if (replied?.message_id === undefined) return {};
+	if (replied?.message_id === undefined || replied.forum_topic_created !== undefined) return {};
 	return { "reply-to": replied.message_id, "reply-to-bot": String(replied.from?.id) === bot.id };
+}
+
+// The forum topic the message is in, so the agent can answer there and a router can give each topic a thread. A message in a forum's General topic has none.
+function topic(message: Message): Record<string, number> {
+	return message.is_topic_message === true && message.message_thread_id !== undefined ? { topic: message.message_thread_id } : {};
 }
 
 // How the event names a sender: `@username`, or the name.
