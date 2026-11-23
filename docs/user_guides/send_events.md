@@ -8,7 +8,7 @@ Besides typing to an agent, you can give it **events** and let it work through t
 agentx run
 ```
 
-`agentx run` keeps the agent running until you stop it. It takes each event from the agent's inbox, oldest first, lets the **routers** pick a thread for one without a thread, starts a Pi session for each thread with events, and runs **workflows**, scripts that handle events without the model.
+`agentx run` keeps the agent running until you stop it. It takes each event from the agent's inbox, oldest first, lets the **router** pick a thread for one without a thread, starts a Pi session for each thread with events, and runs **workflows**, scripts that handle events without the model.
 
 The first Ctrl-C lets running work finish; a second stops it now. Events that arrive meanwhile wait for the next start.
 
@@ -26,7 +26,7 @@ The event goes straight into the agent's inbox. It needs no `agentx serve`.
 
 | Option | Effect |
 |---|---|
-| `--thread-id <id>` | The thread. Without it, the routers pick one. `workflow.<name>` runs that workflow, and `pass` drops the event. |
+| `--thread-id <id>` | The thread. Without it, the router picks one. `workflow.<name>` runs that workflow, and `pass` drops the event. |
 | `--agent <name>` | Another agent of the project. |
 | `--key <key>` | Delivering again with the same key adds nothing. |
 | `--do-not-steer` | If the thread is busy, wait for its next run instead of joining this one. |
@@ -42,16 +42,16 @@ A thread is one conversation, kept as a folder of Pi sessions. Threads run side 
 
 ## Routing
 
-An event without a thread goes to the routers: first the agent's own, `storage/knowledge/event_router.ts`, then yours, `.pi/event_router.ts`. A new agent has yours, which sends every event to `main`; change it or delete it. When no router picks a thread, the event goes to `main`. The thread `pass` drops an event: it stays on the queue as `passed`, and nothing runs it.
+An event without a thread goes to the agent's router, `.pi/knowledge/router/event_router.ts`, which you and the agent both edit. A new agent has one that sends every event to `main`; change it or delete it. When there is no router, or it picks no thread, the event goes to `main`. The thread `pass` drops an event: it stays on the queue as `passed`, and nothing runs it.
 
 ```ts
-// .pi/event_router.ts
+// .pi/knowledge/router/event_router.ts
 import type { Router } from "agent-x";
 
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }. ctx: { workflows: [{ name, description }] }.
 	if (event.metadata.source === "composio") return { thread: "inbox" };
-	// Nothing: the next router decides, or main.
+	// Nothing: main.
 };
 
 export default route;
@@ -61,19 +61,19 @@ A router returns a thread, `workflow.<name>`, `pass`, or nothing. One that throw
 
 ## Workflows
 
-A workflow handles an event with a script instead of the model. List it in `.pi/workflows.json` (yours) or `storage/knowledge/workflows.json` (the agent's):
+A workflow handles an event with a script instead of the model. List it in `.pi/knowledge/workflows/workflows.json`, with its script in the same folder:
 
 ```json
 {
 	"file-invoice": {
 		"description": "Files an invoice email. For events from the billing mailbox.",
-		"script": "workflows/file-invoice.ts"
+		"script": "file-invoice.ts"
 	}
 }
 ```
 
 ```ts
-// .pi/workflows/file-invoice.ts
+// .pi/knowledge/workflows/file-invoice.ts
 import type { Workflow } from "agent-x";
 
 const run: Workflow = async (event, ctx) => {

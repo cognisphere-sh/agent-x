@@ -1,13 +1,13 @@
 ---
 name: schedules
-description: How to make yourself act at set times with schedules, cron patterns that send you events, and how to poll a service on a schedule to learn what is new in it. Use it before you write or change storage/knowledge/schedules.json, or stop one of your developer's schedules.
+description: How to make yourself act at set times with schedules, cron patterns that send you events, and how to poll a service on a schedule to learn what is new in it. Use it before you write or change .pi/knowledge/schedules/schedules.json.
 metadata:
-  version: 1
+  version: 2
 ---
 
 # Schedules
 
-A schedule sends you an event at the times a cron pattern names. Schedules are listed by name in `.pi/schedules.json`, your developer's (**read-only**), and in `storage/knowledge/schedules.json`, yours. On a name in both, yours is used: to change one of your developer's, copy its entry into yours and edit it, and to stop one, copy it with `"isActive": false`:
+A schedule sends you an event at the times a cron pattern names. Schedules are listed by name in `.pi/knowledge/schedules/schedules.json`. You and your developer own every entry alike: change or pause one in place, whoever wrote it.
 
 ```json
 {
@@ -16,7 +16,7 @@ A schedule sends you an event at the times a cron pattern names. Schedules are l
 }
 ```
 
-`cron` has five fields (minute, hour, day of month, month, day of week), or six with seconds first, in your time zone. `content` is the event's text; a schedule that runs a workflow may leave it out and give the workflow its parameters in `metadata`. Optional: `threadId` (a thread of yours or `workflow.<name>`; without it, the routers pick), `metadata`, `isSilent`, `isActive` (`false` pauses it), `fireOnce` (fires at the next match, then never again), and `catchUp` (`true` sends one late event for fires missed while the harness was down; otherwise they are skipped). Schedules fire only while the project runs under `agentx serve`. A change to the file applies within a second, and a changed entry counts from the time of the change. Its events have `agentX-Schedule: <name>`.
+`cron` has five fields (minute, hour, day of month, month, day of week), or six with seconds first, in your time zone. `content` is the event's text; a schedule that runs a workflow may leave it out and give the workflow its parameters in `metadata`. Optional: `threadId` (a thread of yours or `workflow.<name>`; without it, your router picks), `metadata`, `isSilent`, `isActive` (`false` pauses it), `fireOnce` (fires at the next match, then never again), and `catchUp` (`true` sends one late event for fires missed while the harness was down; otherwise they are skipped). Schedules fire only while the project runs under `agentx serve`. A change to the file applies within a second, and a changed entry counts from the time of the change. Its events have `agentX-Schedule: <name>`.
 
 ## Polling a service
 

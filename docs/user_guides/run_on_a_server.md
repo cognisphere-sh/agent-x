@@ -41,7 +41,9 @@ Every interruption costs the events in flight an attempt; an event fails after t
 
 ## Agents' state
 
-Every agent's state, its sessions, queue, mailboxes and what it learned, is in `agent-x/storage/`, a folder per agent. Keep that folder across deploys, for example as a persistent volume, and back it up; everything else comes from git. `agentx serve` makes each agent's `storage` link when it is missing.
+Every agent's state, its sessions, queue, mailboxes and working files, is in `agent-x/storage/`, a folder per agent. Keep that folder across deploys, for example as a persistent volume, and back it up; everything else comes from git. `agentx serve` makes each agent's `storage` link when it is missing.
+
+What an agent learns goes into its `.pi/knowledge/`, which is checked in ([customize an agent](customize_an_agent.md#what-the-agent-learns)). On a server, commit and push what the agent wrote there before a deploy replaces the checkout, or it is lost.
 
 ## Keys
 
@@ -57,7 +59,7 @@ An agent can get an event each time one of its Composio triggers fires, such as 
 2. Copy the webhook's signing secret into `agent-x/.env`: `COMPOSIO_WEBHOOK_SECRET=...`, and start `agentx serve` again. Without it, `agentx serve` logs `Service "composio" is off`.
 3. Make triggers for the agent's user id, `agentx.composio.userId` in its `.pi/settings.json`, with Composio's CLI (`composio dev triggers create`) or API, on an account the agent has connected.
 
-Each event reaches the agent's routers with `source: composio`, the trigger's slug in `trigger`, and the event's data in the file `data.json`; route it as any event ([send events](send_events.md)). An event Composio sends again is added once.
+Each event reaches the agent's router with `source: composio`, the trigger's slug in `trigger`, and the event's data in the file `data.json`; route it as any event ([send events](send_events.md)). An event Composio sends again is added once.
 
 Use one Composio project per environment: a project has one webhook URL. On a laptop, forward events with Composio's CLI, logged in to the agents' Composio project: `COMPOSIO_WEBHOOK_SECRET=<its value> composio dev triggers listen --forward http://localhost:3100/services/composio/webhook`; or use a tunnel, such as cloudflared or ngrok, with a Composio project of your own.
 
@@ -77,7 +79,7 @@ An agent can have a Telegram bot: people in the chats you list write to it, and 
 3. Forward `/services/telegram/` from the internet to `agentx serve`, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
 4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY`, each in its `.env` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
 
-Each message reaches the agent's routers with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder. When the agent asks a question with buttons, a tap reaches it the same way, with the button's text as content and the button in `button`, and the buttons leave the question with the choice written under it.
+Each message reaches the agent's router with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder. When the agent asks a question with buttons, a tap reaches it the same way, with the button's text as content and the button in `button`, and the buttons leave the question with the choice written under it.
 
 ## Webhooks
 

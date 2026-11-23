@@ -256,7 +256,7 @@ test("an agentx run that is killed takes its sessions with it, and their events 
 
 test("an agent that cannot start fails its events after three attempts, with what Pi said", async (t) => {
 	const { project, queue, event, start, reach } = setup(t);
-	writeFileSync(join(project.agent, ".pi", "extensions", "broken.ts"), `throw new Error("broken on purpose");`);
+	writeFileSync(join(project.agent, ".pi", "knowledge", "extensions", "broken.ts"), `throw new Error("broken on purpose");`);
 	const id = queue.enqueue({ threadId: "main", content: "never runs" });
 	const server = start();
 	await reach("failed", id);
@@ -272,7 +272,7 @@ test("an extension's dialog is answered as cancelled, because nobody is there, a
 	const { project, queue, start, reach } = setup(t);
 	// A gate that asks before every shell command and blocks it unless the answer is yes.
 	writeFileSync(
-		join(project.agent, ".pi", "extensions", "gate.ts"),
+		join(project.agent, ".pi", "knowledge", "extensions", "gate.ts"),
 		`export default function (pi) {
 			pi.on("tool_call", async (event, ctx) => {
 				if (event.toolName === "bash" && !(await ctx.ui.confirm("Run it?", event.input.command))) return { block: true, reason: "Not confirmed." };
@@ -307,7 +307,7 @@ test("an event that arrives while a thread's session is closing waits for it and
 	const { project, queue, event, start, reach } = setup(t);
 	// An extension of the agent that is slow to shut down keeps the session closing after the queue extension gave the thread up.
 	writeFileSync(
-		join(project.agent, ".pi", "extensions", "slow-shutdown.ts"),
+		join(project.agent, ".pi", "knowledge", "extensions", "slow-shutdown.ts"),
 		`export default function (pi) { pi.on("session_shutdown", () => new Promise((resolve) => setTimeout(resolve, 2500))); }`,
 	);
 	const first = queue.enqueue({ threadId: "main", content: "first" });
@@ -387,7 +387,7 @@ test("without a usable model an event fails at once, with the reason", async (t)
 test("a send that an extension of the agent gets refused during a run leaves the run's queued events alone", async (t) => {
 	const { project, queue, event, start, reach } = setup(t);
 	// Without deliverAs, Pi refuses a send during a run and reports it to the host, as it does for a queue message it does not take.
-	writeFileSync(join(project.agent, ".pi", "extensions", "noisy.ts"), `export default function (pi) { pi.on("tool_execution_start", () => pi.sendUserMessage("x")); }`);
+	writeFileSync(join(project.agent, ".pi", "knowledge", "extensions", "noisy.ts"), `export default function (pi) { pi.on("tool_execution_start", () => pi.sendUserMessage("x")); }`);
 	const id = queue.enqueue({ threadId: "main", content: "[sleep 1] with a noisy extension" });
 	const server = start();
 	await reach("done", id);
@@ -399,7 +399,7 @@ test("agentx run ends a worker that stops renewing its lease, and the thread's e
 	const { project, queue, event, start, reach } = setup(t);
 	// An extension that blocks Pi's main thread for good, once: while the file is there.
 	writeFileSync(join(project.agent, "hang"), "");
-	writeFileSync(join(project.agent, ".pi", "extensions", "hang.ts"), `import { existsSync, rmSync } from "node:fs"; export default function (pi) { pi.on("turn_start", () => { if (!existsSync("hang")) return; rmSync("hang"); for (;;); }); }`);
+	writeFileSync(join(project.agent, ".pi", "knowledge", "extensions", "hang.ts"), `import { existsSync, rmSync } from "node:fs"; export default function (pi) { pi.on("turn_start", () => { if (!existsSync("hang")) return; rmSync("hang"); for (;;); }); }`);
 	const id = queue.enqueue({ threadId: "main", content: "blocked" });
 	const server = start();
 	await until(() => !existsSync(join(project.agent, "hang")));
@@ -631,7 +631,7 @@ test("remove-agent deletes an agent's folder, its state and its entry, and takes
 	assert.match((await agentx({ agent: join(root, "agent-x"), env: project.env }, ["remove-agent", "b", "--yes"])).stdout, /^Removed agent "b"/);
 	assert.equal(existsSync(b), false);
 	// The other agent and its state are untouched.
-	assert.ok(existsSync(join(project.agent, "storage", "knowledge")));
+	assert.ok(existsSync(join(project.agent, "storage", "workspace")));
 });
 
 test("an agent's state is in agent-x/storage/<agent>, which its storage/ links to; a missing link is made again, and a storage folder of its own is used as it is", async () => {
@@ -640,22 +640,18 @@ test("an agent's state is in agent-x/storage/<agent>, which its storage/ links t
 	const link = join(project.agent, "storage");
 	const central = join(root, "agent-x", "storage", "main");
 	assert.equal(readlinkSync(link), join("..", "..", "storage", "main"));
-	assert.deepEqual(readdirSync(join(central, "knowledge")).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
-	// Empty lists of workflows and schedules, the developer's and the agent's.
-	const lists = [join(central, "knowledge"), join(project.agent, ".pi")].flatMap((dir) => ["workflows.json", "schedules.json"].map((file) => JSON.parse(readFileSync(join(dir, file), "utf8"))));
-	assert.deepEqual(lists, [{}, {}, {}, {}]);
-	// And a folder next to each workflows.json for its scripts.
-	assert.deepEqual([join(central, "knowledge", "workflows"), join(project.agent, ".pi", "workflows")].map((dir) => existsSync(dir)), [true, true]);
+	// Only state: what the agent keeps for later is in its .pi/knowledge/.
+	assert.deepEqual(readdirSync(central), ["workspace"]);
 	// git sees the link as a file, so the pattern for it has no trailing slash.
 	const ignored = spawnSync("git", ["check-ignore", "agent-x/storage/main/heartbeat", "agent-x/agents/main/storage"], { cwd: root, encoding: "utf8" });
 	assert.deepEqual(ignored.stdout.trim().split("\n"), ["agent-x/storage/main/heartbeat", "agent-x/agents/main/storage"]);
 
 	// Only the link gone: it is made again, and the folder's files stay.
-	writeFileSync(join(central, "knowledge", "schedules.json"), '{"kept": {"cron": "0 9 * * *", "content": "kept"}}');
+	writeFileSync(join(central, "workspace", "kept"), "kept");
 	unlinkSync(link);
 	assert.equal((await agentx(project, ["event", "deliver", "--silent", "hello"])).status, 0);
 	assert.ok(lstatSync(link).isSymbolicLink());
-	assert.match(readFileSync(join(link, "knowledge", "schedules.json"), "utf8"), /kept/);
+	assert.equal(readFileSync(join(link, "workspace", "kept"), "utf8"), "kept");
 
 	// Neither is checked in, so a fresh clone has neither: agentx chat makes both, and the session lands in the central folder.
 	unlinkSync(link);
@@ -676,22 +672,26 @@ test("an agent's state is in agent-x/storage/<agent>, which its storage/ links t
 	assert.equal(readdirSync(join(link, "workspace", "outbox", ".pending")).length, 1);
 });
 
-test("a new agent has a knowledge folder of its own, and Pi loads the skills and prompt text the agent writes there, but no extension", async (t) => {
+test("a new agent's knowledge is in its checked-in .pi/knowledge/, a folder for each kind, and Pi loads the prompt text, skills and extensions there", async (t) => {
 	const { project } = setup(t);
-	const knowledge = join(project.agent, "storage", "knowledge");
-	assert.deepEqual(readdirSync(knowledge).sort(), ["schedules.json", "skills", "system_prompt", "workflows", "workflows.json"]);
-	// Its settings load its skills and prompt text, no extensions of its own, name no time zone, give it a Composio user id beside the template's toolkits, and
+	const knowledge = join(project.agent, ".pi", "knowledge");
+	assert.deepEqual(readdirSync(knowledge).sort(), ["extensions", "router", "schedules", "skills", "system_prompt", "webhooks", "workflows"]);
+	// Empty lists of workflows, schedules and webhooks, each in its folder.
+	assert.deepEqual(["workflows", "schedules", "webhooks"].map((kind) => JSON.parse(readFileSync(join(knowledge, kind, `${kind}.json`), "utf8"))), [{}, {}, {}]);
+	// git ignores none of it, so the knowledge is checked in with the project.
+	assert.equal(spawnSync("git", ["check-ignore", "agent-x/agents/main/.pi/knowledge/webhooks/webhooks.json"], { cwd: projectRoot(project) }).status, 1);
+	// Its settings load its knowledge's skills, extensions and prompt text, name no time zone, give it a Composio user id beside the template's toolkits, and
 	// list the runner's and memory's settings at their defaults.
 	const settings = JSON.parse(readFileSync(join(project.agent, ".pi", "settings.json"), "utf8"));
 	const toolkits = { enable: ["gmail", "googlecalendar", "googledrive", "googlesheets", "googledocs", "supabase", "hubspot", "telegram"] };
 	assert.deepEqual(
 		[settings.extensions, settings.skills, settings.agentx],
 		[
-			[],
-			["../storage/knowledge/skills"],
+			["knowledge/extensions"],
+			["knowledge/skills"],
 			{
 				timezone: null,
-				systemPrompt: ["../storage/knowledge/system_prompt"],
+				systemPrompt: ["knowledge/system_prompt"],
 				runner: { maxThreads: 4, stallSeconds: 600, routerSeconds: 60 },
 				composio: { userId: "main@project", session: { toolkits } },
 				memory: { compaction: { enabled: true, foldNudgeEvery: 0.1 } },
@@ -699,20 +699,17 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 		],
 	);
 
-	// What an agent can write for itself: a skill and a note for its system prompt. An extension it puts in its knowledge is not loaded.
+	// What the agent or its developer writes there: a skill, an extension, and notes for the system prompt after the template's role, in the order of the index before each name.
 	mkdirSync(join(knowledge, "skills", "greet"));
 	writeFileSync(join(knowledge, "skills", "greet", "SKILL.md"), "---\nname: greet\ndescription: How to greet people. Use it when greeting.\n---\n\nSay hello.\n");
-	mkdirSync(join(knowledge, "extensions"));
 	writeFileSync(join(knowledge, "extensions", "marker.ts"), `import { writeFileSync } from "node:fs";\nexport default function (pi) { pi.on("session_start", (_event, ctx) => writeFileSync(ctx.cwd + "/storage/marker", "")); }`);
-	writeFileSync(join(knowledge, "system_prompt", "learned.md"), "LEARNED: the build runs with pnpm.");
-	// And what its developer adds, which comes first, in the order of the index before each name.
-	writeFileSync(join(project.agent, ".pi", "system_prompt", "10-rules.md"), "DEVELOPER: answer briefly.");
-	writeFileSync(join(project.agent, ".pi", "system_prompt", "9-first.md"), "DEVELOPER: first.");
+	writeFileSync(join(knowledge, "system_prompt", "10-rules.md"), "RULES: answer briefly.");
+	writeFileSync(join(knowledge, "system_prompt", "9-learned.md"), "LEARNED: the build runs with pnpm.");
 
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
-	assert.ok(!existsSync(join(project.agent, "storage", "marker")), "the extension was not loaded");
-	// The harness's preamble and Pi's list of skills, then a section per file, by index, each named for its file without the index: the harness's, the developer's, then the agent's own.
+	assert.ok(existsSync(join(project.agent, "storage", "marker")), "the extension was loaded");
+	// The harness's preamble and Pi's list of skills, then a section per file, by index, each named for its file without the index: the harness's, then the knowledge's.
 	const prompt = model.systemPrompts.at(-1);
 	const places = [
 		"# Harness",
@@ -720,9 +717,9 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 		"<agentx-core-tools>\n# Tools",
 		"<agentx-core-files>\n# Your files",
 		"<agentx-core-project>\n# The project",
-		"<agentx-identity-first>\nDEVELOPER: first.\n</agentx-identity-first>",
-		"<agentx-identity-rules>\nDEVELOPER: answer briefly.\n</agentx-identity-rules>",
+		"<agentx-knowledge-role>\n# Role",
 		"<agentx-knowledge-learned>\nLEARNED: the build runs with pnpm.\n</agentx-knowledge-learned>",
+		"<agentx-knowledge-rules>\nRULES: answer briefly.\n</agentx-knowledge-rules>",
 	].map((part) => prompt.indexOf(part));
 	assert.deepEqual(places, [...places].sort((a, b) => a - b), prompt);
 	assert.ok(places[0] >= 0, prompt);
@@ -732,7 +729,7 @@ test("a new agent has a knowledge folder of its own, and Pi loads the skills and
 
 test("when a prompt file changes, the session records only its section again, only the removal of a file that is gone, and nothing for a file renumbered", async (t) => {
 	const { project } = setup(t);
-	const notes = join(project.agent, "storage", "knowledge", "system_prompt");
+	const notes = join(project.agent, ".pi", "knowledge", "system_prompt");
 	// A file name that Pi does not take as a section's name becomes one it does.
 	writeFileSync(join(notes, "Owner Prefs.md"), "Answer in Hindi.");
 	writeFileSync(join(notes, "old.md"), "An old note.");
@@ -756,12 +753,12 @@ test("when a prompt file changes, the session records only its section again, on
 
 test("a prompt file or folder that cannot be read leaves the rest of the prompt whole, and a section says why", async (t) => {
 	const { project } = setup(t);
-	const notes = join(project.agent, "storage", "knowledge", "system_prompt");
-	// A folder with a note's name, and a developer's prompt folder that is a file: reading either throws.
+	const notes = join(project.agent, ".pi", "knowledge", "system_prompt");
+	// A folder with a note's name, and a prompt folder of the settings that is a file: reading either throws.
 	mkdirSync(join(notes, "broken.md"));
 	writeFileSync(join(notes, "kept.md"), "KEPT: a note that reads.");
-	rmSync(join(project.agent, ".pi", "system_prompt"), { recursive: true });
-	writeFileSync(join(project.agent, ".pi", "system_prompt"), "");
+	writeFileSync(join(project.agent, ".pi", "knowledge", "more"), "");
+	editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, systemPrompt: ["knowledge/system_prompt", "knowledge/more"] } }));
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
 
@@ -770,7 +767,7 @@ test("a prompt file or folder that cannot be read leaves the rest of the prompt 
 	assert.ok(prompt.includes("<agentx-core-tools>\n# Tools"), prompt);
 	assert.ok(prompt.includes("<agentx-knowledge-kept>\nKEPT: a note that reads.\n</agentx-knowledge-kept>"), prompt);
 	assert.match(prompt, /<agentx-knowledge-broken>\n\S+broken\.md cannot be read, so its text is missing: EISDIR/);
-	assert.match(prompt, /<agentx-identity-unreadable>\n\S+system_prompt cannot be read, so its text is missing: ENOTDIR/);
+	assert.match(prompt, /<agentx-knowledge-unreadable>\n\S+more cannot be read, so its text is missing: ENOTDIR/);
 });
 
 test("each thread keeps its sessions in a folder of its own, and opening the thread again goes on with its session", async (t) => {
@@ -788,9 +785,9 @@ test("each thread keeps its sessions in a folder of its own, and opening the thr
 	assert.deepEqual(sessions(project).find((session) => session.thread === "support").contents, ["on support", "again"]);
 });
 
-test("an agent whose storage has no knowledge folder, as after a fresh clone, starts all the same", async (t) => {
+test("an agent whose knowledge has no prompt folder starts all the same", async (t) => {
 	const { project } = setup(t);
-	rmSync(join(project.agent, "storage", "knowledge"), { recursive: true });
+	rmSync(join(project.agent, ".pi", "knowledge", "system_prompt"), { recursive: true });
 	const run = await agentx(project, ["chat", "-p", "hi"]);
 	assert.equal(run.status, 0, run.stderr);
 	assert.ok(!model.systemPrompts.at(-1).includes("<agentx-knowledge-"));
@@ -830,7 +827,7 @@ test("a model that an extension of the agent provides serves queued events like 
 	// No provider in Pi's own files: the agent's extension registers the one its settings name.
 	rmSync(join(project.agent, "..", "..", ".pi", "models.json"));
 	writeFileSync(
-		join(project.agent, ".pi", "extensions", "provider.ts"),
+		join(project.agent, ".pi", "knowledge", "extensions", "provider.ts"),
 		`export default function (pi) {
 			pi.registerProvider("fake", {
 				baseUrl: "http://127.0.0.1:${model.port}/v1",

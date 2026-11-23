@@ -1,5 +1,5 @@
 // The memory extension, loaded by Pi into every agent: the agent searches the episodes of all its threads and reads them back.
-// - The index, storage/knowledge/memory/index.db (episode-index.ts), takes what the session's own file holds past what was indexed of it when each run
+// - The index, storage/memory/index.db (episode-index.ts), takes what the session's own file holds past what was indexed of it when each run
 //   settles, so an episode is in it once it ends. Each thread's session indexes its own file only.
 // - `episode_search` finds episodes by keyword, in every thread or one, by when they started. Only episodes that ended are in the index.
 // - `episode_read` gives back an episode, and those before and after it in its thread, folded and compacted ones too.

@@ -7,7 +7,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - Pi reads config from two places only: its agent directory (`PI_CODING_AGENT_DIR`, default `~/.pi/agent`) and `<cwd>/.pi/`. It does not look for `.pi/` in parent directories (`src/core/settings-manager.ts`).
 - In a trusted project, Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` with no settings (`docs/configuration.md`). Its own project prompt is one file, `.pi/SYSTEM.md`. It has no prompt folder.
 - The agent directory holds config and state together: `settings.json`, `auth.json`, `trust.json`, `models.json`, `bin/`.
-- In `.pi/settings.json`, resource paths resolve from `.pi/`. `extensions` and `skills` list more folders to load. A folder that does not exist is skipped with no warning.
+- In `.pi/settings.json`, resource paths resolve from `.pi/`. `extensions` and `skills` list more folders to load, each read as Pi reads `.pi/extensions/` and `.pi/skills/`: an extension is a `.ts` or `.js` file, or a folder with an `index.ts` or a `package.json` manifest, one level deep (`collectFilesFromPaths` in `src/core/package-manager.ts`). A folder that does not exist is skipped with no warning.
 - Pi accepts settings keys it does not know. It gives no warning, keeps them when it rewrites a settings file, and returns them from `pi.getSettings()`. That call gives an extension the user and project settings merged (`persistScopedSettings` in `src/core/settings-manager.ts`, `docs/extensions.md`).
 
 ## Project trust
@@ -88,7 +88,7 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 - An extension folder loads its `*.ts` files and `<subdir>/index.ts` one level down. Other files in it are ignored (`src/core/package-manager.ts`).
 - The `input` event can return `continue`, `transform` or `handled` (skip the model).
 - `pi.registerFlag(name, { type: "boolean" })` adds a command-line flag, listed in `--help`. `pi.getFlag(name)` reads it in a handler. While the extension is loading, it returns the default (`docs/extensions.md`).
-- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's extensions in `.pi/`, then its built-in ones such as MCP support.
+- Pi calls an event's handlers one after another and awaits each, extension by extension (`emit` in `src/core/extensions/runner.ts`). So a `session_start` handler that awaits holds back the handlers after it. Pi loads the `-e` package first, then the agent's extensions, from `.pi/extensions/` and the folders its settings list, then its built-in ones such as MCP support (`mergePaths` in `src/core/resource-loader.ts`).
 - Pi's MCP support waits for servers with direct tools once, in its `before_agent_start` of the first run, and only for servers registered by then (`dist/extensions/mcp/index.js`).
 - Every session start (start-up, `/new`, `/resume`, `/fork`, `/reload`) emits `session_start`, then, once all its handlers have finished, `resources_discover`, if any extension handles it. Nothing follows at start-up: the mode then waits for input (RPC, terminal) or sends its prompt (print) (`bindExtensions` in `src/core/agent-session.ts`). `session_start` fires whether or not a message comes.
 - `pi.appendEntry(customType, data)` adds a custom entry to the session, which the model does not see. `ctx.sessionManager.getEntries()` returns it with `type: "custom"`.

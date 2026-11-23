@@ -28,7 +28,7 @@ A delivery repeated after a crash adds nothing, since the id is already there. A
 
 - **Decision.** Every outbox event names its sending thread: Pi's session when the model runs `agentx event send`, a workflow's babysitter thread, `main` otherwise. A refusal goes there as an event keyed `undeliverable:<id>`.
 - **Why.** The thread that sent knows what it meant, and can fix it or tell a person. A workflow's own thread would run the workflow with its refusal, so a workflow sends from the thread that looks after it.
-- **Rejected.** The sender's routers, which would have to guess which thread sent it.
+- **Rejected.** The sender's router, which would have to guess which thread sent it.
 
 <a id="d62"></a>
 ### D62. The sender's entry in `agentx.json` says which agents it may send to

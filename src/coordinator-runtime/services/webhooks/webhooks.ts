@@ -39,7 +39,7 @@ export class WebhooksService extends Service {
 		if (agent === undefined) return notFound;
 		let hooks: Hooks;
 		try {
-			hooks = loadHooks(agent.storage);
+			hooks = loadHooks(agent.root);
 		} catch (error) {
 			console.error(`webhooks: ${agent.name}: ${(error as Error).message}`);
 			return notDelivered;

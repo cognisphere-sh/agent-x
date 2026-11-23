@@ -1,9 +1,9 @@
 // An agent's webhooks: URLs of the coordinator that outside services call, each running one of the agent's workflows. They are listed with their
-// tokens in the agent's own storage/knowledge/webhooks.json, which `agentx webhook` keeps and the webhooks service reads on every request.
+// tokens in the agent's checked-in .pi/knowledge/webhooks/webhooks.json, which `agentx webhook` keeps and the webhooks service reads on every request.
 
 import { randomBytes } from "node:crypto";
-import { closeSync, existsSync, fstatSync, openSync, readFileSync, readSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync, readSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 /** One webhook of an agent. */
 export interface Hook {
@@ -21,9 +21,13 @@ export type Hooks = Record<string, Partial<Hook>>;
 // The shortest token a hook may have, so one shortened by hand cannot be guessed. A new one has 43 characters.
 const minTokenLength = 32;
 
-const hooksFile = (storage: string) => join(storage, "knowledge", "webhooks.json");
+const hooksFile = (agentRoot: string) => join(agentRoot, ".pi", "knowledge", "webhooks", "webhooks.json");
 
-const saveHooks = (storage: string, hooks: Hooks) => writeFileSync(hooksFile(storage), `${JSON.stringify(hooks, null, "\t")}\n`);
+function saveHooks(agentRoot: string, hooks: Hooks): void {
+	const file = hooksFile(agentRoot);
+	mkdirSync(dirname(file), { recursive: true });
+	writeFileSync(file, `${JSON.stringify(hooks, null, "\t")}\n`);
+}
 
 // 32 random bytes, which a URL carries as they are.
 const newToken = () => randomBytes(32).toString("base64url");
@@ -34,9 +38,9 @@ export const hookLog = (storage: string, name: string) => join(storage, "workspa
 /** The URL of the hook `name` of the agent `agent`, at the project's public address. */
 export const hookUrl = (publicUrl: string, agent: string, name: string, token: string) => `${publicUrl.replace(/\/$/, "")}/services/webhooks/${agent}/${name}/${token}`;
 
-/** The webhooks in the agent's storage folder `storage`; none without the file. Throws when the file is not a JSON object. */
-export function loadHooks(storage: string): Hooks {
-	const file = hooksFile(storage);
+/** The webhooks of the agent in `agentRoot`; none without the file. Throws when the file is not a JSON object. */
+export function loadHooks(agentRoot: string): Hooks {
+	const file = hooksFile(agentRoot);
 	if (!existsSync(file)) return {};
 	const hooks = JSON.parse(readFileSync(file, "utf8")) as unknown;
 	if (typeof hooks !== "object" || hooks === null || Array.isArray(hooks)) throw new Error(`${file} is not a JSON object.`);
@@ -50,30 +54,30 @@ export function usableHook(hooks: Hooks, name: string): Hook | undefined {
 }
 
 /** Makes the hook `name`, or gives the one of that name `workflow` and `description` and keeps its token, so its URL stays. Returns its token and whether it was kept. */
-export function setHook(storage: string, name: string, workflow: string, description: string): { token: string; kept: boolean } {
-	const hooks = loadHooks(storage);
+export function setHook(agentRoot: string, name: string, workflow: string, description: string): { token: string; kept: boolean } {
+	const hooks = loadHooks(agentRoot);
 	const old = Object.hasOwn(hooks, name) ? hooks[name].token : undefined;
 	const token = typeof old === "string" && old.length >= minTokenLength ? old : newToken();
 	hooks[name] = { workflow, description, token };
-	saveHooks(storage, hooks);
+	saveHooks(agentRoot, hooks);
 	return { token, kept: token === old };
 }
 
 /** Gives the hook `name` a new token, so its old URL stops at once, and returns it. Throws when there is no such hook. */
-export function rotateHook(storage: string, name: string): Partial<Hook> & { token: string } {
-	const hooks = loadHooks(storage);
+export function rotateHook(agentRoot: string, name: string): Partial<Hook> & { token: string } {
+	const hooks = loadHooks(agentRoot);
 	const hook = { ...existing(hooks, name), token: newToken() };
 	hooks[name] = hook;
-	saveHooks(storage, hooks);
+	saveHooks(agentRoot, hooks);
 	return hook;
 }
 
 /** Deletes the hook `name` and returns it. Throws when there is no such hook. */
-export function deleteHook(storage: string, name: string): Partial<Hook> {
-	const hooks = loadHooks(storage);
+export function deleteHook(agentRoot: string, name: string): Partial<Hook> {
+	const hooks = loadHooks(agentRoot);
 	const hook = existing(hooks, name);
 	delete hooks[name];
-	saveHooks(storage, hooks);
+	saveHooks(agentRoot, hooks);
 	return hook;
 }
 

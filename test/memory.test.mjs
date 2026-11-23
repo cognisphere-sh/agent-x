@@ -23,7 +23,7 @@ const custom = (project, thread, customType) => entriesOf(project, thread).filte
 const ended = (project, thread) => until(() => !alive(holder(project.agent, thread)));
 // The agent's memory index, read as it is on disk; closed when the test ends.
 function indexOf(t, project) {
-	const db = new DatabaseSync(join(project.agent, "storage", "knowledge", "memory", "index.db"), { readOnly: true });
+	const db = new DatabaseSync(join(project.agent, "storage", "memory", "index.db"), { readOnly: true });
 	t.after(() => db.close());
 	return db;
 }
@@ -84,10 +84,10 @@ test("episode_search finds the episodes of every thread by keyword, best first, 
 	assert.equal(lastResult(project, "main"), "No episode found.");
 });
 
-test("the index is storage/knowledge/memory/index.db; each session indexes its own file only, so a deleted index gets a thread's episodes back when a run of the thread settles", async (t) => {
+test("the index is storage/memory/index.db; each session indexes its own file only, so a deleted index gets a thread's episodes back when a run of the thread settles", async (t) => {
 	const { project, run } = setup(t);
 	const other = await run("other", "[bash echo zebra-crossing]");
-	const index = join(project.agent, "storage", "knowledge", "memory");
+	const index = join(project.agent, "storage", "memory");
 	assert.ok(existsSync(join(index, "index.db")));
 	await ended(project, "other");
 	rmSync(index, { recursive: true });
@@ -155,7 +155,7 @@ test("a time without an offset is in the agent's time zone, as its events show t
 test("an index that cannot be updated is reported, and the run goes on", async (t) => {
 	const { project, server, run } = setup(t);
 	// A folder where the index's file goes: SQLite cannot open it.
-	mkdirSync(join(project.agent, "storage", "knowledge", "memory", "index.db"), { recursive: true });
+	mkdirSync(join(project.agent, "storage", "memory", "index.db"), { recursive: true });
 	await run("main", "the giraffe task");
 	await until(() => server.output().includes("main: The memory index could not be updated, and the thread's next run tries again: "));
 });

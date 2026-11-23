@@ -32,5 +32,5 @@ An event's content comes from outside, written by whoever caused it, such as the
 
 ## Sending events
 
-- `agentx event send [--thread-id <id>] [--agent <name>] [--meta <name>=<value>] [--file <path>] <content>` sends an event: to one of your threads, to a workflow (`workflow.<name>`), to the routers (no thread), or to another agent of the project (`--agent`). Repeat `--meta` and `--file` for more. Every event you send goes out through your outbox, also one to yourself, and arrives when `agentx serve` delivers it.
+- `agentx event send [--thread-id <id>] [--agent <name>] [--meta <name>=<value>] [--file <path>] <content>` sends an event: to one of your threads, to a workflow (`workflow.<name>`), to your router (no thread), or to another agent of the project (`--agent`). Repeat `--meta` and `--file` for more. Every event you send goes out through your outbox, also one to yourself, and arrives when `agentx serve` delivers it.
 - You can send to another agent only when it is listed in `agentx-core-agents`; without that section, to none.

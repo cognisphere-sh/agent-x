@@ -20,7 +20,7 @@ Built from 2026-11-13 to 2026-11-15, on top of [`agentx run`](2-agentx-run.md). 
 
 - `agentx serve`, in the project root or `agent-x/`, runs every agent that `agent-x/agentx.json` lists. An `AgentManager` per agent starts the agent's process, restarts it with a backoff, kills it when its heartbeat stops, and marks it failed after five restarts. The agent's process ends with the coordinator.
 - `agent-x/agentx.json` lists the agents: each one's `description` and `canSendTo`. Every agent's prompt lists the agents it may send to.
-- Each second the coordinator delivers every agent's outbox into the receivers' inboxes, and fires the schedules of `.pi/schedules.json` and `storage/knowledge/schedules.json`.
+- Each second the coordinator delivers every agent's outbox into the receivers' inboxes, and fires the schedules of `.pi/knowledge/schedules/schedules.json`.
 - `/health` and `/agents` over HTTP.
 
 ### Events
@@ -37,7 +37,7 @@ Built from 2026-11-13 to 2026-11-15, on top of [`agentx run`](2-agentx-run.md). 
 
 ### Router
 
-- An event without a thread goes to the agent's router, `storage/knowledge/event_router.mjs`, then the developer's, `.pi/event_router.mjs`, then `main`. `init-agent` writes a developer's router that sends everything to `main`.
+- An event without a thread goes to the agent's router, `.pi/knowledge/router/event_router.ts`, then `main`. `init-agent` writes a router that sends everything to `main`.
 - A router that fails counts as one that picked nothing; the event gets `agentX-RouterError`, and the router's output goes to a log.
 
 ### Workflows

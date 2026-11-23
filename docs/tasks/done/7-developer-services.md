@@ -39,7 +39,7 @@ In the commit that moves this task to `done/`, in two steps.
 
 ## Migration
 
-- An existing project adds `"type": "module"` to `agent-x/package.json`, renames `.pi/event_router.mjs` and `storage/knowledge/event_router.mjs` to `.ts`, and renames each workflow's script to `.ts` with its `script` in `workflows.json`. A router left as `.mjs` is no longer asked, and a workflow whose script is not `.ts` is skipped and reported. No project has been deployed, so there is no migration code.
+- An existing project adds `"type": "module"` to `agent-x/package.json`, renames its `event_router.mjs` to `.ts`, and renames each workflow's script to `.ts` with its `script` in `workflows.json`. A router left as `.mjs` is no longer asked, and a workflow whose script is not `.ts` is skipped and reported. No project has been deployed, so there is no migration code.
 - An agent that wrote its own router or workflows as `.mjs` learns from the harness prompt to write `.ts`.
 - With `"type": "module"`, every `.js` file under `agent-x/` is an ES module, so a script there that uses `require`, such as one an agent wrote in its workspace, fails until it is renamed `.cjs`. Without it, Node would warn on every router and workflow call.
 

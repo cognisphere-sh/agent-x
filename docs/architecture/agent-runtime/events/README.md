@@ -4,7 +4,7 @@ What reaches an agent is an event ([D47](#d47)). Every event comes in through th
 
 | Thread | Who takes it |
 |---|---|
-| none | the [routers](#routing), which pick a thread first |
+| none | the [router](#routing), which picks a thread first |
 | `workflow.<name>` | the [workflow runner](../workflows/README.md) |
 | `pass` | nobody: it stays on the queue as `passed` ([D96](#d96)) |
 | any other, such as `main` | a Pi session for that thread, through the [event queue extension](../pi/pi-package/event-queue/README.md) |
@@ -25,7 +25,7 @@ A sender gives:
 
 | Field | Meaning |
 |---|---|
-| `threadId` | Optional. A thread, the folder of its Pi sessions ([D21](../pi/README.md#d21)), `workflow.<name>`, or `pass`: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit, at most 200 characters. Without it, the routers pick. |
+| `threadId` | Optional. A thread, the folder of its Pi sessions ([D21](../pi/README.md#d21)), `workflow.<name>`, or `pass`: letters, digits, `.`, `_`, `-`, starting and ending with a letter or digit, at most 200 characters. Without it, the router picks. |
 | `content` | Markdown for the agent. It may not contain `<agentX-metadata` ([D25](../pi/pi-package/event-queue/README.md#d25)). Large data goes in a file ([D49](#d49)). |
 | `metadata` | Optional facts for the model, one per line. A name may not start with `agentX-`, or hold `:` or a line break. `source` says where the event came from, such as `cli` or `workflow.<name>`. |
 | `key` | Optional. An event whose key is there already is added once ([D50](#d50)). |
@@ -115,17 +115,17 @@ Each method is one atomic step. The file uses WAL mode, and waits up to 5 second
 The `EventRouter` loop takes the inbox oldest first, one event at a time. When the inbox is empty, it looks again a second later.
 
 1. An event whose id is on the queue already is a copy: its marker is deleted, and no router is asked.
-2. An event without a thread goes to the routers, each only when the one before picked nothing ([D51](#d51)): the agent's own, `storage/knowledge/event_router.ts`, then the developer's, `.pi/event_router.ts`. A missing file is skipped. When none picks a thread, the event goes to `main`. Each call runs in a child process ([functions](../functions/README.md)), with up to `routerSeconds` ([settings](../supervisor/README.md#settings)).
+2. An event without a thread goes to the router, `.pi/knowledge/router/event_router.ts` in the agent's [knowledge](../agent/README.md#knowledge) ([D51](#d51)). Without the file, or when the router picks no thread, the event goes to `main`. Each call runs in a child process ([functions](../functions/README.md)), with up to `routerSeconds` ([settings](../supervisor/README.md#settings)).
 3. An event that names a thread keeps it.
 4. The event goes on the queue with its thread, id and send time, and its marker is deleted. On the thread `pass`, from its sender or a router, it goes on as `passed`, and nothing runs it ([D96](#d96)).
 
-**When a router fails**, it counts as one that picked nothing. The event gets `agentX-RouterError: <why>`, a name only the harness can set, so the agent learns its router broke. What the router printed goes to `storage/workspace/router-logs/<event id>.<agent or developer>.log`.
+**When a router fails**, it counts as one that picked nothing. The event gets `agentX-RouterError: <why>`, a name only the harness can set, so the agent learns its router broke. What the router printed goes to `storage/workspace/router-logs/<event id>.log`.
 
 The first stop signal stops routing after the call in progress. The second ends it, and the event waits in the inbox for the next start.
 
-## The routers' contract
+## The router's contract
 
-Both routers are `.ts` files ([D74](../functions/README.md#d74)) that export one function. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
+The router is a `.ts` file ([D74](../functions/README.md#d74)) that exports one function. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
 
 ```ts
 import type { Router } from "agent-x";
@@ -133,14 +133,13 @@ import type { Router } from "agent-x";
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }
 	// ctx:   { workflows: [{ name, description }] }
-	return { thread: "main" }; // a Pi thread, "workflow.<name>", or "pass" to drop it; nothing leaves the event to the next router
+	return { thread: "main" }; // a Pi thread, "workflow.<name>", or "pass" to drop it; nothing leaves the event to main
 };
 
 export default route;
 ```
 
-- `agentx init-agent` writes the developer's router, which sends every event to `main`, for the developer to change. The agent writes its own when it needs one.
-- The agent edits its own router; an edit applies to the next event. The developer's is checked in and read-only to the agent.
+- `agentx init-agent` writes a router that sends every event to `main`. The developer and the agent both change it; an edit applies to the next event.
 - A router may read the event's files, import the project's packages, and ask a model.
 
 ## Known limits
@@ -153,7 +152,6 @@ export default route;
 - SQLite before 3.51.3 has a rare bug that can corrupt a WAL file ([sqlite.org](https://sqlite.org/wal.html)). `node -p process.versions.sqlite` shows Node's version.
 - No event reaches the queue without `agentx run`. Events are routed one at a time, so a burst, and an event that names its thread, waits behind a slow router.
 - Until sandboxes, an agent can write any agent's inbox, outbox or queue, and a process of the agent can drop `AGENTX_AGENT` and run `agentx event deliver` past its `canSendTo`.
-- When the agent's router fails and the developer's sends the event to a workflow, no model reads its `agentX-RouterError`; the router's log has it.
 
 ## Decisions
 
@@ -174,7 +172,7 @@ export default route;
 <a id="d47"></a>
 ### D47. What reaches an agent is an event, and its thread decides who takes it
 
-- **Decision.** One table, `events`, holds everything that reaches an agent. An event without a thread gets one from the routers; one on `workflow.<name>` goes to the workflow runner; one on `pass` to nobody ([D96](#d96)); any other to Pi.
+- **Decision.** One table, `events`, holds everything that reaches an agent. An event without a thread gets one from the router; one on `workflow.<name>` goes to the workflow runner; one on `pass` to nobody ([D96](#d96)); any other to Pi.
 - **Why.** One table and one set of states for every input, and each row shows where its event went. An event that names a thread reaches it even when the agent's router is broken.
 
 <a id="d48"></a>
@@ -198,12 +196,12 @@ export default route;
 - **Why.** A sender that sends again, such as a schedule fired twice, adds one event, with no list of seen ids kept anywhere. No sender can pick an id that takes the place of another event.
 
 <a id="d51"></a>
-### D51. Two routers, the agent's then the developer's, each called in a child process
+### D51. One router, which the agent and its developer both write, called in a child process
 
-- **Decision.** An event without a thread goes to the agent's router, then the developer's, then `main`. Each is optional: a module whose default export returns `{ thread }` or nothing, called in a child process per event. A new agent has a developer's router that sends everything to `main`. A router that fails counts as one that picked nothing, and the event gets `agentX-RouterError`.
-- **Why.** The agent knows best where the events it has learned about belong. The developer's router settles the rest, also when the agent's breaks. A child process keeps a router that loops or crashes from stalling the agent, and applies an edit at once.
-- **Rejected.** A router loaded into `agentx run`: faster, but one stuck in a loop stops the agent. The developer's router first: the agent could not take over events as it learns.
-- **Consequence.** Each event without a thread starts a router process, until the developer deletes the starter router.
+- **Decision.** An event without a thread goes to the agent's router, `.pi/knowledge/router/event_router.ts`, then `main`. The router is optional: a module whose default export returns `{ thread }` or nothing, called in a child process per event. A new agent has one that sends everything to `main`. A router that fails counts as one that picked nothing, and the event gets `agentX-RouterError`.
+- **Why.** One file holds every rule, so the agent and its developer see the same routing and change it in one place, as all of the agent's knowledge ([D35](../agent/README.md#d35)). A child process keeps a router that loops or crashes from stalling the agent, and applies an edit at once.
+- **Rejected.** A router loaded into `agentx run`: faster, but one stuck in a loop stops the agent.
+- **Consequence.** Each event without a thread starts a router process, until the router is deleted. A router the agent breaks sends every event without a thread to `main`, with `agentX-RouterError`, until it is fixed.
 
 <a id="d54"></a>
 ### D54. Every event reaches an agent through its inbox, and only the router loop adds events to the queue
@@ -223,7 +221,7 @@ export default route;
 <a id="d96"></a>
 ### D96. The thread `pass` drops an event, which stays on the queue as `passed`
 
-- **Problem.** A router can only pick a thread or leave the event to the next router, so no router can drop an event, such as a newsletter nobody needs to read.
-- **Decision.** `pass` is a thread that nobody runs. The queue adds an event on it as `passed`, a final status, whoever named it: a router, the sender, or a schedule. A router's nothing still leaves the event to the next router.
-- **Why.** One rule in one place, the queue's `enqueue`, covers every way an event gets its thread, and the row keeps what was dropped. The agent's router is asked first, so it can drop what the developer's would take.
-- **Rejected.** Dropping the event before the queue: nothing would show that it came. Nothing from a router meaning drop: the agent's router could no longer leave an event to the developer's.
+- **Problem.** A router can only pick a thread or leave the event to `main`, so no router can drop an event, such as a newsletter nobody needs to read.
+- **Decision.** `pass` is a thread that nobody runs. The queue adds an event on it as `passed`, a final status, whoever named it: a router, the sender, or a schedule. A router's nothing still leaves the event to `main`.
+- **Why.** One rule in one place, the queue's `enqueue`, covers every way an event gets its thread, and the row keeps what was dropped.
+- **Rejected.** Dropping the event before the queue: nothing would show that it came. Nothing from a router meaning drop: a router could no longer leave an event to `main`.

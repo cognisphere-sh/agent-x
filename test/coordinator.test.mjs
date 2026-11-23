@@ -171,7 +171,7 @@ test("agentx serve runs every agent agentx.json lists, says how each is, fires s
 	mkdirSync(join(project.agent, "..", "stray", ".pi"), { recursive: true });
 	writeFileSync(join(project.agent, "..", "stray", ".pi", "settings.json"), "{}");
 	// Fires within a second of starting, once.
-	writeFileSync(join(project.agent, ".pi", "schedules.json"), JSON.stringify({ tick: { cron: "* * * * * *", content: "tick", threadId: "ticks", fireOnce: true } }));
+	writeFileSync(join(project.agent, ".pi", "knowledge", "schedules", "schedules.json"), JSON.stringify({ tick: { cron: "* * * * * *", content: "tick", threadId: "ticks", fireOnce: true } }));
 	// Sent from inside main while agentx serve is down: it waits in main's outbox.
 	const early = await agentSend(project, "--agent", "b", "--thread-id", "notes", "early");
 	const server = await serve(t, project);
@@ -250,9 +250,9 @@ test("a workflow sends from its babysitter thread, which gets its refusals and i
 	const b = addAgent(project, "b");
 	addAgent(project, "c");
 	editConfig(project, (config) => ({ agents: { ...config.agents, main: { canSendTo: ["b"] } } }));
-	writeFileSync(join(project.agent, ".pi", "workflows.json"), JSON.stringify({ tell: { description: "Tells b and c.", script: "workflows/tell.ts", babysitterThread: "alerts" } }));
+	writeFileSync(join(project.agent, ".pi", "knowledge", "workflows", "workflows.json"), JSON.stringify({ tell: { description: "Tells b and c.", script: "tell.ts", babysitterThread: "alerts" } }));
 	writeFileSync(
-		join(project.agent, ".pi", "workflows", "tell.ts"),
+		join(project.agent, ".pi", "knowledge", "workflows", "tell.ts"),
 		`export default async function (event, ctx) { await ctx.send("from a workflow", { agent: "b", threadId: "notes" }); await ctx.send("from a workflow", { agent: "c" }); }`,
 	);
 	await serve(t, project);
@@ -265,12 +265,13 @@ test("a workflow sends from its babysitter thread, which gets its refusals and i
 	await until(() => events(project.agent).find((found) => found.id === run)?.status === "done");
 });
 
-test("a schedule fires when its cron pattern is due, once with fireOnce, never when inactive, and missed fires once with catchUp; the agent's own replaces its developer's of that name; a broken entry, and a fire the agent refuses, are reported on main", () => {
+test("a schedule fires when its cron pattern is due, once with fireOnce, never when inactive, and missed fires once with catchUp; a broken entry, and a fire the agent refuses, are reported on main", () => {
 	const project = createAgent(model.port);
 	const main = project.agent;
 	editSettings(main, (settings) => ({ ...settings, agentx: { ...settings.agentx, timezone: "UTC" } }));
+	const list = join(main, ".pi", "knowledge", "schedules", "schedules.json");
 	writeFileSync(
-		join(main, ".pi", "schedules.json"),
+		list,
 		JSON.stringify({
 			// First, so that a fire it could not send would hold up the others.
 			ghost: { cron: "* * * * *", content: "for a workflow the agent lacks", threadId: "workflow.gone" },
@@ -282,18 +283,11 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 			report: { cron: "* * * * *", threadId: "workflow.report", metadata: { month: "january", pages: 2 } },
 			broken: { cron: "nope", content: "x" },
 			mute: { cron: "* * * * *", threadId: "ticks" },
-			stopped: { cron: "* * * * *", content: "stopped" },
-			replaced: { cron: "0 0 1 1 *", content: "the developer's" },
+			late: { cron: "0 * * * *", content: "late", catchUp: true },
 		}),
 	);
-	writeFileSync(join(main, ".pi", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "workflows/report.ts" } }));
-	mkdirSync(join(main, ".pi", "workflows"), { recursive: true });
-	writeFileSync(join(main, ".pi", "workflows", "report.ts"), "export default async function () {}");
-	// The agent's own, used in place of the developer's of the same name: a copy with isActive false stops one, and another entry replaces one.
-	writeFileSync(
-		join(main, "storage", "knowledge", "schedules.json"),
-		JSON.stringify({ stopped: { cron: "* * * * *", content: "stopped", isActive: false }, replaced: { cron: "* * * * *", content: "mine" }, late: { cron: "0 * * * *", content: "late", catchUp: true } }),
-	);
+	writeFileSync(join(main, ".pi", "knowledge", "workflows", "workflows.json"), JSON.stringify({ report: { description: "Writes the month's report.", script: "report.ts" } }));
+	writeFileSync(join(main, ".pi", "knowledge", "workflows", "report.ts"), "export default async function () {}");
 	const fired = (content) => inboxEvents(main).filter((mail) => mail.event.content === content);
 	const minute = 60_000;
 	const t0 = Date.UTC(2026, 0, 1, 0, 0, 30);
@@ -307,7 +301,7 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 	const [first, second] = fired("every minute");
 	assert.deepEqual([first.sentAt, second.sentAt], [Date.UTC(2026, 0, 1, 0, 1), Date.UTC(2026, 0, 1, 0, 2)]);
 	assert.deepEqual([first.event.threadId, first.event.metadata, first.facts], ["ticks", { from: "cron", source: "schedule" }, { "agentX-Schedule": "minutely" }]);
-	assert.deepEqual([fired("once").length, fired("off").length, fired("stopped").length, fired("mine").length, fired("the developer's").length], [1, 0, 0, 2, 0]);
+	assert.deepEqual([fired("once").length, fired("off").length], [1, 0]);
 	const report = inboxEvents(main).find((mail) => mail.event.threadId === "workflow.report");
 	assert.deepEqual([report.event.content, report.event.metadata], ["", { month: "january", pages: 2, source: "schedule" }]);
 	assert.ok(inboxEvents(main).some((mail) => mail.event.content.endsWith('schedule "mute" is skipped: it needs content, the text of its event, unless it runs a workflow.')));
@@ -315,7 +309,7 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 	assert.deepEqual(fired("for a workflow the agent lacks"), []);
 	assert.deepEqual(
 		inboxEvents(main).filter((mail) => mail.event.key.startsWith("schedule-error:ghost:")).map((mail) => mail.event.content),
-		[`${join(main, ".pi", "schedules.json")}: schedule "ghost" did not fire: Agent "main" has no workflow "gone".`],
+		[`${list}: schedule "ghost" did not fire: Agent "main" has no workflow "gone".`],
 	);
 
 	// agentx serve was down for three hours: a new coordinator reads what this one kept. Without catchUp the missed fires are skipped; with it, one late fire.
@@ -327,7 +321,7 @@ test("a schedule fires when its cron pattern is due, once with fireOnce, never w
 test("the scheduler fires nothing while the coordinator stops", () => {
 	const project = createAgent(model.port);
 	const main = project.agent;
-	writeFileSync(join(main, ".pi", "schedules.json"), JSON.stringify({ tick: { cron: "* * * * * *", content: "tick" } }));
+	writeFileSync(join(main, ".pi", "knowledge", "schedules", "schedules.json"), JSON.stringify({ tick: { cron: "* * * * * *", content: "tick" } }));
 	let stopping = true;
 	let work;
 	const agents = [{ name: "main", root: main, storage: join(main, "storage") }];
@@ -636,10 +630,10 @@ test("Composio's webhook delivers a signed trigger event to the agent whose Comp
 
 test("an agent's webhook runs the workflow it names with the request's body and headers; agentx webhook makes, lists, rotates and deletes webhooks; a wrong token, a deleted webhook or an old URL gets 404, and a webhook whose workflow is gone 503, which main hears of once", async (t) => {
 	const project = createAgent(model.port);
-	const knowledge = join(project.agent, "storage", "knowledge");
+	const knowledge = join(project.agent, ".pi", "knowledge");
 	const workspace = join(project.agent, "storage", "workspace");
 	// The workflow reads the request from the event's folder, as the webhooks skill shows.
-	writeFileSync(join(knowledge, "workflows.json"), JSON.stringify({ "call-ended": { description: "Notes a call that ended.", script: "workflows/call-ended.ts" } }));
+	writeFileSync(join(knowledge, "workflows", "workflows.json"), JSON.stringify({ "call-ended": { description: "Notes a call that ended.", script: "call-ended.ts" } }));
 	writeFileSync(
 		join(knowledge, "workflows", "call-ended.ts"),
 		`import { readFileSync, writeFileSync } from "node:fs";
@@ -681,8 +675,8 @@ export default async function (event) {
 	assert.equal(await call(`/services/webhooks/main/other/${"x".repeat(43)}`), 404);
 	assert.equal(await call(first.replace("/main/", "/nobody/")), 404);
 	// A token shortened by hand never matches.
-	const hooks = JSON.parse(readFileSync(join(knowledge, "webhooks.json"), "utf8"));
-	writeFileSync(join(knowledge, "webhooks.json"), JSON.stringify({ ...hooks, short: { workflow: "call-ended", description: "By hand.", token: "abc" } }));
+	const hooks = JSON.parse(readFileSync(join(knowledge, "webhooks", "webhooks.json"), "utf8"));
+	writeFileSync(join(knowledge, "webhooks", "webhooks.json"), JSON.stringify({ ...hooks, short: { workflow: "call-ended", description: "By hand.", token: "abc" } }));
 	assert.equal(await call("/services/webhooks/main/short/abc"), 404);
 	// Made again, such a webhook gets a token long enough, so a new URL.
 	assert.match((await webhook("create", "short", "--workflow", "call-ended", "--description", "By hand.")).stdout, /^Made webhook short/);
@@ -702,7 +696,7 @@ export default async function (event) {
 
 	// A webhook whose workflow is gone answers 503, so its caller sends again, and main hears of it once.
 	const gone = path((await webhook("create", "sms", "--workflow", "call-ended", "--description", "ClickSend inbound SMS rule 7")).stdout);
-	writeFileSync(join(knowledge, "workflows.json"), "{}");
+	writeFileSync(join(knowledge, "workflows", "workflows.json"), "{}");
 	assert.equal(await call(gone), 503);
 	assert.equal(await call(gone), 503);
 	const report = await until(() => events(project.agent).find((found) => found.metadata.webhook === "sms"));

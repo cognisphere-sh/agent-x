@@ -58,17 +58,15 @@ function intro(broken: string[]): string {
 export default function (pi: ExtensionAPI) {
 	pi.on("before_agent_start", (event) => {
 		const options = event.systemPromptOptions;
-		// Pi's skills, then any new one in the agent's skill folders, which resolve from .pi/ like Pi's own paths. Those Pi could not load are read too, to say why.
+		// Pi's skills, then any new one in the skill folders of the agent's settings, such as .pi/knowledge/skills/, which resolve from .pi/ like Pi's own paths.
+		// Those Pi could not load are read too, to say why.
 		const paths = (options.skills ?? []).map((skill) => skill.filePath);
 		options.skills = [];
-		for (const folder of [join(options.cwd, ".pi", "skills"), ...((pi.getSettings() as Settings).skills ?? []).map((path) => resolve(options.cwd, ".pi", path))]) {
+		for (const folder of ((pi.getSettings() as Settings).skills ?? []).map((path) => resolve(options.cwd, ".pi", path))) {
 			const scan = loadSkillsFromDir({ dir: folder, source: "agentx" });
 			paths.push(...scan.skills.map((skill) => skill.filePath), ...scan.diagnostics.flatMap((diagnostic) => (diagnostic.path?.endsWith("SKILL.md") ? [diagnostic.path] : [])));
 		}
-		// The first of two skills with one name wins, in Pi's order: agentx's and the packages' first, then the agent's own folders. The developer's
-		// .pi/skills come last, so a skill of the agent's replaces the developer's of that name, also one it wrote since the session started.
-		const developer = join(options.cwd, ".pi", "skills") + sep;
-		paths.sort((a, b) => Number(a.startsWith(developer)) - Number(b.startsWith(developer)));
+		// The first of two skills with one name wins, in Pi's order: agentx's and the packages' first, then the agent's folders.
 		const skills = new Map<string, Skill>();
 		const broken: string[] = [];
 		for (const filePath of new Set(paths)) {

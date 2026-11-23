@@ -2,7 +2,7 @@
 name: webhooks
 description: How to get events from an outside service through a webhook, a URL of yours that the service calls when something happens, such as a call that ended in Retell or an SMS that came in on ClickSend; each request runs one of your workflows. Use it to make, change, list, rotate or delete a webhook, and when an event with agentX-Service webhooks reaches you.
 metadata:
-  version: 1
+  version: 2
 ---
 
 # Webhooks
@@ -11,7 +11,7 @@ A webhook is a URL of yours that an outside service calls when something happens
 
 ## Make one
 
-1. Write the workflow that handles a request (read the `workflows` skill), and list it in `storage/knowledge/workflows.json`.
+1. Write the workflow that handles a request (read the `workflows` skill), and list it in `.pi/knowledge/workflows/workflows.json`.
 2. Make the webhook: `agentx webhook create <name> --workflow <workflow> --description '<who calls it, and where its URL is set>'`. It prints the webhook's URL. The description is how you find the URL at the service again, to change it or take it off: name the service, the account and the setting, such as "Retell agent agent_123's webhook_url".
 3. Set the URL at the service with its Composio tool, such as `RETELLAI_UPDATE_AGENT` (`webhook_url`), `TWILIO_UPDATE_INCOMING_PHONE_NUMBER` (`status_callback`) or `CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND` (the action `URL`, with `webhook_type` `post` or `json`). When the service has no such tool, tell a person where to set it.
 
@@ -48,4 +48,4 @@ export default run;
 - `agentx webhook rotate <name>`: a new URL, when the old one may have leaked. The old one answers 404 at once, so set the new one at the service straight away.
 - `agentx webhook delete <name>`: take its URL off at the service first, then delete it.
 - A request that cannot be delivered, such as one for a workflow you no longer have, gets 503, and an event on `main` tells you why, once for each reason.
-- Keep webhooks with these commands; never edit `storage/knowledge/webhooks.json` by hand.
+- Keep webhooks with these commands; never edit `.pi/knowledge/webhooks/webhooks.json` by hand.

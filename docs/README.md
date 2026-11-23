@@ -66,7 +66,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D31](architecture/agent-runtime/pi/README.md#d31) | The runner starts a Pi process per thread, in RPC mode | agent-runtime/pi |
 | [D32](architecture/agent-runtime/pi/pi-package/event-queue/README.md#d32) | The Pi runner's sessions are workers, marked with `--agentx-worker` | agent-runtime/pi/pi-package/event-queue |
 | [D33](architecture/agent-runtime/pi/README.md#d33) | The Pi runner frees a thread of its dead Pi process by process id | agent-runtime/pi |
-| [D35](architecture/agent-runtime/agent/README.md#d35) | What an agent learns is kept in `storage/knowledge/`, apart from its definition | agent-runtime/agent |
+| [D35](architecture/agent-runtime/agent/README.md#d35) | The agent's knowledge is `.pi/knowledge/`, one checked-in source that the agent and its developer both write | agent-runtime/agent |
 | [D36](architecture/agent-runtime/agent/README.md#d36) | agentx's own settings for an agent are under `agentx` in its `.pi/settings.json` | agent-runtime/agent |
 | [D38](architecture/agent-runtime/pi/pi-package/composio/README.md#d38) | Each agent has its own Composio user id, written into its settings by `init-agent` | agent-runtime/pi/pi-package/composio |
 | [D39](architecture/agent-runtime/pi/pi-package/composio/README.md#d39) | One Composio session per thread, recorded in the thread's Pi session | agent-runtime/pi/pi-package/composio |
@@ -81,8 +81,8 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D48](architecture/agent-runtime/events/README.md#d48) | Only the agent sends, into its own outbox; only the host delivers, with `deliverEvent` | agent-runtime/events |
 | [D49](architecture/agent-runtime/events/README.md#d49) | An event's files are in its inbox folder | agent-runtime/events |
 | [D50](architecture/agent-runtime/events/README.md#d50) | An event's key makes adding it idempotent | agent-runtime/events |
-| [D51](architecture/agent-runtime/events/README.md#d51) | Two routers, the agent's then the developer's, each called in a child process | agent-runtime/events |
-| [D52](architecture/agent-runtime/workflows/README.md#d52) | Workflows are listed in two `workflows.json` files; each is a function on its own thread | agent-runtime/workflows |
+| [D51](architecture/agent-runtime/events/README.md#d51) | One router, which the agent and its developer both write, called in a child process | agent-runtime/events |
+| [D52](architecture/agent-runtime/workflows/README.md#d52) | Workflows are listed in one `workflows.json`; each is a function on its own thread | agent-runtime/workflows |
 | [D53](architecture/agent-runtime/workflows/README.md#d53) | A run gets one attempt, and every failure is reported to the babysitter thread | agent-runtime/workflows |
 | [D54](architecture/agent-runtime/events/README.md#d54) | Every event reaches an agent through its inbox, and only the router loop adds events to the queue | agent-runtime/events |
 | [D55](architecture/agent-runtime/events/README.md#d55) | A mailbox is a folder per event, kept, and an empty marker per waiting event | agent-runtime/events |

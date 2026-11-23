@@ -14,7 +14,7 @@ updated: 2026-11-22
 
 ## What was built
 
-- **The webhooks service**, optional ([webhooks](../../architecture/coordinator-runtime/services/webhooks/README.md)): `src/coordinator-runtime/services/webhooks/webhooks.ts` serves `POST /services/webhooks/<agent>/<name>/<token>`, checks the token, delivers the request to `workflow.<workflow>` with `body` and `headers.json`, answers 200 or 503, logs each request in `storage/workspace/webhook-logs/<name>.log`, and tells `main` once for each reason a request could not be delivered. `hooks.ts` keeps the agent's `storage/knowledge/webhooks.json`, which the command only calls.
+- **The webhooks service**, optional ([webhooks](../../architecture/coordinator-runtime/services/webhooks/README.md)): `src/coordinator-runtime/services/webhooks/webhooks.ts` serves `POST /services/webhooks/<agent>/<name>/<token>`, checks the token, delivers the request to `workflow.<workflow>` with `body` and `headers.json`, answers 200 or 503, logs each request in `storage/workspace/webhook-logs/<name>.log`, and tells `main` once for each reason a request could not be delivered. `hooks.ts` keeps the agent's `.pi/knowledge/webhooks/webhooks.json`, which the command only calls.
 - **`agentx webhook create|list|rotate|delete`** (`src/cli/commands/webhook.ts`), in an agent directory: makes a webhook with a random token and prints its URL, keeps the URL when a webhook is made again, lists each with its last request, gives a new URL, deletes. `create` and `rotate` refuse without `publicUrl` or the service in `agentx.json`, and `create` refuses a workflow the agent does not have.
 - **Skills in the Pi package**: `routing`, `workflows`, `schedules` (with polling a service), and `webhooks`. The harness prompt's `5-routing.md`, `6-workflows.md` and `7-schedules.md` are gone; the rest of `core/` is numbered 1 to 9, and its rules name the skill to read.
 - Not committed yet.
@@ -58,7 +58,7 @@ updated: 2026-11-22
 
 ### Webhooks
 
-1. `agentx webhook create|list|rotate|delete` manages webhooks in the agent's own `storage/knowledge/webhooks.json`, with a random token made by the command. `create` takes the workflow and a description that says who calls the webhook and where its URL is set.
+1. `agentx webhook create|list|rotate|delete` manages webhooks in the agent's `.pi/knowledge/webhooks/webhooks.json`, with a random token made by the command. `create` takes the workflow and a description that says who calls the webhook and where its URL is set.
 2. An optional `webhooks` service checks the token on `POST /services/webhooks/:agent/:name/:token`, delivers the request to `workflow.<name>` with the body as a file, and logs each request.
 3. The workflow reads the id from the body and fetches the real item through Composio. That fetch is the auth: no provider's secret reaches the agent.
 4. The agent sets and removes the URL at each provider with Composio tools, such as `RETELLAI_UPDATE_AGENT`, `TWILIO_UPDATE_INCOMING_PHONE_NUMBER` and `CLICKSEND_CREATE_AUTOMATIONS_SMS_INBOUND`.

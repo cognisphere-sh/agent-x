@@ -72,7 +72,7 @@ const foldAtNudge = (ranges) => model.answerWhen("Fold the earlier episodes", `[
 
 test("each skill is a section of its own with its version, read again on every run; Pi's one list is gone, and so are the machine's skills", async (t) => {
 	const { project } = scratch(t, model.port);
-	const skills = join(project.agent, "storage", "knowledge", "skills");
+	const skills = join(project.agent, ".pi", "knowledge", "skills");
 	writeSkill(skills, "greet", "name: greet\ndescription: How to greet people.\nmetadata:\n  version: 1");
 	writeSkill(skills, "broken", "name: broken");
 	writeSkill(join(project.env.HOME, ".agents", "skills"), "machine-wide", "name: machine-wide\ndescription: A skill of every project on this machine.");
@@ -85,7 +85,7 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(prompt, /<agentx-skill-telegram>\nname: telegram\nversion: 1\n/);
 	// How to write a router, a workflow, a schedule or a webhook is a skill, not a section of the harness's rules.
 	for (const skill of ["routing", "schedules", "webhooks", "workflows"]) {
-		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: 1\\n`));
+		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: 2\\n`));
 		assert.ok(!prompt.includes(`<agentx-core-${skill}>`), skill);
 	}
 	assert.ok(!prompt.includes("<available_skills>"), "Pi's list is gone");
@@ -101,20 +101,18 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(patch["agentx-skill-farewell"], /\nversion: none\n/);
 });
 
-test("a skill of the agent's takes the place of its developer's of that name, also one it wrote since the session started, and the developer's is listed as left out", async (t) => {
+test("a skill the agent writes during a session shows from its next run, and one with the name of agentx's own is listed as left out", async (t) => {
 	const { project } = scratch(t, model.port);
-	writeSkill(join(project.agent, ".pi", "skills"), "greet", "name: greet\ndescription: The developer's greeting.");
-	// A developer's extension writes the agent's skill once the session has started, after Pi read its skills, as the agent writes one during a session.
-	mkdirSync(join(project.agent, ".pi", "extensions"), { recursive: true });
+	// An extension writes the skills once the session has started, after Pi read its skills, as the agent writes one during a session.
 	writeFileSync(
-		join(project.agent, ".pi", "extensions", "write-skill.ts"),
+		join(project.agent, ".pi", "knowledge", "extensions", "write-skills.ts"),
 		`import { mkdirSync, writeFileSync } from "node:fs";
-export default function (pi) { pi.on("session_start", (_event, ctx) => { mkdirSync(ctx.cwd + "/storage/knowledge/skills/greet", { recursive: true }); writeFileSync(ctx.cwd + "/storage/knowledge/skills/greet/SKILL.md", "---\\nname: greet\\ndescription: The agent's own greeting.\\n---\\n"); }); }`,
+export default function (pi) { pi.on("session_start", (_event, ctx) => { for (const name of ["greet", "browser"]) { mkdirSync(ctx.cwd + "/.pi/knowledge/skills/" + name, { recursive: true }); writeFileSync(ctx.cwd + "/.pi/knowledge/skills/" + name + "/SKILL.md", "---\\nname: " + name + "\\ndescription: The agent's own.\\n---\\n"); } }); }`,
 	);
 	await chat(project, "hi");
 	const prompt = model.systemPrompts.at(-1);
-	assert.match(prompt, /<agentx-skill-greet>\nname: greet\nversion: none\ndescription: The agent's own greeting\.\nfile: \S+\/storage\/knowledge\/skills\/greet\/SKILL\.md\n/, prompt);
-	assert.match(prompt, /are left out:\n\n- \S+\/\.pi\/skills\/greet\/SKILL\.md: the name "greet" is taken by \S+\/storage\/knowledge\/skills\/greet\/SKILL\.md/);
+	assert.match(prompt, /<agentx-skill-greet>\nname: greet\nversion: none\ndescription: The agent's own\.\nfile: \S+\/\.pi\/knowledge\/skills\/greet\/SKILL\.md\n/, prompt);
+	assert.match(prompt, /are left out:\n\n- \S+\/\.pi\/knowledge\/skills\/browser\/SKILL\.md: the name "browser" is taken by \S+\/pi-package\/skills\/browser\/SKILL\.md/);
 });
 
 test("an episode ends with a message that gives its id and the tokens it added: what its last answer read and wrote, less what its first read, and its event; episode_read gives it back, and fold folds only when a fold nudge asks", async (t) => {

@@ -1,18 +1,15 @@
 ---
 name: routing
-description: How to write your event router, which picks the thread of each event that names none, such as invoice emails to a workflow and support emails to a thread of their own. Use it before you write or change storage/knowledge/event_router.ts, and when an event has agentX-RouterError.
+description: How to write your event router, which picks the thread of each event that names none, such as invoice emails to a workflow and support emails to a thread of their own. Use it before you write or change .pi/knowledge/router/event_router.ts, and when an event has agentX-RouterError.
 metadata:
-  version: 1
+  version: 2
 ---
 
 # Routing
 
-An event that names no thread goes to the routers, which pick its thread:
+An event that names no thread goes to your router, `.pi/knowledge/router/event_router.ts`, which picks its thread. You and your developer own it alike: change it in place, and keep the rules that still hold, whoever wrote them. Keep any module it imports in the same folder.
 
-1. Yours, `storage/knowledge/event_router.ts`, when you have written one.
-2. Your developer's, `.pi/event_router.ts`, when there is one. **Read-only.**
-
-A router returns a thread or nothing. Nothing leaves the event to the next router; when none picks a thread, it goes to `main`. Yours is asked first, so it decides before your developer's. The thread `pass` drops an event: it stays on your queue as passed, and nothing runs it.
+The router returns a thread or nothing. Nothing, or no router, sends the event to `main`. The thread `pass` drops an event: it stays on your queue as passed, and nothing runs it.
 
 ```ts
 import type { Router } from "agent-x";
@@ -22,7 +19,7 @@ const route: Router = async (event, ctx) => {
 	if (event.metadata.from === "billing@example.com") return { thread: "workflow.file-invoice" };
 	if (event.metadata.from === "support@example.com") return { thread: "support" };
 	if (event.metadata.from === "newsletter@example.com") return { thread: "pass" };
-	// Nothing: your developer's router decides, or else main.
+	// Nothing: main.
 };
 
 export default route;

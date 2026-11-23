@@ -11,7 +11,7 @@ What the route does with a request:
 
 1. **Checks the signature.** Composio sends `webhook-id`, `webhook-timestamp` (seconds) and `webhook-signature: v1,<base64>`, which may hold several values separated by spaces. One `v1` value must be the base64 HMAC-SHA256 of `<webhook-id>.<webhook-timestamp>.<raw body>`, keyed with the secret's text as it is, and the timestamp within 300 s of now. Otherwise: 401.
 2. **Finds the agent.** Only `type: composio.trigger.message` makes an event. The agent is the one whose `agentx.composio.userId`, in its checked-in `.pi/settings.json`, equals the event's `metadata.user_id`, read at each request. A body that is not JSON, another type, a `user_id` no agent has, or `null`: no event, a log line, and 200, so Composio does not send again what will never be delivered.
-3. **Delivers** with `context.deliver`, with no thread, so the agent's routers pick one:
+3. **Delivers** with `context.deliver`, with no thread, so the agent's router picks one:
    - key `composio:<webhook-id>`, so an event Composio sends again is one event;
    - content `Composio trigger <slug> fired. Its event's data is in data.json.`, and the files line;
    - `data.json`, the event's `data`, in the event's folder: it can be large, such as a raw email, so the model reads it only when it needs to;

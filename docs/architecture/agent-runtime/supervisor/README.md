@@ -4,7 +4,7 @@
 
 | Loop | Takes | Does |
 |---|---|---|
-| `EventRouter` | the inbox, oldest first | puts each event on the queue, after the [routers](../events/README.md#routing) give one without a thread its thread |
+| `EventRouter` | the inbox, oldest first | puts each event on the queue, after the [router](../events/README.md#routing) gives one without a thread its thread |
 | `PiRunner` | events on Pi threads | starts a [Pi process](../pi/README.md) per thread |
 | `WorkflowRunner` | events on `workflow.<name>` threads | runs the [workflow](../workflows/README.md) |
 
@@ -14,7 +14,7 @@ flowchart LR
   subgraph RUN["agentx run (one process)"]
     S["AgentSupervisor"] --> ER["EventRouter"] & PR["PiRunner"] & WR["WorkflowRunner"]
   end
-  ER -- "a router process per event" --> R["routers"]
+  ER -- "a router process per event" --> R["router"]
   ER -- "adds events" --> Q[("event_queue.db")]
   PR -- "a Pi process per thread" --> PI["Pi"]
   WR -- "a process per run" --> W["workflow script"]
@@ -42,7 +42,7 @@ Every child process starts in a process group of its own, so a terminal's Ctrl-C
 |---|---|---|
 | `maxThreads` | 4 | Pi threads that run at once. Each Pi process uses about 130 MB. |
 | `stallSeconds` | 600 | A Pi process that writes nothing for this long is stopped. Set it above the longest a tool runs without output. |
-| `routerSeconds` | 60 | How long each router may take for one event. |
+| `routerSeconds` | 60 | How long the router may take for one event. |
 
 Up to 4 workflow runs go at once, apart from `maxThreads`.
 

@@ -2,20 +2,20 @@
 name: workflows
 description: How to write a workflow, a script that handles events of one kind without you, the same way every time, and can run Composio tools. Use it before you write or change one, and when a workflow failed.
 metadata:
-  version: 1
+  version: 2
 ---
 
 # Workflows
 
-A workflow handles an event with a script instead of you: the same steps every time, without a model. An event goes to a workflow when its thread is `workflow.<name>`: from a router, a schedule, a webhook, or `agentx event send --thread-id workflow.<name> '<input>'`.
+A workflow handles an event with a script instead of you: the same steps every time, without a model. An event goes to a workflow when its thread is `workflow.<name>`: from your router, a schedule, a webhook, or `agentx event send --thread-id workflow.<name> '<input>'`.
 
-Workflows are listed by name in `.pi/workflows.json`, your developer's (**read-only**), and in `storage/knowledge/workflows.json`, yours. On a name in both, yours is used:
+Workflows are listed by name in `.pi/knowledge/workflows/workflows.json`. You and your developer own every entry alike: change one in place, whoever wrote it.
 
 ```json
-{ "file-invoice": { "description": "Adds an invoice email's total to storage/workspace/invoices.csv.", "script": "workflows/file-invoice.ts" } }
+{ "file-invoice": { "description": "Adds an invoice email's total to storage/workspace/invoices.csv.", "script": "file-invoice.ts" } }
 ```
 
-`script` is a `.ts` file, by its path from the folder of that workflows.json; keep scripts in the `workflows/` folder next to it. Optional: `timeoutSeconds` (600 unless given), and `babysitterThread`, your thread that looks after the workflow (`main` unless given). The script exports one function, which runs in your agent directory; the event's content and metadata are its input, `event.content` and `event.metadata`, and the files that came with it are in its folder, `storage/workspace/inbox/<event.id>/`:
+`script` is a `.ts` file, by its path from `.pi/knowledge/workflows/`, where the scripts are kept. Optional: `timeoutSeconds` (600 unless given), and `babysitterThread`, your thread that looks after the workflow (`main` unless given). The script exports one function, which runs in your agent directory; the event's content and metadata are its input, `event.content` and `event.metadata`, and the files that came with it are in its folder, `storage/workspace/inbox/<event.id>/`:
 
 ```ts
 import { appendFileSync } from "node:fs";

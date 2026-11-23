@@ -11,12 +11,12 @@ An optional [service](../../README.md#services) of the coordinator: each agent's
   "services": { "webhooks": {} }
   ```
 
-- **Secrets:** none. Each webhook's token is in its agent's file.
+- **Secrets:** none. Each webhook's token is in its agent's webhooks file.
 - **Route:** `POST /services/webhooks/<agent>/<name>/<token>`, public: it checks the token itself.
 
 ## An agent's webhooks
 
-`storage/knowledge/webhooks.json`, in the agent's storage, lists them by name:
+`.pi/knowledge/webhooks/webhooks.json`, in the agent's [knowledge](../../../agent-runtime/agent/README.md#knowledge), lists them by name, and is checked in with their tokens:
 
 ```json
 {
@@ -26,7 +26,7 @@ An optional [service](../../README.md#services) of the coordinator: each agent's
 
 | Key | Meaning |
 |---|---|
-| `workflow` | The workflow each request runs, the agent's or its developer's. |
+| `workflow` | The workflow each request runs. |
 | `description` | Who calls it and where its URL is set, so the agent can find it there again to change it or take it off. |
 | `token` | The URL's secret part: 32 random bytes in base64url. |
 
@@ -73,9 +73,10 @@ The token is the only check at the door, so a workflow treats a request as a hin
 ### D101. An agent's webhook is a URL with a random token, which the agent makes and keeps with `agentx webhook`, and each request runs one of its workflows
 
 - **Problem.** Many services, such as Retell, Twilio and ClickSend, report what happens by calling a URL, and Composio has no trigger for most of them. The agent must be able to set one up and take it down by itself, and handling the requests needs no model.
-- **Decision.** The optional webhooks service serves `POST /services/webhooks/<agent>/<name>/<token>`. The agent makes, lists, rotates and deletes its webhooks with `agentx webhook`, which keeps each one, with a 32-byte random token and the workflow it runs, in the agent's own `storage/knowledge/webhooks.json`. The service reads the file on every request and delivers each request to the webhook's workflow, with its body and headers as files.
-- **Why.** The agent sets the URL at the service with a Composio tool, so it sets up and takes down both ends. A command makes the token, which a model cannot make random. A workflow is the only target, because a stranger wrote the request, and a script reads it before the model does. The file needs no answer from the coordinator, as with schedules ([D64](../scheduler/README.md#d64)).
-- **Rejected.** Webhooks in the agent's `.pi/`: their tokens would be in git, and a developer's fixed endpoint is already a project service. A URL that the coordinator hands out when asked, which the agent would wait for.
+- **Decision.** The optional webhooks service serves `POST /services/webhooks/<agent>/<name>/<token>`. The agent makes, lists, rotates and deletes its webhooks with `agentx webhook`, which keeps each one, with a 32-byte random token and the workflow it runs, in the agent's knowledge, `.pi/knowledge/webhooks/webhooks.json`, checked in ([D35](../../../agent-runtime/agent/README.md#d35)). The service reads the file on every request and delivers each request to the webhook's workflow, with its body and headers as files.
+- **Why.** The agent sets the URL at the service with a Composio tool, so it sets up and takes down both ends. A command makes the token, which a model cannot make random. A workflow is the only target, because a stranger wrote the request, and a script reads it before the model does. The file needs no answer from the coordinator, as with schedules ([D64](../scheduler/README.md#d64)). With the tokens in git, a clone or a deploy keeps every URL working.
+- **Rejected.** Each token in gitignored state, apart from its webhook: a clone or a deploy would lose every URL. A URL that the coordinator hands out when asked, which the agent would wait for.
+- **Consequence.** Whoever can read the repository has every webhook's URL ([D102](#d102)).
 
 <a id="d102"></a>
 ### D102. The URL's token is a webhook's only check, and the workflow confirms what a request says through Composio

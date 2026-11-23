@@ -1,8 +1,7 @@
 // EventRouter: one of the three loops of `agentx run`, and the only one that adds events to the queue. It takes the agent's inbox oldest first:
-// an event without a thread gets the thread its routers pick, each called in a child process of its own for each event: the agent's own,
-// storage/knowledge/event_router.ts, then its developer's, .pi/event_router.ts, each when it exists, until one picks a thread; else `main`.
-// An event that names a thread keeps it. A router that fails counts as one that picked none, and the event gets `agentX-RouterError: <why>`,
-// so no event is stuck and the agent learns that a router broke; what the router printed is kept in a log.
+// an event without a thread gets the thread its router picks, .pi/knowledge/router/event_router.ts when it exists, called in a child process of its
+// own for each event; else `main`. An event that names a thread keeps it. A router that fails counts as one that picked none, and the event gets
+// `agentX-RouterError: <why>`, so no event is stuck and the agent learns that its router broke; what the router printed is kept in a log.
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -19,14 +18,11 @@ const pollMs = 1000;
 // How much of what the router printed is kept when it fails: the end.
 const keptOutput = 2048;
 
-// The routers, asked in this order until one picks a thread: the agent's own, then its developer's. Either may be missing.
-const routers = [
-	{ owner: "agent", file: join("storage", "knowledge", "event_router.ts") },
-	{ owner: "developer", file: join(".pi", "event_router.ts") },
-];
+// The router, from the agent directory, which its developer and the agent both edit. It may be missing.
+const router = join(".pi", "knowledge", "router", "event_router.ts");
 
-// Where what a router printed for an event it failed on is kept, from the agent directory.
-const routerLog = (eventId: string, owner: string) => join("storage", "workspace", "router-logs", `${eventId}.${owner}.log`);
+// Where what the router printed for an event it failed on is kept, from the agent directory.
+const routerLog = (eventId: string) => join("storage", "workspace", "router-logs", `${eventId}.log`);
 
 /** Takes the inbox of the agent in `agentRoot` into its queue, oldest first, with up to `routerMs` for each router call of an event without a thread. */
 export class EventRouter {
@@ -100,35 +96,24 @@ export class EventRouter {
 		console.error(`router: inbox event ${marker} cannot be taken and is set aside in .rejected/: ${why}`);
 	}
 
-	// The thread for an event without one, with the facts it gets on the way; undefined when a call was stopped.
+	// The thread for an event without one, with the facts it gets on the way; undefined when the call was stopped.
 	private async thread(event: Event): Promise<{ thread: string; facts: Record<string, string> } | undefined> {
-		const failures: string[] = [];
-		let thread = "main";
-		// Read for each event, so a router sees the workflows as they are.
-		let workflows: Map<string, WorkflowDefinition> | undefined;
-		for (const router of routers) {
-			if (!existsSync(join(this.agentRoot, router.file))) continue;
-			workflows ??= loadWorkflows(this.agentRoot);
-			const answer = await this.ask(router, event, workflows);
-			// Stopped: the event waits in the inbox for the next start.
-			if (answer === undefined) return undefined;
-			if ("why" in answer) failures.push(answer.why);
-			else if (answer.thread !== undefined) {
-				thread = answer.thread;
-				break;
-			}
-		}
+		// The workflows are read for each event, so the router sees them as they are.
+		const answer = existsSync(join(this.agentRoot, router)) ? await this.ask(event, loadWorkflows(this.agentRoot)) : {};
+		// Stopped: the event waits in the inbox for the next start.
+		if (answer === undefined) return undefined;
+		const thread = "why" in answer ? "main" : (answer.thread ?? "main");
 		console.log(`router: ${event.id} goes to ${thread}`);
 		// One line, which the model sees with the event; a failure must not keep the event from being delivered.
-		return { thread, facts: failures.length === 0 ? {} : { "agentX-RouterError": withoutBlockTag(failures.join(" ").replace(/\s+/g, " ")) } };
+		return { thread, facts: "why" in answer ? { "agentX-RouterError": withoutBlockTag(answer.why.replace(/\s+/g, " ")) } : {} };
 	}
 
-	// What one router answered: a thread, none, or why it failed; undefined when the call was stopped.
-	private async ask(router: (typeof routers)[number], event: Event, workflows: Map<string, WorkflowDefinition>): Promise<{ thread?: string } | { why: string } | undefined> {
+	// What the router answered: a thread, none, or why it failed; undefined when the call was stopped.
+	private async ask(event: Event, workflows: Map<string, WorkflowDefinition>): Promise<{ thread?: string } | { why: string } | undefined> {
 		let output = "";
 		this.call = callFunction(
 			this.agentRoot,
-			join(this.agentRoot, router.file),
+			join(this.agentRoot, router),
 			event,
 			{ kind: "router", workflows: [...workflows.values()].map(({ name, description }) => ({ name, description })) },
 			this.routerMs,
@@ -140,10 +125,10 @@ export class EventRouter {
 
 		const answer = checked(outcome, workflows);
 		if (!("why" in answer)) return answer;
-		let why = `${router.file}: ${answer.why}`;
+		let why = `${router}: ${answer.why}`;
 		console.error(`router: ${event.id}: ${why}`);
 		if (output !== "") {
-			const log = routerLog(event.id, router.owner);
+			const log = routerLog(event.id);
 			mkdirSync(dirname(join(this.agentRoot, log)), { recursive: true });
 			writeFileSync(join(this.agentRoot, log), output);
 			why += ` What it printed: ${log}`;
@@ -156,7 +141,7 @@ export class EventRouter {
 function checked(outcome: Outcome, workflows: Map<string, unknown>): { thread?: string } | { why: string } {
 	// "timeout: ..." and "exit: ..." say their kind already.
 	if ("error" in outcome) return { why: outcome.kind === "threw" ? `failed: ${outcome.error}` : outcome.error };
-	// Nothing: this router leaves the event to the next.
+	// Nothing: the event goes to main.
 	if (outcome.result === null) return {};
 	const thread = (outcome.result as { thread?: unknown }).thread;
 	if (typeof outcome.result !== "object" || !isThreadId(thread)) {

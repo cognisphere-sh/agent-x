@@ -17,15 +17,12 @@ export interface RouterContext {
 	workflows: { name: string; description: string }[];
 }
 
-/** The router's answer: a thread of the agent, such as `main`, `workflow.<name>` to run a workflow, or `pass` to drop the event. A router that returns nothing leaves the event to the next. */
+/** The router's answer: a thread of the agent, such as `main`, `workflow.<name>` to run a workflow, or `pass` to drop the event. A router that returns nothing leaves the event to `main`. */
 export interface RouteResult {
 	thread: string;
 }
 
-/**
- * The default export of an event router: the agent's `storage/knowledge/event_router.ts`, then its developer's `.pi/event_router.ts`.
- * agentx asks them in that order, for every event without a thread, until one returns a thread; when none does, the event goes to `main`.
- */
+/** The default export of the agent's event router, `.pi/knowledge/router/event_router.ts`, which agentx asks about every event without a thread. */
 export type Router = (event: Event, ctx: RouterContext) => RouteResult | void | Promise<RouteResult | void>;
 
 /** Where `ctx.send` sends an event. Without `threadId`, the receiving agent's router picks the thread. */

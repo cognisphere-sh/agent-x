@@ -5,22 +5,25 @@ An agent is a directory, `agent-x/agents/<name>/`, which `agentx init-agent <nam
 | Source | Where | Written by | To the agent |
 |---|---|---|---|
 | The harness | agentx's [Pi package](../pi/pi-package/README.md), in the pinned agentx | agentx | read-only |
-| The definition | `.pi/` in the agent directory, checked in ([D4](#d4)) | its developer | read-only |
-| The knowledge | `storage/knowledge/`, not checked in | the agent, while it runs | its own ([D35](#d35)) |
+| The definition | `.pi/` in the agent directory but its `knowledge/`, checked in ([D4](#d4)) | its developer | read-only |
+| The knowledge | `.pi/knowledge/`, checked in ([D35](#d35)) | its developer, and the agent while it runs | its own |
 
 ```
 agent-x/agents/<name>/
   .pi/                  the definition (D2)
     settings.json       Pi project settings; agentx's own are under `agentx`
     mcp.json            MCP servers
-    system_prompt/      *.md, a section each after the harness's, in the order of the index before each name; 1-role.md says what the agent is for
-    skills/  extensions/   the developer's
-    event_router.ts     the developer's router; the template's sends every event to main
-    workflows.json  workflows/  schedules.json
+    knowledge/          the knowledge (D35), a folder for each kind
+      system_prompt/    *.md, a section each after the harness's, in the order of the index before each name; 1-role.md says what the agent is for
+      skills/  extensions/
+      router/           event_router.ts, the router; the template's sends every event to main
+      workflows/        workflows.json and the workflows' scripts
+      schedules/        schedules.json
+      webhooks/         webhooks.json, with each webhook's token, kept with `agentx webhook`
   .env                  its keys, such as COMPOSIO_API_KEY (D43), gitignored
   storage               a link to agent-x/storage/<name>/ (D65), gitignored
-    knowledge/          what the agent learns: system_prompt/, skills/, event_router.ts, workflows.json, workflows/, schedules.json, webhooks.json, and memory/index.db, the index of its episodes
     sessions/<thread>/  the thread's Pi sessions
+    memory/index.db     the index of its episodes
     workspace/          the agent's files; workflow-logs/, router-logs/, webhook-logs/, inbox/, outbox/, browser/ (its browser profiles)
     event_queue.db      the event queue
     heartbeat           the time agentx run last saw all its loops working
@@ -29,7 +32,7 @@ agent-x/agents/<name>/
 
 ## Storage
 
-An agent's runtime state is in `agent-x/storage/<name>/`, and the agent reaches it as `storage/`: a link now, a mount in a sandbox later ([D65](#d65)). Everything inside the agent says `storage/`: Pi's settings, the harness prompt, the paths in events, the routers and workflows.
+An agent's runtime state is in `agent-x/storage/<name>/`, and the agent reaches it as `storage/`: a link now, a mount in a sandbox later ([D65](#d65)). Everything inside the agent says `storage/`: the harness prompt, the paths in events, the routers and workflows.
 
 - `init-agent` makes the folder and the link (`ensureStorage` in `src/agent-runtime/storage.ts`). `agentx run`, `chat`, `event` and `serve` make them again when missing, as after a fresh clone.
 - A `storage` that is already there, a link or a folder of its own, is used as it is; agentx never moves or deletes one. But `agentx serve` does not run an agent whose `storage` is not its central folder, and `agentx event deliver` refuses one, since both reach the agent through the central folder.
@@ -42,13 +45,13 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 
 ```json
 {
-	"extensions": [],
-	"skills": ["../storage/knowledge/skills"],
+	"extensions": ["knowledge/extensions"],
+	"skills": ["knowledge/skills"],
 	"prompts": [],
 	"packages": ["npm:pi-web-access@0.48.0", "npm:pi-doc-reader@0.3.2"],
 	"agentx": {
 		"timezone": null,
-		"systemPrompt": ["../storage/knowledge/system_prompt"],
+		"systemPrompt": ["knowledge/system_prompt"],
 		"runner": { "maxThreads": 4, "stallSeconds": 600, "routerSeconds": 60 },
 		"composio": {
 			"session": {
@@ -62,7 +65,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 }
 ```
 
-- Pi loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` by itself ([Pi](../pi/pi-reference/README.md#config-locations)). `extensions` and `skills` add more folders, resolved from `.pi/`.
+- `extensions` and `skills` name the knowledge's folders, resolved from `.pi/`. Pi also loads `.pi/extensions/`, `.pi/skills/` and `.pi/prompts/` by itself when they exist ([Pi](../pi/pi-reference/README.md#config-locations)); the template has none of them.
 - `packages` takes Pi packages. Pi installs missing ones on start, into `.pi/npm/` and `.pi/git/`, which are gitignored. The template lists two, each at an exact version ([D83](#d83)):
 
 | Package | What it gives the agent |
@@ -74,7 +77,7 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 
 | Key | Meaning |
 |---|---|
-| `systemPrompt` | Folders whose `*.md` files follow `.pi/system_prompt/` in the system prompt, each a section `agentx-knowledge-<file name>`, whatever the folder. The template adds the agent's knowledge. |
+| `systemPrompt` | Folders whose `*.md` files follow the harness's sections in the system prompt, each a section `agentx-knowledge-<file name>`, resolved from `.pi/`. The template lists the knowledge's `system_prompt/`. |
 | `composio` | The agent's Composio user id and session policy ([Composio](../pi/pi-package/composio/README.md#settings)). The template enables eight toolkits; `init-agent` adds the user id. |
 | `runner` | The limits of `agentx run` ([supervisor](../supervisor/README.md#settings)). |
 | `timezone` | The agent's time zone: its processes run in it, every time the harness shows the agent is in it, and so are its schedules ([D98](#d98)). `null` means the machine's; an IANA name such as `Asia/Kolkata` fixes it. |
@@ -84,23 +87,23 @@ The file belongs to the developer. What agentx needs from Pi, `agentx chat` and 
 
 ## System prompt
 
-The system prompt extension builds the prompt: the harness's preamble, then, after Pi's own sections and a section per skill, a section per file: the harness's, the agents this one can send to, `.pi/system_prompt/*.md` in the order of the index before each name, then the `agentx.systemPrompt` folders ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
+The system prompt extension builds the prompt: the harness's preamble, then, after Pi's own sections and a section per skill, a section per file: the harness's, the agents this one can send to, then the `agentx.systemPrompt` folders, `.pi/knowledge/system_prompt/` in the template, in the order of the index before each name ([Pi package](../pi/pi-package/README.md#the-system-prompt-extension), [D5](#d5)).
 
 ## Knowledge
 
-`storage/knowledge/` is the agent's own: what it learns and wants in later sessions ([D35](#d35)). The harness prompt says so, and that the harness and the definition are read-only.
+`.pi/knowledge/` is what the agent and its developer keep for every later session ([D35](#d35)). Both write it, and it is checked in, so git shows what the agent changed and a clone has it. The harness prompt tells the agent so, that no secret goes in it, and that the harness and the rest of `.pi/` are read-only.
 
-| In `storage/knowledge/` | Loaded |
+| In `.pi/knowledge/` | Loaded |
 |---|---|
 | `system_prompt/*.md` | at the end of the system prompt, a section per file, at the start of every run, through `agentx.systemPrompt` |
 | `skills/<name>/SKILL.md` | a section per skill, at the start of every run, through `skills` ([skills](../pi/pi-package/README.md#the-skills-extension)) |
-| `event_router.ts` | for every event without a thread ([routing](../events/README.md#routing)) |
-| `workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
-| `schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |
-| `webhooks.json` | by the coordinator, on every request to one of the agent's webhooks; kept with `agentx webhook` ([webhooks](../../coordinator-runtime/services/webhooks/README.md)) |
-| anything else | when the agent reads it |
+| `extensions/` | when a session starts, through `extensions`, as Pi loads `.pi/extensions/` |
+| `router/event_router.ts` | for every event without a thread ([routing](../events/README.md#routing)) |
+| `workflows/workflows.json` and its scripts | when routing and running ([workflows](../workflows/README.md)) |
+| `schedules/schedules.json` | by the coordinator, when it changes ([schedules](../../coordinator-runtime/services/scheduler/README.md)) |
+| `webhooks/webhooks.json` | by the coordinator, on every request to one of the agent's webhooks; kept with `agentx webhook` ([webhooks](../../coordinator-runtime/services/webhooks/README.md)) |
 
-All threads of the agent share it.
+Nothing else goes in it. The harness prompt tells the agent to keep what holds in every conversation as a note in `system_prompt/`, and what holds only for some task or situation as a skill, with any data the skill needs in its folder. All threads of the agent share it. agentx commits nothing: the developer commits what the agent wrote.
 
 ## Threads
 
@@ -122,8 +125,10 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 ## Known limits
 
 - The model Pi last chose in `agent-x/.pi/` is the default of every agent that sets none.
-- Knowledge is gitignored state, lost with the rest of `storage/`.
-- Whatever makes the agent write into its knowledge, an event included, lasts for every later session: its prompt text is read at the start of every run, and its router and workflows are code that runs.
+- What the agent writes into its knowledge on a server reaches git only when someone commits it there, and a deploy that replaces the agent directory drops what was not.
+- Whatever makes the agent write into its knowledge, an event included, lasts for every later session: its prompt text is read at the start of every run, and its router, workflows and extensions are code that runs.
+- An extension that fails to load stops Pi from starting, so every later session fails until a person fixes or removes it, also one the agent wrote. The harness prompt tells the agent to try one first, outside `extensions/`.
+- Each webhook's token is in git with its webhook, so whoever can read the repository can call it ([D101](../../coordinator-runtime/services/webhooks/README.md#d101)). `agentx webhook rotate` replaces a token that leaked.
 - `agentx chat mcp list` needs the project trusted once with `/trust` in an interactive session ([D6](#d6)).
 - The first session of an agent, and the first after a clone, installs the template's packages from npm: up to half a minute. Without the network, or with `PI_OFFLINE` set, Pi starts without them.
 - pi-web-access reads its search providers' keys from `agent-x/.pi/web-search.json`, shared by every agent of the project.
@@ -146,14 +151,14 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 <a id="d4"></a>
 ### D4. Starting an agent changes nothing that is checked in
 
-- **Decision.** `chat` and `run` only start processes; everything they and Pi write is gitignored: `storage/`, `agent-x/.pi/`, and Pi's `.pi/npm/` and `.pi/git/`.
+- **Decision.** `chat` and `run` only start processes; everything they and Pi write is gitignored: `storage/`, `agent-x/.pi/`, and Pi's `.pi/npm/` and `.pi/git/`. Only the agent writes what is checked in, into its knowledge ([D35](#d35)).
 - **Why.** Otherwise the config in effect would differ from what is checked in.
 - **Consequence.** Limits that only generated files could remove are accepted ([D6](#d6)).
 
 <a id="d5"></a>
 ### D5. The system prompt comes from an extension
 
-- **Decision.** agentx's system prompt extension sets the prompt in `before_agent_start`, from the harness prompt, `.pi/system_prompt/*.md` and the `agentx.systemPrompt` folders, a section per file ([D73](../pi/pi-package/README.md#d73)).
+- **Decision.** agentx's system prompt extension sets the prompt in `before_agent_start`, from the harness prompt and the `agentx.systemPrompt` folders, a section per file ([D73](../pi/pi-package/README.md#d73)).
 - **Why.** The files are read at the start of every run, so an edit applies from the next run, without a restart.
 - **Rejected.** `.pi/SYSTEM.md`, one file only; `--system-prompt`, which joins the files once, at start.
 
@@ -172,11 +177,13 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 - **Rejected.** A checked-in `agent-x/.pi/settings.json` that lists agentx's Pi package: Pi writes machine state to that file.
 
 <a id="d35"></a>
-### D35. What an agent learns is kept in `storage/knowledge/`, apart from its definition
+### D35. The agent's knowledge is `.pi/knowledge/`, one checked-in source that the agent and its developer both write
 
-- **Decision.** `storage/knowledge/` is the agent's own, and its `.pi/settings.json` lists the `skills/` and `system_prompt/` folders there, so they load after the developer's. The agent writes no extensions.
-- **Why.** The agent must not write into `.pi/`, which its developer owns, and a developer who does not want the agent to teach itself removes the lines. An extension runs with all of Pi's power, and one that fails to load stops every later session; a script, a router or a workflow does what an agent needs beyond skills and prompt text.
+- **Problem.** An agent learns while it runs, and its developer shapes it. Both need the result in every later session, on every machine, and the developer needs to see what the agent learned.
+- **Decision.** Everything that lasts, other than settings and MCP servers, is in `.pi/knowledge/`, a folder for each kind: `system_prompt/`, `skills/`, `extensions/`, `router/`, `workflows/`, `schedules/` and `webhooks/`. Each kind has one source, which the agent and its developer both edit, and the folder is checked in. The settings list its `skills/`, `extensions/` and `system_prompt/`. The rest of `.pi/` is the developer's and read-only to the agent, and `storage/` holds only state and working files ([D65](#d65)).
+- **Why.** The developer reviews what the agent learned in git, as their own changes, and a clone or a deploy has it. With one source, no rule says whose entry of a name wins. Listing the folders in the settings keeps them the developer's choice.
 - **Rejected.** Passing the folders as flags: they would load in every agent, whatever its developer wants.
+- **Consequence.** The agent can write extensions, which run with all of Pi's power, and a webhook's token is in git ([Known limits](#known-limits)).
 
 <a id="d36"></a>
 ### D36. agentx's own settings for an agent are under `agentx` in its `.pi/settings.json`
@@ -197,7 +204,7 @@ A thread is one conversation: a folder of Pi sessions, `storage/sessions/<thread
 ### D65. An agent's state lives in `agent-x/storage/<agent>/`, reached as `storage/` through a link
 
 - **Decision.** Every agent's runtime state is in `agent-x/storage/<agent>/`. The agent directory reaches it through `storage`, a relative link that agentx makes when it is missing, and in a sandbox a mount. The coordinator uses the central folder.
-- **Why.** Definition and state are apart: a deploy replaces one and keeps the other, and a server backs up one folder. Inside the agent nothing changes, in or out of a sandbox. The folder is inside `agent-x/`, so routers and workflows in `storage/knowledge/` find the project's packages.
+- **Why.** Definition and state are apart: a deploy replaces one and keeps the other, and a server backs up one folder. Inside the agent nothing changes, in or out of a sandbox. The folder is inside `agent-x/`, so scripts in the agent's working files find the project's packages.
 - **Rejected.** Paths that name `agent-x/storage/<agent>/` everywhere, which would differ inside a sandbox; a central folder outside `agent-x/`, which would lose the project's packages.
 - **Consequence.** Until sandboxes, `storage/..` holds every agent's state, one step up.
 

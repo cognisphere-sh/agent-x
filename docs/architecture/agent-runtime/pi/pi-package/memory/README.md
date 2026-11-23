@@ -11,7 +11,7 @@ It adds two tools, `episode_search` and `episode_read`. The harness prompt, `cor
 
 ## The index
 
-`storage/knowledge/memory/index.db`, one per agent, shared by all its threads ([D90](#d90)). It is built from Pi's session files, `storage/sessions/<thread>/*.jsonl`, which stay the record. Deleted, with its `-wal` and `-shm` files and while no session has it open, the index gets each thread's episodes back when a run of that thread settles, as its session takes all its entries again; a `-wal` file left beside a new index would be applied to it ([sqlite.org](https://sqlite.org/howtocorrupt.html)).
+`storage/memory/index.db`, one per agent, shared by all its threads ([D90](#d90)). It is built from Pi's session files, `storage/sessions/<thread>/*.jsonl`, which stay the record. Deleted, with its `-wal` and `-shm` files and while no session has it open, the index gets each thread's episodes back when a run of that thread settles, as its session takes all its entries again; a `-wal` file left beside a new index would be applied to it ([sqlite.org](https://sqlite.org/howtocorrupt.html)).
 
 - **An episode** is a row: its id, its thread, and when its first and last messages were written.
 - **Its text** is Markdown: its messages as they were written, the model's text, each tool call with its arguments, each result in a code block. Images are named, not shown: the agent opens their files with `read`. Its end message is left out. A fold nudge and its turn come after an end message, in no episode.
@@ -63,7 +63,7 @@ Times are in the agent's time zone, `agentx.timezone`, as on its events.
 ### D90. One SQLite index of every thread's episodes per agent, with FTS5, built from the session files
 
 - **Problem.** The agent needs to find and read its past work in every thread. Pi keeps it in a session file per session, per thread, and has no search.
-- **Decision.** One SQLite file per agent, `storage/knowledge/memory/index.db`, holds each episode's Markdown in chunks of whole turns, which FTS5 indexes and ranks by BM25. It is built from the session files, which stay the record.
+- **Decision.** One SQLite file per agent, `storage/memory/index.db`, holds each episode's Markdown in chunks of whole turns, which FTS5 indexes and ranks by BM25. It is built from the session files, which stay the record.
 - **Why.** `node:sqlite` has FTS5, so keyword search needs no new dependency. With the text in the index, search, snippets and reading back run on it alone, for any thread. Chunks let a hit point into a long episode, and vectors need them later. A turn is one step of the work, so a chunk of whole turns holds a call with its result.
 - **Rejected.** Searching the session files for each query: every search would read every file, and the text the model saw would be rebuilt each time.
 

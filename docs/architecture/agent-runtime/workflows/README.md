@@ -1,21 +1,16 @@
 # Workflows
 
-A workflow handles an event with a fixed script instead of the model, such as filing an invoice email. Each workflow has a thread, `workflow.<name>`. The [routers](../events/README.md#routing) send events there, and so do the agent's [schedules](../../coordinator-runtime/services/scheduler/README.md) and [webhooks](../../coordinator-runtime/services/webhooks/README.md); the agent can with `agentx event send --thread-id workflow.<name>`, and a person with `agentx event deliver`. The `WorkflowRunner` (`src/agent-runtime/workflows/workflow-runner.ts`), one of the loops of [`agentx run`](../supervisor/README.md), runs them. Pi never runs a workflow's thread, and `agentx chat` refuses one.
+A workflow handles an event with a fixed script instead of the model, such as filing an invoice email. Each workflow has a thread, `workflow.<name>`. The [router](../events/README.md#routing) sends events there, and so do the agent's [schedules](../../coordinator-runtime/services/scheduler/README.md) and [webhooks](../../coordinator-runtime/services/webhooks/README.md); the agent can with `agentx event send --thread-id workflow.<name>`, and a person with `agentx event deliver`. The `WorkflowRunner` (`src/agent-runtime/workflows/workflow-runner.ts`), one of the loops of [`agentx run`](../supervisor/README.md), runs them. Pi never runs a workflow's thread, and `agentx chat` refuses one.
 
 ## The list of workflows
 
-`workflows.ts` reads two files each time it needs them, so an edit applies at once ([D52](#d52)):
-
-- `.pi/workflows.json`: the developer's, checked in, read-only to the agent.
-- `storage/knowledge/workflows.json`: the agent's own ([D35](../agent/README.md#d35)).
-
-A new agent has both, empty, each with an empty `workflows/` folder next to it for the scripts.
+`workflows.ts` reads `.pi/knowledge/workflows/workflows.json`, in the agent's [knowledge](../agent/README.md#knowledge), each time it needs it, so an edit applies at once ([D52](#d52)). The agent and its developer both edit it, and keep the scripts in the same folder. A new agent has it, empty.
 
 ```json
 {
 	"file-invoice": {
 		"description": "Files an invoice email. For events from the billing mailbox.",
-		"script": "workflows/file-invoice.ts",
+		"script": "file-invoice.ts",
 		"timeoutSeconds": 600,
 		"babysitterThread": "billing"
 	}
@@ -24,12 +19,12 @@ A new agent has both, empty, each with an empty `workflows/` folder next to it f
 
 | Key | Required | Meaning |
 |---|---|---|
-| `description` | yes | What it does and which events it is for. The routers see it. |
-| `script` | yes | The module, from the folder of the `workflows.json`. |
+| `description` | yes | What it does and which events it is for. The router sees it. |
+| `script` | yes | The module, from `.pi/knowledge/workflows/`. |
 | `timeoutSeconds` | no | Default 600. |
 | `babysitterThread` | no | The agent's thread that looks after the workflow: it hears of failed runs and refused sends, and gets the answers to the workflow's sends. Default `main`. |
 
-Names use letters, digits and dashes. On a name in both files, the agent's wins, so the agent can replace a workflow of its developer's. A broken entry is skipped and reported on `agentx run`'s error output.
+Names use letters, digits and dashes. A broken entry is skipped and reported on `agentx run`'s error output.
 
 ## The contract
 
@@ -71,7 +66,7 @@ When a run fails, the runner sends an event to the babysitter thread, from that 
 - It says which workflow failed on which event, why, and where the log is. A run that was cut off may still have been running.
 - Its key is `failed:<event id>`, so a report is sent once.
 
-The agent reads the log and the script, fixes the script or tells a person if it is the developer's, and sends the work again. A success is not reported.
+The agent reads the log and the script, fixes the script, and sends the work again. A success is not reported.
 
 ## Known limits
 
@@ -83,10 +78,10 @@ The agent reads the log and the script, fixes the script or tells a person if it
 ## Decisions
 
 <a id="d52"></a>
-### D52. Workflows are listed in two `workflows.json` files; each is a function on its own thread
+### D52. Workflows are listed in one `workflows.json`; each is a function on its own thread
 
-- **Decision.** A workflow is an entry in `.pi/workflows.json` or `storage/knowledge/workflows.json`, with a description and a script whose default export takes the event. On a name in both, the agent's wins. Its events are on the thread `workflow.<name>`, which Pi never runs.
-- **Why.** One file lists what the routers can choose from, easy to review and for the agent to edit. The agent can do better than a workflow it was given, as it does with its developer's skills, router and schedules. A thread per workflow reuses the queue's lease to run one event at a time.
+- **Decision.** A workflow is an entry in `.pi/knowledge/workflows/workflows.json`, with a description and a script whose default export takes the event. Its events are on the thread `workflow.<name>`, which Pi never runs.
+- **Why.** One file lists what the router can choose from, easy to review and for the agent and its developer to edit ([D35](../agent/README.md#d35)). A thread per workflow reuses the queue's lease to run one event at a time.
 - **Rejected.** A folder per workflow with its own `workflow.json`; a SQLite file, which nobody can review in git; scripts in any language reading stdin, which every workflow would have to parse.
 
 <a id="d53"></a>

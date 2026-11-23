@@ -260,11 +260,11 @@ test("a search for a service with no account keeps its connections and next step
 	assert.equal(trimSearch(`{"successful":true,"data":{"results":[ … 3 KB cut … ]}}`), undefined);
 });
 
-/** Gives the agent the developer's workflows `scripts`, by name, each the body of its default export, and runs each once under `agentx run`. Resolves to their events once all are settled. */
+/** Gives the agent the workflows `scripts`, by name, each the body of its default export, and runs each once under `agentx run`. Resolves to their events once all are settled. */
 async function runWorkflows(t, project, scripts) {
-	const listed = Object.fromEntries(Object.keys(scripts).map((name) => [name, { description: `The test's ${name}.`, script: `workflows/${name}.ts` }]));
-	writeFileSync(join(project.agent, ".pi", "workflows.json"), JSON.stringify(listed));
-	for (const [name, body] of Object.entries(scripts)) writeFileSync(join(project.agent, ".pi", "workflows", `${name}.ts`), `export default async function (event, ctx) {\n${body}\n}\n`);
+	const listed = Object.fromEntries(Object.keys(scripts).map((name) => [name, { description: `The test's ${name}.`, script: `${name}.ts` }]));
+	writeFileSync(join(project.agent, ".pi", "knowledge", "workflows", "workflows.json"), JSON.stringify(listed));
+	for (const [name, body] of Object.entries(scripts)) writeFileSync(join(project.agent, ".pi", "knowledge", "workflows", `${name}.ts`), `export default async function (event, ctx) {\n${body}\n}\n`);
 	const queue = new Queue(project.agent);
 	t.after(() => queue.close());
 	const ids = Object.keys(scripts).map((name) => queue.enqueue({ threadId: `workflow.${name}`, content: "" }));
@@ -311,7 +311,7 @@ test("a developer's extension that registers an MCP server after awaiting in ses
 	// No Composio key: only the developer's server is in play.
 	const project = setup(false);
 	writeFileSync(
-		join(project.agent, ".pi", "extensions", "slow-server.ts"),
+		join(project.agent, ".pi", "knowledge", "extensions", "slow-server.ts"),
 		`export default function (pi) {
 	pi.on("session_start", async () => {
 		await new Promise((resolve) => setTimeout(resolve, 2000));

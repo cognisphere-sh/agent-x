@@ -22,7 +22,7 @@ src/agent-runtime/
     event-router.ts      class EventRouter: takes the inbox into the queue
   workflows/
     workflow-runner.ts   class WorkflowRunner: runs workflow events
-    workflows.ts         the agent's two workflows.json
+    workflows.ts         the agent's workflows.json
   functions/
     function-call.ts     calls a router or workflow in a child process
     function-host.ts     that child process

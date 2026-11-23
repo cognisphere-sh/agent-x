@@ -39,7 +39,7 @@ Messages come in without Composio, so a failure here leaves the service on, with
 1. **Checks** that the agent has a bot and that `X-Telegram-Bot-Api-Secret-Token` is the bot's secret token. Otherwise 404, or 401.
 2. **Ignores**, with 200, an update that is neither a message nor a [tap](#button-taps), a message from a chat the agent does not list, with a log line, and a message with no text and no file, such as a pin or a member who joined, which would cost a model run for nothing.
 3. **Downloads** the message's files into the event: the largest size of a photo, and a document, audio, video, voice note, video note, animation or sticker, each by the name Telegram gives it, such as `file_3.jpg`, with a number first should two have the same name. A file the Bot API will not give, such as one over 20 MB, is said in the content instead, so the message still arrives and holds up none after it.
-4. **Delivers** with `context.deliver`, with no thread, so the agent's routers pick one:
+4. **Delivers** with `context.deliver`, with no thread, so the agent's router picks one:
    - key `telegram:<update_id>`, so an update Telegram sends again is one event;
    - content: the message's text or caption, then a line for each file that could not be downloaded, and the files line;
    - metadata `source: telegram`, `chat` (its id), `chat-type`, `from` (`@username`, or the sender's name), `from-id` and `message-id`, with the fact `agentX-Service: telegram`;

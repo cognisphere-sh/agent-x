@@ -1,6 +1,6 @@
-// The scheduler, a core service: events an agent gets at the times a cron pattern names. They are listed in the developer's .pi/schedules.json and in the agent's own
-// storage/knowledge/schedules.json; on a name in both, the agent's wins, so the agent can change or stop one of its developer's. The coordinator looks at them
-// each second and reads a file again only when it changed, so an edit applies within a second. Polled, not watched: file watching misses changes on mounted and linked folders.
+// The scheduler, a core service: events an agent gets at the times a cron pattern names. They are listed in the agent's .pi/knowledge/schedules/schedules.json,
+// which its developer and the agent both edit. The coordinator looks at it each second and reads it again only when it changed, so an edit applies within
+// a second. Polled, not watched: file watching misses changes on mounted and linked folders.
 
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -18,8 +18,6 @@ const changedAt = (file: string) => statSync(file, { throwIfNoEntry: false })?.m
 
 // One schedule, checked.
 interface Schedule {
-	// The file that lists it, for a report.
-	file: string;
 	cron: Cron;
 	event: NewEvent;
 	isActive: boolean;
@@ -51,23 +49,23 @@ export class SchedulerService extends Service {
 /** The schedules of the agent in `agentRoot`, fired into its inbox. */
 export class Scheduler {
 	readonly agent: string;
-	// The agent's own list of schedules, then the developer's.
-	private readonly lists: string[];
+	// The agent's list of schedules.
+	private readonly list: string;
 	// The agent's settings, which hold the time zone the patterns are in.
 	private readonly settings: string;
 	private readonly stateFile: string;
-	// When each file was last changed, as last read; a missing file is 0.
+	// When the list and the settings were last changed, as last read; a missing file is 0.
 	private readonly seen = new Map<string, number>();
 	private schedules = new Map<string, Schedule>();
 	private state: Record<string, State> | undefined;
 
 	constructor(
 		private readonly agentRoot: string,
-		/** The agent's storage folder: its own schedules, and what was fired. */
+		/** The agent's storage folder, which keeps what was fired. */
 		storage: string,
 	) {
 		this.agent = basename(agentRoot);
-		this.lists = [join(storage, "knowledge", "schedules.json"), join(agentRoot, ".pi", "schedules.json")];
+		this.list = join(agentRoot, ".pi", "knowledge", "schedules", "schedules.json");
 		this.settings = join(agentRoot, ".pi", "settings.json");
 		this.stateFile = join(storage, "schedule-state.json");
 	}
@@ -75,7 +73,7 @@ export class Scheduler {
 	/** Fires the schedules that are due at `now`. Throws on a file that cannot be written; what was not done is done on the next call. */
 	tick(now = Date.now()): void {
 		this.state ??= existsSync(this.stateFile) ? (JSON.parse(readFileSync(this.stateFile, "utf8")) as Record<string, State>) : {};
-		if ([...this.lists, this.settings].some((file) => changedAt(file) !== this.seen.get(file))) this.load();
+		if ([this.list, this.settings].some((file) => changedAt(file) !== this.seen.get(file))) this.load();
 		let changed = false;
 		for (const [name, schedule] of this.schedules) {
 			let state = this.state[name];
@@ -96,28 +94,25 @@ export class Scheduler {
 		if (changed) writeFileSync(this.stateFile, JSON.stringify(this.state));
 	}
 
-	// Reads the schedule files again. A broken entry is left out and reported on the agent's main thread.
+	// Reads the schedules again. A broken entry is left out and reported on the agent's main thread.
 	private load(): void {
-		for (const file of [...this.lists, this.settings]) this.seen.set(file, changedAt(file));
+		for (const file of [this.list, this.settings]) this.seen.set(file, changedAt(file));
 		const timeZone = agentTimeZone(this.agentRoot);
 		const schedules = new Map<string, Schedule>();
-		for (const file of this.lists) {
-			if (!existsSync(file)) continue;
-			let entries: unknown;
-			try {
-				entries = JSON.parse(readFileSync(file, "utf8"));
-			} catch (error) {
-				this.report(file, "", `${(error as Error).message}. Its schedules are skipped.`);
-				continue;
-			}
-			for (const [name, entry] of Object.entries(entries ?? {})) {
-				const checked = check(file, name, entry, timeZone);
-				if (typeof checked === "string") this.report(file, name, `schedule "${name}" is skipped: ${checked}`);
-				else if (schedules.has(name)) console.error(`${this.agent}: ${file}: schedule "${name}" is skipped: storage/knowledge/schedules.json has one of that name, which is used.`);
-				else schedules.set(name, checked);
-			}
-		}
+		// Set first, so a list that is missing or cannot be read leaves no schedules.
 		this.schedules = schedules;
+		if (!existsSync(this.list)) return;
+		let entries: unknown;
+		try {
+			entries = JSON.parse(readFileSync(this.list, "utf8"));
+		} catch (error) {
+			return this.report("", `${(error as Error).message}. Its schedules are skipped.`);
+		}
+		for (const [name, entry] of Object.entries(entries ?? {})) {
+			const checked = check(name, entry, timeZone);
+			if (typeof checked === "string") this.report(name, `schedule "${name}" is skipped: ${checked}`);
+			else schedules.set(name, checked);
+		}
 	}
 
 	// The event of the fire due at `due`. Its key holds the time, so a fire put twice, as after a crash, is one event; it is sent at the time it was due.
@@ -126,20 +121,20 @@ export class Scheduler {
 		try {
 			deliverEvent(this.agentRoot, { ...schedule.event, key: `schedule:${name}:${due}` }, { facts: { "agentX-Schedule": name }, sentAt: due });
 		} catch (error) {
-			this.report(schedule.file, name, `schedule "${name}" did not fire: ${(error as Error).message}`);
+			this.report(name, `schedule "${name}" did not fire: ${(error as Error).message}`);
 		}
 	}
 
 	// Tells the agent's main thread, once for each problem: its key names the problem.
-	private report(file: string, name: string, why: string): void {
-		const content = withoutBlockTag(`${file}: ${why}`);
+	private report(name: string, why: string): void {
+		const content = withoutBlockTag(`${this.list}: ${why}`);
 		console.error(`${this.agent}: ${content}`);
 		deliverEvent(this.agentRoot, { threadId: "main", content, key: `schedule-error:${name}:${why}`.slice(0, 200), metadata: { source: "schedule" } });
 	}
 }
 
-// The entry of `file` as a schedule, or what is wrong with it.
-function check(file: string, name: string, entry: unknown, timeZone: string | undefined): Schedule | string {
+// The entry `name` as a schedule, or what is wrong with it.
+function check(name: string, entry: unknown, timeZone: string | undefined): Schedule | string {
 	if (!nameRule.test(name)) return "a name has only letters, digits and dashes.";
 	const { cron, content, threadId, metadata, isSilent = false, isActive = true, fireOnce = false, catchUp = false } = (entry ?? {}) as Record<string, unknown>;
 	if (typeof cron !== "string") return "it needs a cron pattern, such as \"0 9 * * 1-5\".";
@@ -151,7 +146,7 @@ function check(file: string, name: string, entry: unknown, timeZone: string | un
 	const event: NewEvent = { threadId: threadId as string | undefined, content: text, metadata: { ...(metadata as Record<string, unknown>), source: "schedule" }, isSilent: isSilent as boolean };
 	try {
 		checkEvent(event);
-		return { file, cron: new Cron(cron, { timezone: timeZone, paused: true }), event, isActive: isActive as boolean, fireOnce: fireOnce as boolean, catchUp: catchUp as boolean, entry: JSON.stringify(entry) };
+		return { cron: new Cron(cron, { timezone: timeZone, paused: true }), event, isActive: isActive as boolean, fireOnce: fireOnce as boolean, catchUp: catchUp as boolean, entry: JSON.stringify(entry) };
 	} catch (error) {
 		return (error as Error).message;
 	}

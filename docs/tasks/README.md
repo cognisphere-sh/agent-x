@@ -33,6 +33,7 @@ A task that is dropped is deleted, together with its row below.
 | [Spend fewer tokens on Composio's searches, and keep episodes out of fold summaries](done/12-composio-search-tokens.md) | feature | 2026-11-22 |
 | [Upgrade a project and its agents, and give the project and each agent one secrets file](done/13-upgrade-and-env-files.md) | feature | 2026-11-22 |
 | [Let each agent make webhooks that run its workflows, and teach routers, workflows, schedules and webhooks as skills](done/14-webhooks-and-skills.md) | feature | 2026-11-22 |
+| [Keep each agent's knowledge in its checked-in .pi/knowledge/, one source that the agent and its developer both write](done/15-knowledge-in-pi.md) | feature | 2026-11-23 |
 
 ## A task file
 

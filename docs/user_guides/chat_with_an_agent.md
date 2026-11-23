@@ -39,8 +39,7 @@ Pi subcommands work, such as `agentx chat mcp list` and `agentx chat install <pa
 Loaded:
 
 - agentx's Pi package: its extensions and the harness prompt.
-- The agent's `.pi/`: `settings.json`, `mcp.json`, `system_prompt/`, `skills/`, `extensions/`.
-- The agent's `storage/knowledge/`, through the lines for it in `.pi/settings.json`.
+- The agent's `.pi/`: `settings.json`, `mcp.json`, and its knowledge's `system_prompt/`, `skills/` and `extensions/`, through the lines for them in `settings.json`.
 
 Not loaded:
 

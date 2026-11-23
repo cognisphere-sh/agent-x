@@ -1,7 +1,8 @@
-// Where an agent's runtime state is. It lives in the project's central folder, agent-x/storage/<agent>/, and the agent reaches it as storage/
-// in its own directory: a link, and in a sandbox a mount. So everything inside the agent says storage/, and the coordinator uses the central folder.
+// Where an agent's runtime state is: its sessions, queue, working files and the like, never what it keeps for later, which is in its checked-in .pi/knowledge/.
+// It lives in the project's central folder, agent-x/storage/<agent>/, and the agent reaches it as storage/ in its own directory: a link, and in a sandbox a mount.
+// So everything inside the agent says storage/, and the coordinator uses the central folder.
 
-import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, symlinkSync } from "node:fs";
 import { basename, join, relative } from "node:path";
 import { agentXOf } from "./project-config.js";
 
@@ -11,9 +12,6 @@ export const storageOf = (agentRoot: string) => join(agentRoot, "storage");
 /** The agent's folder in the project's central storage, `agent-x/storage/<agent>/`, which the coordinator uses. */
 export const centralStorage = (agentRoot: string) => join(agentXOf(agentRoot), "storage", basename(agentRoot));
 
-// The folders the agent writes to: its working files, and what it learns and keeps.
-const folders = ["workspace", "knowledge/skills", "knowledge/system_prompt", "knowledge/workflows"];
-
 /**
  * Makes the agent's storage when it is missing, as in a new agent or a fresh clone: the central folder, and `storage/` linking to it.
  * A `storage/` already there, a link or a folder, is used as it is: in a sandbox it is the mount. Never moves or deletes one.
@@ -22,12 +20,8 @@ export function ensureStorage(agentRoot: string): void {
 	const storage = storageOf(agentRoot);
 	if (existsSync(storage)) return;
 	const central = centralStorage(agentRoot);
-	for (const folder of folders) mkdirSync(join(central, folder), { recursive: true });
-	// The agent's own workflows and schedules, empty, so it finds each file where its harness prompt says it is. A file already there, when only the link was missing, is kept.
-	for (const list of ["workflows.json", "schedules.json"]) {
-		const file = join(central, "knowledge", list);
-		if (!existsSync(file)) writeFileSync(file, "{}\n");
-	}
+	// Its working files. A folder already there, when only the link was missing, is kept.
+	mkdirSync(join(central, "workspace"), { recursive: true });
 	// A link whose folder was missing now leads to it.
 	if (!lstatSync(storage, { throwIfNoEntry: false })?.isSymbolicLink()) symlinkSync(relative(agentRoot, central), storage, "junction");
 }

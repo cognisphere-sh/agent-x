@@ -1,4 +1,4 @@
-// Your event router. agentx asks it about every event that names no thread, after the agent's own router, storage/knowledge/event_router.ts, when that one picks none.
+// The agent's event router, which its developer and the agent both edit. agentx asks it about every event that names no thread.
 // It gets the event, { id, content, metadata, createdAt }, and ctx, { workflows: [{ name, description }] }, and returns { thread }: a thread of the agent,
 // such as "main", "workflow.<name>" to run that workflow, or "pass" to drop the event. Nothing leaves the event to main. Each call is a new process, so an edit applies to the next event.
 

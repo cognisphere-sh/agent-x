@@ -1,4 +1,4 @@
-// The memory index's file, storage/knowledge/memory/index.db: its tables, and taking a thread's episodes out of it. The episode index (episode-index.ts)
+// The memory index's file, storage/memory/index.db: its tables, and taking a thread's episodes out of it. The episode index (episode-index.ts)
 // fills it from the session files. Nothing here loads Pi, so `agentx remove-thread` opens it at no cost.
 
 import { existsSync } from "node:fs";
@@ -36,7 +36,7 @@ const schema = `
 	END;`;
 
 /** The memory index's file of the agent in `agentRoot`. */
-export const indexPath = (agentRoot: string) => join(agentRoot, "storage", "knowledge", "memory", "index.db");
+export const indexPath = (agentRoot: string) => join(agentRoot, "storage", "memory", "index.db");
 
 /** Opens the memory index of the agent in `agentRoot`, made when it is missing. */
 export function openIndex(agentRoot: string): DatabaseSync {

@@ -34,6 +34,9 @@ function setup(t) {
 	};
 }
 
+/** The agent's router, from its directory. */
+const routerFile = ".pi/knowledge/router/event_router.ts";
+
 /** A router that answers `{ thread }` from a line of the event's content, `route: <thread>`; "throw" and "hang" make it fail, and "nothing" returns nothing. */
 const testRouter = `
 export default async function route(event, ctx) {
@@ -46,9 +49,9 @@ export default async function route(event, ctx) {
 }
 `;
 
-test("a new agent's router, the developer's, sends an event without a thread to main, and agentx writes no router of the agent's own", async (t) => {
+test("a new agent's router, from the template, sends an event without a thread to main", async (t) => {
 	const { project, event, send, start, reach } = setup(t);
-	assert.match(readFileSync(join(project.agent, ".pi", "event_router.ts"), "utf8"), /return \{ thread: "main" \};/);
+	assert.match(readFileSync(join(project.agent, routerFile), "utf8"), /return \{ thread: "main" \};/);
 	const first = await send("hello");
 	// It waits in the inbox, and only the router loop adds it to the queue.
 	assert.equal(event(first), undefined);
@@ -57,37 +60,22 @@ test("a new agent's router, the developer's, sends an event without a thread to 
 	await reach("done", first);
 	assert.equal(event(first).threadId, "main");
 	assert.equal(event(first).metadata["agentX-RouterError"], undefined);
-	assert.ok(!existsSync(join(project.agent, "storage", "knowledge", "event_router.ts")));
 });
 
-test("the agent's router is asked first, then the developer's; one that fails or picks no thread leaves the event to the next, and then to main", async (t) => {
-	const { event, send, start, reach, file } = setup(t);
-	file("storage/knowledge/event_router.ts", testRouter);
-	// The developer's router answers `dev: <thread>`, nothing without it, and throws on `dev: throw`.
-	file(
-		".pi/event_router.ts",
-		`export default async function route(event) {
-			const wanted = /dev: (\\S+)/.exec(event.content)?.[1];
-			if (wanted === "throw") throw new Error("the developer's router broke");
-			return wanted === undefined ? undefined : { thread: wanted };
-		}`,
-	);
+test("a router that returns nothing leaves the event to main, and so does an agent without a router", async (t) => {
+	const { project, event, send, start, reach, file } = setup(t);
+	file(routerFile, testRouter);
 	start();
-	const agents = await send("route: support\ndev: throw");
-	const developers = await send("route: nothing\ndev: billing");
-	const neither = await send("route: nothing");
-	const agentFailed = await send("route: throw\ndev: billing");
-	const bothFailed = await send("route: throw\ndev: throw");
-	const all = [agents, developers, neither, agentFailed, bothFailed];
-	for (const id of all) await reach("done", id);
+	const nothing = await send("route: nothing");
+	await reach("done", nothing);
+	rmSync(join(project.agent, routerFile));
+	const none = await send("route: support");
+	await reach("done", none);
 	assert.deepEqual(
-		all.map((id) => [event(id).threadId, event(id).metadata["agentX-RouterError"]?.match(/(\S+event_router\.ts): failed/g)]),
+		[nothing, none].map((id) => [event(id).threadId, event(id).metadata["agentX-RouterError"]]),
 		[
-			["support", undefined],
-			["billing", undefined],
 			["main", undefined],
-			["billing", ["storage/knowledge/event_router.ts: failed"]],
-			["main", ["storage/knowledge/event_router.ts: failed", ".pi/event_router.ts: failed"]],
+			["main", undefined],
 		],
 	);
 });
@@ -95,7 +83,7 @@ test("the agent's router is asked first, then the developer's; one that fails or
 test("an event on the thread pass stays on the queue as passed and nothing runs it, whether its sender or a router named pass, and a router sees which schedule sent an event", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	// A router can drop a schedule's events, which carry agentX-Schedule.
-	file("storage/knowledge/event_router.ts", `export default async function route(event) { if (event.metadata["agentX-Schedule"] === "weekly-digest") return { thread: "pass" }; }`);
+	file(routerFile, `export default async function route(event) { if (event.metadata["agentX-Schedule"] === "weekly-digest") return { thread: "pass" }; }`);
 	start();
 	const named = await send("--thread-id", "pass", "dropped by its sender");
 	const scheduled = deliverEvent(project.agent, { content: "Write the weekly digest." }, { facts: { "agentX-Schedule": "weekly-digest" } });
@@ -115,9 +103,9 @@ test("the router's answer puts the event on its thread, the router can import th
 	mkdirSync(helper);
 	writeFileSync(join(helper, "package.json"), JSON.stringify({ name: "route-helper", type: "module", main: "index.js" }));
 	writeFileSync(join(helper, "index.js"), 'export const helped = (thread) => thread === "helped" ? "support-2" : thread;');
-	file("storage/knowledge/event_router.ts", `import { helped } from "route-helper";\n${testRouter.replace("return { thread: wanted };", "return { thread: helped(wanted) };")}`);
-	file(".pi/workflows.json", JSON.stringify({ w: { description: "Does nothing.", script: "workflows/w.ts" } }));
-	file(".pi/workflows/w.ts", "export default async function () {}");
+	file(routerFile, `import { helped } from "route-helper";\n${testRouter.replace("return { thread: wanted };", "return { thread: helped(wanted) };")}`);
+	file(".pi/knowledge/workflows/workflows.json", JSON.stringify({ w: { description: "Does nothing.", script: "w.ts" } }));
+	file(".pi/knowledge/workflows/w.ts", "export default async function () {}");
 	start();
 	const routed = await send("route: support");
 	const imported = await send("route: helped");
@@ -131,7 +119,7 @@ test("the router's answer puts the event on its thread, the router can import th
 
 test("a router that throws, hangs or names a missing workflow sends the event to main with agentX-RouterError, and the event keeps why", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
-	file("storage/knowledge/event_router.ts", testRouter);
+	file(routerFile, testRouter);
 	editSettings(project.agent, (settings) => ({ ...settings, agentx: { ...settings.agentx, runner: { routerSeconds: 2 } } }));
 	const [threw, hung, missing, bad] = [await send("route: throw"), await send("route: hang"), await send("route: workflow.nope"), await send("route: no/good")];
 	start();
@@ -146,9 +134,9 @@ test("a router that throws, hangs or names a missing workflow sends the event to
 		],
 	);
 	// Why, in one line the model sees with the event, and what the router printed, in a log.
-	assert.equal(event(threw).metadata["agentX-RouterError"], `storage/knowledge/event_router.ts: failed: the router broke What it printed: storage/workspace/router-logs/${threw}.agent.log`);
-	assert.match(readFileSync(join(project.agent, "storage", "workspace", "router-logs", `${threw}.agent.log`), "utf8"), /^printed before throwing\n/);
-	assert.match(event(hung).metadata["agentX-RouterError"], /^storage\/knowledge\/event_router\.ts: timeout: it took longer than 2 s/);
+	assert.equal(event(threw).metadata["agentX-RouterError"], `${routerFile}: failed: the router broke What it printed: storage/workspace/router-logs/${threw}.log`);
+	assert.match(readFileSync(join(project.agent, "storage", "workspace", "router-logs", `${threw}.log`), "utf8"), /^printed before throwing\n/);
+	assert.match(event(hung).metadata["agentX-RouterError"], /^\.pi\/knowledge\/router\/event_router\.ts: timeout: it took longer than 2 s/);
 
 	// No sender can name it, so a router failure cannot be faked.
 	assert.match((await agentx(project, ["event", "deliver", "--meta", "agentX-RouterError=fake", "hello"])).stderr, /Invalid metadata name "agentX-RouterError"/);
@@ -157,22 +145,22 @@ test("a router that throws, hangs or names a missing workflow sends the event to
 /** Workflows for the tests: `ok` prints, changes directory, sends an event to main, and returns what JSON cannot carry; `broken` throws; `slow` outlives its 1 s; `timed` notes when it ran. */
 function workflows(file, babysitterThread) {
 	file(
-		".pi/workflows.json",
+		".pi/knowledge/workflows/workflows.json",
 		JSON.stringify({
-			ok: { description: "Sends a note to main.", script: "workflows/ok.ts" },
-			broken: { description: "Always fails.", script: "workflows/broken.ts", ...(babysitterThread ? { babysitterThread } : {}) },
-			slow: { description: "Takes too long.", script: "workflows/slow.ts", timeoutSeconds: 1 },
-			timed: { description: "Notes when it ran.", script: "workflows/timed.ts" },
+			ok: { description: "Sends a note to main.", script: "ok.ts" },
+			broken: { description: "Always fails.", script: "broken.ts", ...(babysitterThread ? { babysitterThread } : {}) },
+			slow: { description: "Takes too long.", script: "slow.ts", timeoutSeconds: 1 },
+			timed: { description: "Notes when it ran.", script: "timed.ts" },
 		}),
 	);
 	file(
-		".pi/workflows/ok.ts",
+		".pi/knowledge/workflows/ok.ts",
 		`export default async function (event, ctx) { console.log("params", event.content, event.metadata.month); process.chdir("/"); await ctx.send("note from ok", { threadId: "main" }); const loop = {}; loop.self = loop; return loop; }`,
 	);
-	file(".pi/workflows/broken.ts", `export default async function () { console.log("about to fail"); throw new Error("broken on purpose"); }`);
-	file(".pi/workflows/slow.ts", `import { setTimeout } from "node:timers/promises"; export default async function () { await setTimeout(30_000); }`);
+	file(".pi/knowledge/workflows/broken.ts", `export default async function () { console.log("about to fail"); throw new Error("broken on purpose"); }`);
+	file(".pi/knowledge/workflows/slow.ts", `import { setTimeout } from "node:timers/promises"; export default async function () { await setTimeout(30_000); }`);
 	file(
-		".pi/workflows/timed.ts",
+		".pi/knowledge/workflows/timed.ts",
 		`import { appendFileSync } from "node:fs"; import { setTimeout } from "node:timers/promises";
 		export default async function (event) { appendFileSync("storage/workspace/timed", "start " + Date.now() + "\\n"); await setTimeout(1000); appendFileSync("storage/workspace/timed", "end " + Date.now() + "\\n"); }`,
 	);
@@ -227,7 +215,7 @@ test("a failure report goes to the thread the workflow names, which is a thread 
 test("the router adds an event sent again with its key once, asks no router for the copy, and keeps its folder", async (t) => {
 	const { project, send, start, reach, file } = setup(t);
 	// Notes each event it is asked about, and leaves it to main.
-	file("storage/knowledge/event_router.ts", `import { appendFileSync } from "node:fs";\nexport default async function route(event) { appendFileSync("storage/workspace/asked", event.id + "\\n"); }`);
+	file(routerFile, `import { appendFileSync } from "node:fs";\nexport default async function route(event) { appendFileSync("storage/workspace/asked", event.id + "\\n"); }`);
 	const first = await send("--key", "k", "1");
 	start();
 	await reach("done", first);
@@ -261,20 +249,15 @@ test("an event the queue cannot hold is refused when it is sent, and one written
 	assert.ok(existsSync(join(project.agent, "storage", "workspace", "inbox", ".rejected", "000000000000001-badbadbadbad")));
 });
 
-test("a workflow runs one event at a time, and of two workflows with one name the agent's own runs", async (t) => {
+test("a workflow runs one event at a time", async (t) => {
 	const { project, send, start, reach, file } = setup(t);
 	workflows(file);
-	file("storage/knowledge/workflows.json", JSON.stringify({ ok: { description: "The agent's own, used in place of its developer's.", script: "mine.ts" } }));
-	file("storage/knowledge/mine.ts", `export default async function () { console.log("the agent's own ran"); }`);
 	const [first, second] = [await send("--thread-id", "workflow.timed", "1"), await send("--thread-id", "workflow.timed", "2")];
-	const ok = await send("--thread-id", "workflow.ok", "{}");
-	const server = start();
-	for (const id of [first, second, ok]) await reach("done", id);
+	start();
+	for (const id of [first, second]) await reach("done", id);
 	const [start1, end1, start2] = readFileSync(join(project.agent, "storage", "workspace", "timed"), "utf8").trim().split("\n").map((line) => Number(line.split(" ")[1]));
 	assert.ok(end1 <= start2, "the second run started after the first ended");
 	assert.ok(start1 < end1);
-	assert.equal(readFileSync(join(project.agent, "storage", "workspace", "workflow-logs", "ok", `${ok}.log`), "utf8").trim(), "the agent's own ran");
-	assert.match(server.output(), /workflow "ok" is skipped: storage\/knowledge\/workflows\.json has one of that name/);
 });
 
 test("after agentx run is killed during a run, the next one fails the event once and reports that the run was cut off", async (t) => {
@@ -282,7 +265,7 @@ test("after agentx run is killed during a run, the next one fails the event once
 	workflows(file);
 	const id = await send("--thread-id", "workflow.slow", "{}");
 	// The run is long enough to be cut off.
-	file(".pi/workflows.json", JSON.stringify({ slow: { description: "Takes long.", script: "workflows/slow.ts", timeoutSeconds: 60 } }));
+	file(".pi/knowledge/workflows/workflows.json", JSON.stringify({ slow: { description: "Takes long.", script: "slow.ts", timeoutSeconds: 60 } }));
 	const first = start();
 	await until(() => event(id)?.status === "in_flight");
 	await first.stop();
@@ -315,7 +298,7 @@ test("a terminal's Ctrl-C lets a running thread finish, also with a SIGTERM righ
 test("a loop that crashes is started again, and its work goes on", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	// A router that prints and fails has its output logged, which cannot be done while router-logs is a file, so the router's loop crashes.
-	file("storage/knowledge/event_router.ts", testRouter);
+	file(routerFile, testRouter);
 	file("storage/workspace/router-logs", "");
 	const id = await send("route: throw");
 	const server = start();

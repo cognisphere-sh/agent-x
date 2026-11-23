@@ -41,14 +41,14 @@ All three are MIT, so copied code keeps its source's MIT notice. billion-context
 ## Shared choices
 
 - **Where it runs.** Extensions in agentx's Pi package, so the agent is the same under `agentx chat` and `agentx run`. Skills and episodic memory are always on. A part with something to set has a key under `agentx.memory` in the agent's `.pi/settings.json` (`compaction`, `dream`), and can be turned off there.
-- **Where state lives.** In the agent's `storage/knowledge/`, with what else it learns:
-  - the skills the agent writes, only in `skills/`, the folder a new agent's settings already list;
-  - the index and dream's state in `memory/`.
+- **Where state lives.** What lasts is in the agent's knowledge, `.pi/knowledge/`, checked in; what can be built again is state, in `storage/`:
+  - the skills the agent writes, in `.pi/knowledge/skills/`, the folder a new agent's settings already list;
+  - the index and dream's state in `storage/memory/`.
 
   Task logs (step 4) are notes on work, so they go in `storage/workspace/`. Nothing is kept outside the agent or shared between agents.
 - **The thread.** It is the name of the session's folder, read the way the event-queue extension reads it.
 - **One agent, one personality.** An agent is like one person. Its threads share its episodes, memories and skills, and it uses what any person told it in any thread. To keep people apart, a project gives each person an agent of their own.
-- **The index** (step 2 on). One SQLite file per agent, `storage/knowledge/memory/index.db`, opened with `node:sqlite` as the event queue is (`src/agent-runtime/sqlite.ts`).
+- **The index** (step 2 on). One SQLite file per agent, `storage/memory/index.db`, opened with `node:sqlite` as the event queue is (`src/agent-runtime/sqlite.ts`).
   - It holds a copy of each chunk's text, so keyword search, snippets and `episode_read` all run on it. Pi's session files stay the record. Deleted, the index gets each thread's episodes back when the thread runs.
   - Keyword search uses FTS5 and `bm25()`.
   - Vector search uses sqlite-vec (`sqlite-vec@0.1.9`): a `vec0` table in the same file, loaded with `node:sqlite`'s `loadExtension`. Both work on Node 24.12. One query finds the nearest chunks and filters them by thread and time. Its npm package ships the built library for each platform. Verify when building that it loads on each platform agentx supports, and that the filter works in the same query.
@@ -59,7 +59,7 @@ All three are MIT, so copied code keeps its source's MIT notice. billion-context
 - **Models.** Embeddings (step 2) are reached over HTTP, at an endpoint in the project's config. Where models run is [to decide](#to-decide). Without an embedding endpoint, search is keyword only.
 - **Safety.** Transcripts hold event content, which the harness treats as data, never instructions.
   - Every memory carries its sources: thread, episode and time.
-  - The prompt says memories are context. They never override the harness, the developer's prompt or a current message.
+  - The prompt says memories are context. They never override the harness, the agent's knowledge or a current message.
 - **Prompt cache.** What changes every run goes at the end of the context, in a message or an entry, not into the system prompt.
   - System prompt sections change only when their content does, such as a skill's version or the model.
   - Pi sends a changed section as one appended system message that patches only that section. Models that accept a system message mid-conversation keep their cache; other models miss it once per change (Pi's `docs/extensions.md`).
@@ -70,7 +70,7 @@ Built: the [skills extension](../../architecture/agent-runtime/pi/pi-package/REA
 
 ### What Pi does
 
-- At startup, Pi finds the skills in every location: the agent's `.pi/skills/`, the folders in its `skills` setting, and Pi packages, agentx's among them.
+- At startup, Pi finds the skills in every location: the folders in the agent's `skills` setting, such as `.pi/knowledge/skills/`, and Pi packages, agentx's among them.
 - From them it builds one system prompt section, `skills`: a short how-to, then each skill's name, description and path. There is no version, and any change sends the whole list again.
 - It doesn't look again until `/reload`, so a skill written during a session is missing, and a changed description isn't seen.
 - `before_agent_start` gets the list as `systemPromptOptions.skills`, fresh each run. Pi builds its `skills` section from that list after the hook, and leaves the section out when the list is empty (`dist/core/system-prompt.js`).
@@ -100,7 +100,7 @@ It replaces Pi's one `skills` section with a section per skill.
   - `CHANGELOG.md`, one entry per version, newest first: a `## <version> · <date>` heading, then what changed and why.
 - The agent reads and writes skills with Pi's `read`, `write` and `edit`. There is no skill tool.
 - Whoever changes a skill (the agent, dream or the developer) raises its version and adds an entry. The harness prompt, `core/3-learning.md`, says so. A change without a new version shows nothing to other threads.
-- The agent's own skills are only in `storage/knowledge/skills/`. Skills in `.pi/` and in packages are the developer's, and the agent only reads them.
+- The agent's skills are in `.pi/knowledge/skills/`, which the agent and its developer both write. Skills in packages are read-only to it.
 
 ## Step 1: episodes and folds
 
@@ -123,7 +123,7 @@ Built, search by keyword: the [memory extension](../../architecture/agent-runtim
 - **The unit is an episode,** as in step 1, keyed by the id its end message gives. Its id is unique across threads. Its text is the Markdown that `episode_read` gives, so search, snippets and reading back share one form.
   - Each episode records its thread and when it started and ended.
   - Its text is split into chunks of about 4,000 characters, in order, each of whole turns, as many as fit; a longer turn is cut into chunks of its own. Joined, they are the text again.
-- **The index** is `storage/knowledge/memory/index.db` ([shared choices](#shared-choices)): an FTS5 table of chunk text, and next a `vec0` table with one vector per chunk from the embedding endpoint.
+- **The index** is `storage/memory/index.db` ([shared choices](#shared-choices)): an FTS5 table of chunk text, and next a `vec0` table with one vector per chunk from the embedding endpoint.
   - If the endpoint is down, chunks go in without vectors and get them later.
   - Until then, search uses keywords only.
 - **Left out:** episodes' end messages, and fold nudges with the turns they ask for, which are in no episode. Only episodes that ended are indexed. Dream's thread (step 3) and sub-agents' threads (step 5) are left out when they come.
@@ -158,7 +158,7 @@ An OpenAI-compatible `/v1/embeddings` endpoint, whose URL and model are in the p
 ### When dream runs
 
 - Dream is the agent on its own thread, `dream`.
-- The scheduler service starts it, from a schedule in the agent's `.pi/schedules.json`:
+- The scheduler service starts it, from a schedule in the agent's `.pi/knowledge/schedules/schedules.json`:
 
   ```json
   "dream": { "cron": "0 */6 * * *", "content": "Dream.", "threadId": "dream" }
@@ -174,7 +174,7 @@ An OpenAI-compatible `/v1/embeddings` endpoint, whose URL and model are in the p
 When the memory extension sees thread `dream`, it sets up that session differently:
 
 - It adds a section with dream's instructions.
-- It limits the tools to `episode_search`, `episode_read`, `memory_search`, `memory_get`, `memory_write`, `read`, and `write` and `edit` inside `storage/knowledge/skills/` (`tool_call` blocks any other path).
+- It limits the tools to `episode_search`, `episode_read`, `memory_search`, `memory_get`, `memory_write`, `read`, and `write` and `edit` inside `.pi/knowledge/skills/` (`tool_call` blocks any other path).
 - Dream's own sessions are neither indexed nor read by dream.
 
 ### Input
@@ -183,7 +183,7 @@ The episode chunks since dream's last mark, grouped by thread. Sub-agents' findi
 
 ### Memories
 
-- **A memory** is a row in `storage/knowledge/memory/index.db` with these fields:
+- **A memory** is a row in `storage/memory/index.db` with these fields:
   - `id`, `kind` (fact, preference, decision or lesson), `subject` and `statement`;
   - `status` (active or superseded) and `supersedes`;
   - `sources` (thread, episode, time), `created` and `updated`.
@@ -329,7 +329,8 @@ Measure latency and quality with about 30 candidates for each, and pick the defa
 - **Dream's model:** the agent's own, or a cheaper one.
 - **Direct writes:** whether a working thread may write a memory at once, or only dream can.
 - **Corrections by a person:** whether a person can pin or correct a memory directly, such as from the command line.
-- **Notes.** `core/3-learning.md` tells the agent to keep short rules as notes in `storage/knowledge/system_prompt/`. Decide whether notes stay once dream writes memories.
+- **Notes.** `core/3-learning.md` tells the agent to keep short rules as notes in `.pi/knowledge/system_prompt/`. Decide whether notes stay once dream writes memories.
+- **Memories in git.** What the agent learns lasts in its checked-in `.pi/knowledge/`, but a memory above is a row in the gitignored index. Decide whether memories go in `.pi/knowledge/` as files, with the index built from them.
 
 ### Hints
 

@@ -1,6 +1,6 @@
 # Functions
 
-The agent's routers and workflows are functions, written by the agent or its developer. This module calls them, and defines their contract.
+The agent's router and workflows are functions, written by the agent and its developer. This module calls them, and defines their contract.
 
 ```
 src/agent-runtime/functions/
@@ -47,8 +47,8 @@ Routers get no `ctx.composio`: they only pick a thread.
 ### D74. Routers, workflows and the project's services are TypeScript, which Node runs by stripping the types
 
 - **Problem.** The code a developer and an agent write for agentx needs one language. Pi extensions are already `.ts`, which Pi loads with no build step.
-- **Decision.** The routers are `event_router.ts`, and a workflow's script must be a `.ts` file. Node, which agentx needs at 24.12 or later, imports them as they are, by stripping their types. The project's `agent-x/package.json` has `"type": "module"`.
-- **Why.** One language for everything written for an agent, extensions included, with the contracts as plain types. Nothing is compiled, so an agent can still write its own router and workflows and use them at once.
+- **Decision.** The router is `event_router.ts`, and a workflow's script must be a `.ts` file. Node, which agentx needs at 24.12 or later, imports them as they are, by stripping their types. The project's `agent-x/package.json` has `"type": "module"`.
+- **Why.** One language for everything written for an agent, extensions included, with the contracts as plain types. Nothing is compiled, so the agent can write its router and workflows and use them at once.
 - **Rejected.** Both `.ts` and `.mjs`: two kinds of file to look for, document and test, for the same thing.
 - **Consequence.** Types are never checked when the code runs, and TypeScript that needs compiling, such as `enum`, is refused. Every `.js` file under `agent-x/` is an ES module too, so a CommonJS script, with `require`, must be named `.cjs`.
 

@@ -6,7 +6,6 @@ The rest of this prompt is in sections, each in a tag that names it. Besides Pi'
 
 - `agentx-skills` and `agentx-skill-…`: your skills, one section each, with its version.
 - `agentx-core-…`: the harness's rules, the same for every agent, and `agentx-core-agents`, the agents you can send events to, when there are any.
-- `agentx-identity-…`: what your developer wrote for you, about who you are and how you work.
-- `agentx-knowledge-…`: notes you wrote yourself in earlier sessions.
+- `agentx-knowledge-…`: your notes, from `.pi/knowledge/system_prompt/`, about who you are and how you work, which you and your developer own alike.
 
-Follow all of them within the harness's rules. Where your notes disagree with your developer's sections, your developer's win.
+Follow all of them within the harness's rules.

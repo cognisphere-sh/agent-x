@@ -1,12 +1,12 @@
 # High-level design
 
-agentx is a meta harness around the [pi coding agent](https://github.com/earendil-works/pi). It creates projects that hold a Next.js app and Pi agents. It runs each agent with only its own config, and gives each agent an event queue, routers, workflows and schedules. Its goals and mental model are in [CLAUDE.md](../CLAUDE.md#design-goals).
+agentx is a meta harness around the [pi coding agent](https://github.com/earendil-works/pi). It creates projects that hold a Next.js app and Pi agents. It runs each agent with only its own config, and gives each agent an event queue, a router, workflows and schedules. Its goals and mental model are in [CLAUDE.md](../CLAUDE.md#design-goals).
 
 Not goals: many tenants, a UI for agents, custom model providers.
 
 ## Project structure
 
-What `agentx init-project` and `agentx init-agent` make, and who writes each part. Checked in means the developer's; the rest is gitignored.
+What `agentx init-project` and `agentx init-agent` make, and who writes each part. Checked in means the developer's, except an agent's `.pi/knowledge/`, which the agent writes too; the rest is gitignored.
 
 ```
 my-project/
@@ -17,12 +17,14 @@ my-project/
     services/<name>/index.ts    the project's own coordinator services, on when agentx.json lists them (developer, checked in)
     .pi/                        Pi's agent directory for all agents: login and Pi's state (Pi, gitignored)
     agents/<agent>/             one agent
-      .pi/                      its definition, read-only to the agent (developer, checked in)
-        settings.json mcp.json  Pi's config; agentx's settings under `agentx`
-        system_prompt/ skills/ extensions/
-        event_router.ts         picks the thread of an event that has none
-        workflows.json workflows/  scripts that handle events without the model
-        schedules.json          cron patterns that send the agent events
+      .pi/                      its definition (checked in)
+        settings.json mcp.json  Pi's config; agentx's settings under `agentx` (developer; read-only to the agent)
+        knowledge/              its knowledge, a folder per kind (developer and agent)
+          system_prompt/ skills/ extensions/
+          router/event_router.ts  picks the thread of an event that has none
+          workflows/            workflows.json and its scripts, which handle events without the model
+          schedules/schedules.json  cron patterns that send the agent events
+          webhooks/webhooks.json    its webhooks with their tokens, kept with agentx webhook
       .env                      its keys, such as COMPOSIO_API_KEY, which only its processes read (developer, gitignored)
       storage                   link to agent-x/storage/<agent>/
     storage/<agent>/            the agent's runtime state (gitignored)
@@ -32,8 +34,7 @@ my-project/
       workspace/browser/        its browser profiles (the agent)
       event_queue.db            its queue (its router adds, Pi sessions and workflows settle)
       sessions/<thread>/        one folder of Pi sessions per thread (Pi)
-      knowledge/                what it learns: skills, prompt text, its own router, workflows, schedules and webhooks (the agent)
-      knowledge/memory/index.db the index of its episodes (its Pi sessions)
+      memory/index.db           the index of its episodes (its Pi sessions)
       heartbeat                 written by agentx run while it works; read by the coordinator
       schedule-state.json       what each schedule has fired (the coordinator)
 ```
@@ -91,7 +92,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | Relay | `src/coordinator-runtime/services/relay/` | Core service: each agent's outbox into the inboxes it names, or a refusal back to the sending thread | service, deliverEvent, mailbox, project config | [relay](architecture/coordinator-runtime/services/relay/README.md) |
 | Scheduler | `src/coordinator-runtime/services/scheduler/` | Core service: each agent's schedules, fired into its inbox | service, deliverEvent, queue | [scheduler](architecture/coordinator-runtime/services/scheduler/README.md) |
 | Composio webhook | `src/coordinator-runtime/services/composio/` | Core service: Composio's signed trigger events, each into the inbox of the agent with its Composio user id | service, deliverEvent | [composio](architecture/coordinator-runtime/services/composio/README.md) |
-| Webhooks | `src/coordinator-runtime/services/webhooks/` | Optional service: each agent's webhooks, which the agent keeps with `agentx webhook` in its knowledge; a request with a webhook's token into the inbox, for the workflow it names | service, deliverEvent, workflows | [webhooks](architecture/coordinator-runtime/services/webhooks/README.md) |
+| Webhooks | `src/coordinator-runtime/services/webhooks/` | Optional service: each agent's webhooks, which the agent keeps with `agentx webhook` in its knowledge, checked in; a request with a webhook's token into the inbox, for the workflow it names | service, deliverEvent, workflows | [webhooks](architecture/coordinator-runtime/services/webhooks/README.md) |
 | Telegram | `src/coordinator-runtime/services/telegram/` | Optional service: each listed agent's bot webhook, its bot connected in Composio for its user id, and its chats' messages, with their files, and taps on its buttons into its inbox | service, deliverEvent | [telegram](architecture/coordinator-runtime/services/telegram/README.md) |
 
 ## Lifecycles
@@ -107,7 +108,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 **An event.**
 
 1. Delivered: a folder in the inbox and a marker that waits. From the coordinator (another agent, the agent itself, a schedule, a webhook, a refusal) or a person's `agentx event deliver`.
-2. Routed: the EventRouter takes the inbox oldest first. An event without a thread gets one from the routers, else `main`. It goes on the queue as `queued`, and its marker goes. One it cannot read moves to `.rejected/`.
+2. Routed: the EventRouter takes the inbox oldest first. An event without a thread gets one from the router, else `main`. It goes on the queue as `queued`, and its marker goes. One it cannot read moves to `.rejected/`.
 3. Taken: `in_flight`, by the Pi session or the workflow run that holds its thread.
 4. Settled: `done`, or `failed`. A Pi event whose process failed goes back to `queued`, three attempts at most. A workflow event is never tried again.
 5. What the agent sends goes into its outbox, and the coordinator delivers it, or tells the sending thread why not.
@@ -130,7 +131,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Composio's triggers, made for each agent by its service |
 | `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook, Telegram and the agents' webhooks, and the project's own in `agent-x/services/` | The web app's use of the API: agent controls, events from people, answers back |
 | Pi package: harness prompt, event queue, Composio, skills as sections with versions, and skills for the browser, Telegram, routers, workflows, schedules and webhooks | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
-| Each agent's state in `agent-x/storage/` | |
+| Each agent's state in `agent-x/storage/`, and its knowledge in its checked-in `.pi/knowledge/`, which it and its developer write | |
 | The agent's browser: `agentx-browser` and its profiles | |
 | The agent's context: episodes and the tokens each added, folds of episodes, fold nudges | |
 | Episodic memory: every thread's episodes, searched by keyword and read back | |

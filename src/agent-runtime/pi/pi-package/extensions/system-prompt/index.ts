@@ -2,8 +2,8 @@
 // Sets the system prompt as Pi's sections, so that when one file changes, Pi sends the model that section alone.
 // preamble.md (next to this file) is Pi's preamble: it replaces Pi's default one, with its tool list, rules and docs.
 // Then come agentx's sections, each in a tag of its own: core/*.md, the harness's rules, as agentx-core-<file>, and the agents this one
-// may send events to as agentx-core-agents; the agent's .pi/system_prompt/*.md, which its developer wrote, as agentx-identity-<file>;
-// and the folders its settings list under agentx.systemPrompt, which is how what the agent wrote for itself gets in, as agentx-knowledge-<file>.
+// may send events to as agentx-core-agents; then the *.md files of the folders the agent's settings list under agentx.systemPrompt, as
+// agentx-knowledge-<file>: the template lists .pi/knowledge/system_prompt/, which its developer and the agent both write.
 // Pi puts them after its own sections, such as the working directory, and after the skills extension's.
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -51,7 +51,7 @@ function unreadable(path: string, error: unknown): string {
 	return `${path} cannot be read, so its text is missing: ${(error as Error).message}`;
 }
 
-// The agent's own folders: storage/ is not checked in, and a developer may have no prompt files, so a folder may not exist.
+// The agent's prompt folders: a developer may list one that does not exist yet.
 function agentSections(dir: string, prefix: string): [string, string][] {
 	return existsSync(dir) ? sections(dir, prefix) : [];
 }
@@ -77,7 +77,7 @@ export default function (pi: ExtensionAPI) {
 		const agent = options.cwd;
 		const knowledge = ((pi.getSettings() as Settings).agentx?.systemPrompt ?? []).flatMap((folder) => agentSections(resolve(agent, ".pi", folder), "agentx-knowledge"));
 		options.customPrompt = readFileSync(preamble, "utf8").trim();
-		for (const [name, text] of [...sections(core, "agentx-core"), ["agentx-core-agents", fellowAgents(agent)], ...agentSections(join(agent, ".pi", "system_prompt"), "agentx-identity"), ...knowledge]) {
+		for (const [name, text] of [...sections(core, "agentx-core"), ["agentx-core-agents", fellowAgents(agent)], ...knowledge]) {
 			// Two files with one name, such as `1-goals.md` and `2-goals.md`, share a section, in their order, rather than one hiding the other. Pi leaves out an empty one.
 			options.sections[name] = options.sections[name] ? `${options.sections[name]}\n\n${text}` : text;
 		}

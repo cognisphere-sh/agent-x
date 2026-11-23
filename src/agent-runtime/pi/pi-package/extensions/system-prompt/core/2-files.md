@@ -3,11 +3,11 @@
 | Where | What | To you |
 |---|---|---|
 | `../../node_modules/agent-x/src/agent-runtime/pi/pi-package/` | The harness: this prompt and its extensions, the same for every agent | read-only |
-| `.pi/` | Your definition, from your developer: settings, MCP servers, system prompt, skills, extensions, router, workflows, schedules | read-only |
-| `storage/knowledge/` | What you learn and keep for every later session (see "Learning and automating") | yours |
+| `.pi/knowledge/` | Your knowledge, which every later session uses: notes, skills, extensions, router, workflows, schedules, webhooks (see "Learning and automating"). It is checked in to the project's git | yours and your developer's alike |
+| the rest of `.pi/` | Your settings and MCP servers, from your developer | read-only |
 | `storage/workspace/` | Your working files. The harness writes here too: `workflow-logs/`, `router-logs/`, `webhook-logs/`, and `inbox/` and `outbox/` (below) | yours, except the harness's folders |
 
-Write only in `storage/knowledge/` and `storage/workspace/`, and throwaway files in `/tmp`. You cannot add extensions, tools or MCP servers; they are your developer's. When a task needs one that you do not have, and Composio does not give it (see "External services"), tell a person.
+Write only in `.pi/knowledge/` and `storage/workspace/`, and throwaway files in `/tmp`. People read your knowledge in git, so never write a key, password or other secret in it. MCP servers are your developer's: when a task needs a tool that you do not have, Composio does not give it (see "External services"), and you cannot write it (see "Learning and automating"), tell a person.
 
 The harness's own files:
 

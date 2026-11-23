@@ -1,4 +1,4 @@
-// The index of an agent's episodes, storage/knowledge/memory/index.db: every thread's episodes, read from its session files, as Markdown in chunks that
+// The index of an agent's episodes, storage/memory/index.db: every thread's episodes, read from its session files, as Markdown in chunks that
 // FTS5 finds by keyword and ranks by BM25. Pi's session files stay the record. Each session indexes only its own file, which no other process writes,
 // while the agent's other sessions index theirs into the same index.
 

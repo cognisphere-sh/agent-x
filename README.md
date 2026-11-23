@@ -1,6 +1,6 @@
 # agentx
 
-Creates projects that hold a Next.js full-stack app and [pi coding agent](https://github.com/earendil-works/pi) agents, and runs each agent with only its own config: its events, its routers, workflows and schedules.
+Creates projects that hold a Next.js full-stack app and [pi coding agent](https://github.com/earendil-works/pi) agents, and runs each agent with only its own config: its events, its router, workflows and schedules.
 
 ```sh
 pnpm add -g agent-x
