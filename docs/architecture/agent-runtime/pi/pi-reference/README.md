@@ -1,6 +1,6 @@
 # Pi reference
 
-What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Paths are in the Pi repo, under `packages/coding-agent/`. Check them again when upgrading Pi.
+What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.6.0. Paths are in the Pi repo, under `packages/coding-agent/`. Check them again when upgrading Pi.
 
 ## Config locations
 
