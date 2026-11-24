@@ -4,13 +4,30 @@ title: Run a project on a laptop with agentx dev, and on a server with agentx se
 description: agentx gets the commands that run a project's web app and agents locally behind an ngrok tunnel, and set up and run them on an Ubuntu VPS behind Caddy under systemd, so every project deploys the same way and gets fixes with each agentx version.
 type: feature
 priority: none
-status: planned
-modules: [cli, cli/deploy, coordinator-runtime]
+status: in-progress
+modules: [cli, cli/deploy, coordinator-runtime, agent-runtime/pi, agent-runtime/browser]
 created: 2026-11-24
 updated: 2026-11-24
 ---
 
 # Run a project on a laptop with agentx dev, and on a server with agentx server
+
+## Notes while building
+
+Built, with its docs ([cli/deploy](../../architecture/cli/deploy/README.md), D105 to D110): `agentx dev`, `agentx server`, the checks for logins and keys, and the template's `deploy/` stubs, `next.config.ts`, `tsconfig.json` and `.gitignore`. Tested on macOS: `agentx dev` end to end with a fake ngrok and a stand-in `next`, what `agentx server` writes, and the builds beside the running app, also with a real Next 16.4.5, whose `tsconfig.json` stayed unchanged.
+
+Left before done: run `agentx server setup` and `start` on a fresh Contabo VPS, as a sudo user made from root, logged in over SSH (`systemctl --user` needs that login, not `su`), and the items to verify below; `agentx dev` with a real ngrok; and the login prompt's yes path.
+
+Migration: a project made before these commands has no `deploy/` stubs, which it may add from the template, and needs `distDir: process.env.AGENTX_WEB_DIST_DIR ?? ".next"` in `web/next.config.ts` and the types folders of `.next-a` and `.next-b` in `web/tsconfig.json`'s `include`, as the template has them; `upgrade-project` adds the three lines of `.gitignore`. lps also replaces its `start.sh`, `server.sh` and `setup-server.sh` with the commands and a `deploy/check.sh` of its own.
+
+Where the build differs from the plan below:
+
+- **Keys asked for:** each agent's from the agent template, and the secrets the services that start declare, except those a service marks optional with `?` (D110), such as `COMPOSIO_BASE_URL?` and Composio's `COMPOSIO_WEBHOOK_SECRET?`. A skipped key is written empty, and not asked again. A service's `secrets` is what it may read, not what it needs.
+- **The tunnel's address** goes to the run as `AGENTX_PUBLIC_URL` (D109), so the agents' own `agentx webhook` uses it too, not only the coordinator.
+- **ngrok's address** comes from the log of the ngrok `agentx dev` starts, not its local API, which another ngrok may hold.
+- **Chrome:** agent-browser's docs say `install --with-deps` uses sudo itself for a user who is not root, so Chrome lands in that user's home.
+- **The units** put the folder of the Node that runs agentx first on their PATH, so the agents' commands use the same Node, with NodeSource or not.
+- **A build's check:** a `BUILD_ID` older than the build fails it, as the folder may hold the build before last.
 
 A project has two processes, the web app (`next`) and the agents (`agentx serve`), and today each project writes its own scripts to run them. lps has three (`start.sh`, `setup-server.sh`, `server.sh` in `projects-x/lps`): most of each is not specific to lps, and a copy in every project would never get a fix. These become agentx commands, which a project gets, and gets again with each new version, by pinning agentx. What only one project needs goes into the project's own scripts, which the commands call.
 

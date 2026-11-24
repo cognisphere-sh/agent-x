@@ -35,6 +35,18 @@ export function projectConfig(agentX: string): ProjectConfig {
 	return { ...config, agents };
 }
 
+/** The variable that gives the project's public address for one run, over `publicUrl` in agentx.json: `agentx dev` sets it to its tunnel's address, or to nothing. */
+export const publicUrlVariable = "AGENTX_PUBLIC_URL";
+
+/**
+ * The project's public address: `AGENTX_PUBLIC_URL` when the environment sets it, an empty one meaning none, else `publicUrl` in `config` when it is
+ * text. The environment reaches the agents' processes too, so the URLs an agent makes, such as its webhooks', use the same address as the coordinator.
+ */
+export function publicUrl(config: ProjectConfig): string | undefined {
+	const url: unknown = process.env[publicUrlVariable] ?? config.publicUrl;
+	return typeof url === "string" && url !== "" ? url : undefined;
+}
+
 /** Writes `config` to the project's agentx.json. */
 export const saveProjectConfig = (agentX: string, config: ProjectConfig) => writeFileSync(configFile(agentX), `${JSON.stringify(config, null, "\t")}\n`);
 

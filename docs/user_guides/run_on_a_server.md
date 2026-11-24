@@ -1,15 +1,53 @@
 # Run a project on a server
 
-On a server, the app and the agents run side by side as two services:
+A project runs as two processes, side by side:
 
-| Service | Command, from the project root | Port |
+| Process | Command, from the project root | Port |
 |---|---|---|
-| The app | `pnpm --dir web start` (`next start`) | 3000 |
+| The web app | `next start` in `web/` | 3000 |
 | The agents | `node agent-x/node_modules/agent-x/dist/cli/agentx.js serve` | 3100 |
 
 `agentx serve` runs every agent that `agent-x/agentx.json` lists, restarts an agent that stops, delivers what the agents send, and fires their schedules. To add or remove an agent, start it again.
 
-Start the pinned agentx directly, as above, so no package manager sits in between and `agentx serve` gets the stop signal itself.
+On an Ubuntu server, such as a Contabo VPS, `agentx server` sets the server up and runs both ([how it works](../architecture/cli/deploy/README.md)). On a laptop, `agentx dev` runs them with a tunnel ([quick start](quick_start.md)).
+
+## With `agentx server`
+
+The project runs as a user of its own with sudo, not as root. On a fresh server that logs you in as root, make one, such as `adduser deploy && usermod -aG sudo deploy`, and log in as that user over SSH from then on: `systemctl --user` needs a login of the user's own, not `su`.
+
+Once per server, as that user, install Node and pnpm, then the project:
+
+```sh
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo npm install -g pnpm@11
+git clone <the project's repository> && cd <project>
+pnpm install
+```
+
+Set `publicUrl` in `agent-x/agentx.json` to `https://<domain>`, commit it, and point the domain's DNS A record (and AAAA, if any) at the server. Then, in a terminal (`ssh -t <server>`):
+
+```sh
+agentx server setup     # once, and again when the domain changes
+agentx server start
+```
+
+Without a global `agentx`, use `pnpm agentx server ...` in the project root. `setup` asks for the sudo password. It makes DNS answer quickly, keeps the project's services running after you log out, installs Caddy for HTTPS on the domain with a certificate it renews itself, installs Chrome for the agents' browser, asks for the model logins and keys the project lacks, and runs `deploy/setup.sh`. A sign-in that ends on a local port needs that port forwarded: for ChatGPT's, connect with `ssh -t -L 1455:127.0.0.1:1455 <server>`, so it completes by itself.
+
+`start` asks for anything still missing, runs `deploy/check.sh`, builds the web app, and runs both as systemd user services, which start at boot and restart after a crash. Caddy sends `/services/*` to the agents and the rest to the web app; the agents' own routes stay off the internet.
+
+| Command | Does |
+|---|---|
+| `agentx server restart` | After a change: builds the web app beside the running one, then starts both again. A deploy is `git pull`, `pnpm install`, `agentx server restart`. |
+| `agentx server stop` | Stops both and keeps them stopped after a reboot. |
+| `agentx server status` | Whether each runs, with its latest log lines. |
+| `agentx server logs` | Follows both logs; `journalctl` options may follow, such as `--since today`. |
+
+Write what only your project needs into `deploy/check.sh`, such as a check for a key one of its extensions reads, and `deploy/setup.sh`, such as a system package it uses. A new project has both, as commented stubs.
+
+## On another host
+
+Run the two commands above as two services of the host, and start the pinned agentx directly, so no package manager sits in between and `agentx serve` gets the stop signal itself.
 
 ## Health and control
 
@@ -24,7 +62,7 @@ Set `AGENTX_API_TOKEN` in `agent-x/.env`, and give it to the web app's server. E
 
 An agent whose process stops is started again after 1 s, then 2, 4, up to a minute. One that stops 5 times without running 10 minutes in between is `failed` until it is started again with `POST /agents/<agent>/start`, or `agentx serve` starts again. One that stops writing its heartbeat for a minute is killed and started again.
 
-`agentx serve` listens on `127.0.0.1:3100` (`--host`, `--port`), in plain HTTP. It needs no public address: keep it for the host and the web app, and put a reverse proxy such as Caddy or nginx in front of the app for TLS. When a service takes webhooks, forward only its webhook paths, `/services/<name>/...`, from the internet.
+`agentx serve` listens on `127.0.0.1:3100` (`--host`, `--port`), in plain HTTP. It needs no public address: keep it for the host and the web app, and put a reverse proxy such as Caddy or nginx in front of the app for TLS. When a service takes webhooks, forward only its webhook paths, `/services/<name>/...`, from the internet. `agentx server` does all this.
 
 The host keeps both services running, with systemd's `Restart=` or Docker's restart policy.
 
@@ -34,7 +72,7 @@ The first `SIGINT` or `SIGTERM` lets every agent finish its running work, then `
 
 A stop drains only if the signal reaches `agentx serve` alone, and the host waits long enough:
 
-- **systemd** signals every process of the service at once by default, which aborts each run. Set `KillMode=mixed`, and `TimeoutStopSec` to the longest you will wait.
+- **systemd** signals every process of the service at once by default, which aborts each run. Set `KillMode=mixed`, and `TimeoutStopSec` to the longest you will wait; `agentx server` sets 10 minutes.
 - **Docker** signals the container's first process and waits `stop_grace_period`. Set `init: true`.
 
 Every interruption costs the events in flight an attempt; an event fails after three. If `agentx serve` is killed, the agents' processes end with it.
@@ -49,6 +87,8 @@ What an agent learns goes into its `.pi/knowledge/`, which is checked in ([custo
 
 Each agent gets the environment `agentx serve` was started with, plus its own `agent-x/agents/<name>/.env`; a variable in the environment wins. On a server, set an agent's keys, such as `COMPOSIO_API_KEY`, in its `.env`, or in the service's environment for every agent.
 
+`agentx dev` and `agentx server` ask for each agent's keys and each secret its services need, and write them into these files; they make `AGENTX_API_TOKEN` themselves.
+
 The coordinator and its services, such as a webhook, take their secrets from that environment or `agent-x/.env`, which no agent reads. Until agents run in sandboxes, a secret set in the environment reaches the agents' processes too, so prefer `agent-x/.env` for them. Set `publicUrl` in `agent-x/agentx.json` to the address the API server is reached at from outside, for services that register webhooks.
 
 ## Composio's events
@@ -61,7 +101,7 @@ An agent can get an event each time one of its Composio triggers fires, such as 
 
 Each event reaches the agent's router with `source: composio`, the trigger's slug in `trigger`, and the event's data in the file `data.json`; route it as any event ([send events](send_events.md)). An event Composio sends again is added once.
 
-Use one Composio project per environment: a project has one webhook URL. On a laptop, forward events with Composio's CLI, logged in to the agents' Composio project: `COMPOSIO_WEBHOOK_SECRET=<its value> composio dev triggers listen --forward http://localhost:3100/services/composio/webhook`; or use a tunnel, such as cloudflared or ngrok, with a Composio project of your own.
+Use one Composio project per environment: a project has one webhook URL. On a laptop, forward events with Composio's CLI, logged in to the agents' Composio project: `COMPOSIO_WEBHOOK_SECRET=<its value> composio dev triggers listen --forward http://localhost:3100/services/composio/webhook`; or use `agentx dev`'s tunnel with a Composio project of your own.
 
 ## Telegram
 
@@ -76,7 +116,7 @@ An agent can have a Telegram bot: people in the chats you list write to it, and 
    ```
 
    A private chat's id is the person's Telegram user id; a group's is negative. In a group, the bot gets only commands and replies to it, unless you turn its privacy mode off with @BotFather's `/setprivacy`. A message from a chat not listed is dropped, and its id is in `agentx serve`'s log, so to find a chat's id, write to the bot and read the log.
-3. Forward `/services/telegram/` from the internet to `agentx serve`, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
+3. Forward `/services/telegram/` from the internet to `agentx serve`, as `agentx server` and `agentx dev` do, and start it again. It points the bot's webhook at `<publicUrl>/services/telegram/<agent>`; it logs `Service "telegram" is off` and why when it cannot.
 4. So the agent can answer, give the coordinator a Composio key: in Composio's dashboard (Settings, API Keys), make a key for the agents' project with **Auth configs** and **Connected accounts**, read and write, and put it in `agent-x/.env` as `COMPOSIO_COORDINATOR_API_KEY`. At each start, `agentx serve` connects each bot in Composio for its agent's user id; it logs why when it cannot, and messages still come in. The agents also need their own `COMPOSIO_API_KEY`, each in its `.env` ([External services](customize_an_agent.md#external-services-composio)); keep that one a session-only key.
 
 Each message reaches the agent's router with `source: telegram`, its chat in `chat` and its sender in `from`, with the photos and files it carries in the event's folder. When the agent asks a question with buttons, a tap reaches it the same way, with the button's text as content and the button in `button`, and the buttons leave the question with the choice written under it.
@@ -96,4 +136,4 @@ An agent can give an outside service a URL to call when something happens, such 
 
 Ask the agent for a webhook in plain words, such as "tell me each time a Retell call ends": it writes the workflow, makes the webhook and sets its URL in Retell. `agentx webhook list`, in the agent's directory, shows its webhooks and each one's last request; each has a log in `storage/workspace/webhook-logs/`.
 
-A webhook's URL holds a random token, its only check: anyone who has the URL can call it, and the agent's workflow fetches what a request names from the service before it acts. A webhook takes only POST, up to 1 MB, and answers 200 with JSON, so a service that waits for another answer, such as a handshake or TwiML for a call, cannot use one. On a laptop, use a tunnel, such as cloudflared or ngrok, and set `publicUrl` to its address.
+A webhook's URL holds a random token, its only check: anyone who has the URL can call it, and the agent's workflow fetches what a request names from the service before it acts. A webhook takes only POST, up to 1 MB, and answers 200 with JSON, so a service that waits for another answer, such as a handshake or TwiML for a call, cannot use one. On a laptop, `agentx dev` opens a tunnel and gives the agents its address for that run.

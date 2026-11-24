@@ -1,6 +1,6 @@
 # Pi
 
-How agentx starts Pi for an agent (`pi/pi-launch.ts`), and the Pi runner, which runs an agent's Pi threads. What Pi loads into every agent: [Pi package](pi-package/README.md). What agentx relies on in Pi: [Pi reference](pi-reference/README.md).
+How agentx starts Pi for an agent (`pi/pi-launch.ts`), whether the agent's model can be reached (`pi/model-login.ts`), and the Pi runner, which runs an agent's Pi threads. What Pi loads into every agent: [Pi package](pi-package/README.md). What agentx relies on in Pi: [Pi reference](pi-reference/README.md).
 
 ## The Pi runner
 
@@ -76,7 +76,11 @@ The runner frees the thread of its dead process at once, instead of waiting for 
 | `--session-dir storage/sessions/<thread>` | `--thread-id`, or `main`; except for Pi subcommands | the thread is the folder of its sessions ([D21](#d21)) |
 | `--continue` | unless the arguments pick a session or open none (`-c`, `-r`, `--session`, `--session-id`, `--fork`, `--no-session`, …) | the thread's latest session goes on, or a first one starts ([D21](#d21)) |
 
-Pi subcommands (`install`, `remove`, `uninstall`, `update`, `list`, `config`, `mcp`, `auth`) must be the first argument, so `chat` adds no flags before them. When it continues a thread, `chat` first stops if another live process holds it; when the arguments pick the session, the event queue extension checks instead.
+Pi subcommands (`install`, `remove`, `uninstall`, `update`, `list`, `config`, `mcp`, `auth`) must be the first argument, so `chat` adds no flags before them.
+
+## Whether the model can be reached
+
+`model-login.ts` names the provider the agent's Pi starts with, `defaultProvider` in its `.pi/settings.json`, else in `agent-x/.pi/settings.json`, and runs Pi's `auth check --provider <provider>` in the agent directory with the agent's environment, so a key in its `.env` counts too. `agentx serve` logs each agent with no login; `agentx dev` and `agentx server` ask for it ([deploy](../../cli/deploy/README.md#logins-and-keys)). When it continues a thread, `chat` first stops if another live process holds it; when the arguments pick the session, the event queue extension checks instead.
 
 ## Known limits
 

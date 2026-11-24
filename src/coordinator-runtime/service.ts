@@ -42,7 +42,10 @@ export interface ServiceContext {
  * `export default class implements ServiceDefinition`. Each member may be left out.
  */
 export interface ServiceDefinition {
-	/** Environment variables it needs, from the coordinator's environment or `agent-x/.env`. A name that ends with `*` takes every variable that starts with it. */
+	/**
+	 * Environment variables it needs, from the coordinator's environment or `agent-x/.env`. A name that ends with `*` takes every variable that starts with
+	 * it, one per agent (`agentVariable`); one that ends with `?` is optional, such as an override, and is given when set but never asked for.
+	 */
 	secrets?: string[];
 	/** Its routes, below `/services/<name>/`, served while it is on. */
 	routes?: Route[];
@@ -54,7 +57,10 @@ export interface ServiceDefinition {
 
 /** A part of the coordinator that ships with agentx, in a folder of its own under services/. Each hook may be left out. */
 export abstract class Service implements ServiceDefinition {
-	/** Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env`, which no agent reads. A name that ends with `*` takes every variable that starts with it. */
+	/**
+	 * Environment variables it needs, such as a signing secret, from the coordinator's environment or `agent-x/.env`, which no agent reads. A name that ends
+	 * with `*` takes every variable that starts with it, one per agent (`agentVariable`); one that ends with `?` is optional, and is never asked for.
+	 */
 	readonly secrets: string[] = [];
 
 	/** Its API contract: each route, with its path below `/services/<name>/`, who may call it, and its handler. Served only while the service is on. */
@@ -65,6 +71,18 @@ export abstract class Service implements ServiceDefinition {
 
 	/** Runs after the agents have stopped and the service's polling has ended. */
 	onStop(): void | Promise<void> {}
+}
+
+/**
+ * The variable of the agent `agent` for a secret that is one per agent, `prefix*`: TELEGRAM_BOT_TOKEN_MY_AGENT for `TELEGRAM_BOT_TOKEN_` and my-agent.
+ * The agents are those the service's config lists under `agents`, else every agent the coordinator runs.
+ */
+export const agentVariable = (prefix: string, agent: string) => prefix + agent.toUpperCase().replaceAll("-", "_");
+
+/** Whether the variable `key` is the secret `secret` of a service's `secrets`: its name, or any variable that starts with `PREFIX` for `PREFIX*`. A `?` at the end marks it optional. */
+export function isSecret(secret: string, key: string): boolean {
+	const name = secret.replace(/\?$/, "");
+	return name.endsWith("*") ? key.startsWith(name.slice(0, -1)) : key === name;
 }
 
 /** Runs `work` for each agent. A failure is logged for that agent, and the others go on. */

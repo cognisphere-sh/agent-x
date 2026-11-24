@@ -8,7 +8,7 @@ import { createHmac } from "node:crypto";
 import { basename } from "node:path";
 import { withoutBlockTag } from "../../../agent-runtime/events/queue.js";
 import { type ApiRequest, type ApiResponse, type Route, sameText } from "../../api-server.js";
-import { Service, type ServiceContext } from "../../service.js";
+import { agentVariable, Service, type ServiceContext } from "../../service.js";
 import { composioUserId } from "../composio/composio-user-id.js";
 import { connectBot } from "./composio-bot.js";
 
@@ -92,7 +92,7 @@ interface Album {
 /** Telegram: each listed agent's bot sends the messages of the agent's chats into its inbox. */
 export class TelegramService extends Service {
 	// The coordinator's Composio key, which may connect accounts, unlike the agents' own; COMPOSIO_BASE_URL points elsewhere, such as at a fake in tests.
-	override readonly secrets = [`${tokenPrefix}*`, "COMPOSIO_COORDINATOR_API_KEY", "COMPOSIO_BASE_URL"];
+	override readonly secrets = [`${tokenPrefix}*`, "COMPOSIO_COORDINATOR_API_KEY", "COMPOSIO_BASE_URL?"];
 	override readonly routes: Route[] = [
 		{
 			method: "POST",
@@ -123,7 +123,7 @@ export class TelegramService extends Service {
 			if (running === undefined) throw new Error(`services.telegram names agent "${agent}", which agentx serve does not run.`);
 			const chats = (entry as { chats?: unknown } | null)?.chats;
 			if (!Array.isArray(chats) || !chats.every((chat) => typeof chat === "number" || typeof chat === "string")) throw new Error(`services.telegram: agent "${agent}" needs "chats", the ids of the chats it takes messages from.`);
-			const variable = tokenPrefix + agent.toUpperCase().replaceAll("-", "_");
+			const variable = agentVariable(tokenPrefix, agent);
 			const token = context.secrets[variable];
 			if (!token) throw new Error(`${variable}, the bot token of agent "${agent}", is not set in the environment or agent-x/.env.`);
 			// A bot has one webhook, so the second agent's would take the first's messages.

@@ -11,6 +11,7 @@ What `agentx init-project` and `agentx init-agent` make, and who writes each par
 ```
 my-project/
   web/                          Next.js app, its own package (checked in)
+  deploy/check.sh setup.sh      the project's own steps, which agentx dev and agentx server run (developer, checked in)
   agent-x/                      its own package, which pins agentx (checked in)
     agentx.json                 the agents: description and canSendTo of each; agentx serve runs the ones it lists; the services' config (developer)
     .env                        the secrets of the coordinator and its services, such as AGENTX_API_TOKEN, which no agent reads (developer, gitignored)
@@ -47,6 +48,8 @@ The agentx repository itself is laid out in [README.md](../README.md#repository-
 flowchart TD
   CLI["cli/"] --> SUP["supervisor/"] & SEND["events/send-event"] & DELIV["coordinator-runtime/deliver-event"] & COORD["coordinator-runtime/coordinator"] & LAUNCH["pi/pi-launch"] & MEMDB["pi-package memory/index-db"]
   CLI --> HOOKS["services/webhooks/hooks"]
+  CLI --> DEP["cli/deploy"] --> COORD & BR
+  CLI & DEP --> ML["pi/model-login"]
   COORD --> MGR["agent-manager"] & SVC["service"] & DELY["services/relay"] & SCHED["services/scheduler"] & CMP["services/composio"] & TG["services/telegram"] & WH["services/webhooks"]
   DELY & SCHED & CMP & TG & WH --> SVC
   DELY & SCHED & CMP & TG & WH --> DELIV
@@ -73,14 +76,15 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Module | Files | Responsibility | Depends on | Doc |
 |---|---|---|---|---|
-| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates and upgrades projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events, keeps an agent's webhooks. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the memory index's file, the webhooks file | [cli](architecture/cli/README.md) |
+| CLI | `src/cli/` | Parses commands and hands each to a runtime: creates and upgrades projects and agents, removes an agent, opens a thread or removes one with its episodes, runs one agent or all, sends and delivers events, keeps an agent's webhooks. Runs the agentx the project pins | supervisor, coordinator, events, storage, project config, pi-launch, the model login check, the memory index's file, the webhooks file | [cli](architecture/cli/README.md) |
+| Deploy | `src/cli/deploy/` | `agentx dev`, a project on a laptop with an ngrok tunnel, and `agentx server`, on an Ubuntu server with Caddy and systemd user services; the logins and keys both ask for, and the web app's builds beside the running one | coordinator, project config, the model login check, browser | [cli/deploy](architecture/cli/deploy/README.md) |
 | Project | `templates/` | The generated repo: `web/` and `agent-x/` | | [cli/project](architecture/cli/project/README.md) |
 | Agent | `agent-env.ts`, `storage.ts`, `project-config.ts`, `time-zone.ts` | An agent's directory, its storage and the link to it, the environment of its processes, its time zone and times as it reads them, the project's agents and canSendTo | queue (for name rules) | [agent](architecture/agent-runtime/agent/README.md) |
 | Supervisor | `src/agent-runtime/supervisor/` | `agentx run`: the three loops, restarting a loop that crashes, the heartbeat, stopping | event router, Pi runner, workflow runner, storage | [supervisor](architecture/agent-runtime/supervisor/README.md) |
 | Events | `src/agent-runtime/events/`, `sqlite.ts` | The queue (SQLite, opened by `sqlite.ts`, as the memory index is), the inbox and outbox (`mailbox.ts`), `sendEvent`, and the EventRouter loop, the only writer of new events to the queue | functions, workflows, storage | [events](architecture/agent-runtime/events/README.md) |
 | Workflows | `src/agent-runtime/workflows/` | Reads the agent's workflows, and the WorkflowRunner loop that runs each workflow event | functions, queue, send-event | [workflows](architecture/agent-runtime/workflows/README.md) |
 | Functions | `src/agent-runtime/functions/` | Calls a router or workflow script in a child process, with a time limit; the scripts' types; a workflow's `ctx.composio` | agent env, send-event, Composio's policy | [functions](architecture/agent-runtime/functions/README.md) |
-| Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
+| Pi | `src/agent-runtime/pi/` | How Pi is started, the same for `chat` and `run` (`pi-launch.ts`); whether an agent's model can be reached (`model-login.ts`); the PiRunner loop, a Pi process per thread with events | agent env, queue | [pi](architecture/agent-runtime/pi/README.md) |
 | Pi package | `src/agent-runtime/pi/pi-package/` | Loaded by Pi into every agent: the harness prompt, the event queue extension (takes, steers and settles a thread's events), Composio, skills as sections with versions, and agentx's skills, such as how to write a workflow | queue, sqlite, project config (as source) | [pi-package](architecture/agent-runtime/pi/pi-package/README.md) |
 | Composio | `pi-package/extensions/composio/` | Each agent's access to external services, and the policy its workflows' sessions get too | | [composio](architecture/agent-runtime/pi/pi-package/composio/README.md) |
 | Episodes | `pi-package/extensions/episodes/` | Divides a thread into episodes, each of Pi's runs, ended by a message with its id and the tokens it added, from the model's usage | | [episodes](architecture/agent-runtime/pi/pi-package/episodes/README.md) |
@@ -97,7 +101,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 ## Lifecycles
 
-**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs. `agentx remove-thread <id>`, in an agent, deletes one thread's sessions and its episodes in the agent's memory, the same way; not while the thread runs or has events waiting. `agentx upgrade-project` moves the project to the latest agentx, then adds the settings, keys and ignored files of its templates that the project and its agents lack; `agentx upgrade-agent main` does it for one agent.
+**A project.** `agentx init-project my-project` copies the template, pins `agent-x`, and runs `git init`. `agentx init-agent main` creates `agent-x/agents/main`, its storage and the link to it, and lists it in `agentx.json`. `agentx remove-agent main` deletes the three once you confirm (`--yes` skips the question), and takes it off the other agents' canSendTo; not while it runs. `agentx remove-thread <id>`, in an agent, deletes one thread's sessions and its episodes in the agent's memory, the same way; not while the thread runs or has events waiting. `agentx upgrade-project` moves the project to the latest agentx, then adds the settings, keys and ignored files of its templates that the project and its agents lack; `agentx upgrade-agent main` does it for one agent. `agentx dev` runs the project on a laptop: it asks for the logins and keys it lacks, runs `deploy/check.sh`, opens an ngrok tunnel, and runs the agents and `next dev`. On an Ubuntu server, `agentx server setup` makes the server ready, with Caddy for HTTPS, and `agentx server start` builds the web app beside the running one and runs both as systemd user services.
 
 **The coordinator** (`agentx serve`). It starts, reads `agentx.json` once, and starts its services: the core ones, the relay, the scheduler and Composio's webhook, on when its secret is set, then the optional ones `agentx.json` lists, then the project's own in `agent-x/services/` that it lists. One that fails to load or start is off; the rest go on. Then it starts an AgentManager per listed agent with a folder, and its API server, with its own routes, which report, start and stop the agents with the API token, and the services' routes under `/services/<name>/`. Each second the scheduler fires the schedules that are due, and the relay delivers every outbox. The first SIGINT or SIGTERM lets the agents finish their running work, the second stops it, while the services go on, except the scheduler, which fires nothing during a stop. Then the services stop, the last started first, so the relay delivers once more, and the server closes.
 
@@ -127,7 +131,7 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 
 | Built | Planned |
 |---|---|
-| CLI: `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver`, `webhook` | Sandboxes |
+| CLI: `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `serve`, `run`, `chat`, `remove-thread`, `event send`, `event deliver`, `webhook`, `dev`, `server` | Sandboxes |
 | `agentx run`: router loop, Pi runner, workflows with Composio tools, heartbeat | Composio's triggers, made for each agent by its service |
 | `agentx serve`: agent processes, restarts, the API server with the API token and agent controls, services: the relay, the scheduler, Composio's webhook, Telegram and the agents' webhooks, and the project's own in `agent-x/services/` | The web app's use of the API: agent controls, events from people, answers back |
 | Pi package: harness prompt, event queue, Composio, skills as sections with versions, and skills for the browser, Telegram, routers, workflows, schedules and webhooks | Memory: episodic search by meaning, then dream, task logs and sub-agents; hints later |
@@ -135,3 +139,4 @@ Arrows are imports; dotted ones start a process. The runtimes never import the C
 | The agent's browser: `agentx-browser` and its profiles | |
 | The agent's context: episodes and the tokens each added, folds of episodes, fold nudges | |
 | Episodic memory: every thread's episodes, searched by keyword and read back | |
+| A project on a laptop (`agentx dev`, with an ngrok tunnel) and on an Ubuntu server (`agentx server`, with Caddy and systemd), asking for the logins and keys it lacks | Other server targets, such as AWS or GCP |

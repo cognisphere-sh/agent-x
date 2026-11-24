@@ -28,7 +28,8 @@ What agentx relies on in `@earendil-works/pi-coding-agent`, pinned at 1.5.2. Pat
 ## CLI
 
 - Subcommands (`install`, `remove`, `update`, `list`, `config`, `mcp`, `auth`) count only as the first argument. `uninstall` is another name for `remove` (`src/package-manager-cli.ts`).
-- `auth login <provider>` and `auth logout <provider>` write `auth.json` in the agent directory without starting a session.
+- `auth login <provider>` and `auth logout <provider>` write `auth.json` in the agent directory without starting a session. `auth login` needs a terminal; `--no-browser` signs in another way, such as over SSH.
+- `auth check --provider <provider>` exits 0 when the provider has credentials (a login, an environment key, or a key in `models.json`), 1 when it has none and 2 when they are invalid; it refreshes an expired login unless given `--no-refresh` (`docs/cli.md`).
 - `-nc` skips `AGENTS.md` and `CLAUDE.md`. `-c` continues the latest session. `-r` opens a picker. `--session <id>` accepts part of an id.
 - With `-p`, Pi reads stdin until it closes.
 - The CLI entry is `dist/bundle/cli.js` in the package.

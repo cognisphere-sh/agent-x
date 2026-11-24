@@ -1,5 +1,8 @@
 node_modules/
 web/.next/
+web/.next-a/
+web/.next-b/
+web/.agentx-web.env
 web/next-env.d.ts
 agent-x/.pi/
 agent-x/.env

@@ -1,6 +1,6 @@
 # CLI
 
-The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a developer's local tool: create projects and agents, try an agent, run it. The code is in `src/cli/` and builds to `dist/cli/agentx.js`, which `package.json` `bin` names as `agentx` and `agent-x`. What `init-project` creates: [project](project/README.md).
+The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a developer's tool: create projects and agents, try an agent, run it, and run a project on a laptop or a server. The code is in `src/cli/` and builds to `dist/cli/agentx.js`, which `package.json` `bin` names as `agentx` and `agent-x`. What `init-project` creates: [project](project/README.md). Running a project: [deploy](deploy/README.md).
 
 | File | Role |
 |---|---|
@@ -8,9 +8,10 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | `copy-template.ts` | Copies `templates/<name>` into a missing or empty directory, naming each `env` and `gitignore` file with a dot. Writes the JSON files the CLI changes, indented with tabs. |
 | `pinned-cli.ts` | Finds the CLI the project pins, and runs it ([D15](#d15)); `upgrade-project` runs the copy it installed the same way ([D99](#d99)). |
 | `agent-root.ts` | Finds the agent directory, or the project's `agent-x/`, a command runs in. |
-| `confirmed.ts` | Asks a person to confirm what `remove-agent` and `remove-thread` delete. |
+| `confirmed.ts` | Asks a person a question: to confirm what `remove-agent` and `remove-thread` delete, or for a login or a key. |
 | `template-sync.ts` | Adds what a template has and a project's or agent's file lacks, for `upgrade-project` and `upgrade-agent` ([D100](#d100)). |
 | `commands/<name>.ts` | One file per command. |
+| `deploy/` | What `dev` and `server` share and do: the questions for logins and keys, the tunnel, the server's setup, files and web builds ([deploy](deploy/README.md)). |
 
 ## Commands
 
@@ -21,7 +22,9 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 | `agentx remove-agent <name> [--yes]` | In the project root, `agent-x/` or `agent-x/agents/`. Deletes the agent's folder, its state and its entry in `agentx.json`, and takes it off the other agents' `canSendTo`. Lists them and asks first; only `y` or `yes` deletes, and input that ends unanswered, as with Ctrl-C, keeps them. `--yes` skips the question. Refuses while the agent runs. |
 | `agentx upgrade-project` | In the project root, `agent-x/` or `agent-x/agents/`. Moves `agent-x` to the latest version in the registry and installs it, with pnpm ([D99](#d99)). Then adds what the templates have and the project lacks: keys of `agentx.json`, keys of `agent-x/.env`, lines of `.gitignore`; and upgrades every agent, as `upgrade-agent` does ([D100](#d100)). Prints each change. |
 | `agentx upgrade-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Adds to the agent's `.pi/settings.json` the `agentx` settings it lacks, with the template's values, and to its `.env` the keys it does not name; moves the Pi packages it lists to the versions the template pins ([D100](#d100)). Changes no other value. Prints each change. |
-| `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. |
+| `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. Logs each agent with no login for its model provider. |
+| `agentx dev` | In the project root, `agent-x/` or `agent-x/agents/`, on a laptop: asks for the logins and keys the project lacks, runs `deploy/check.sh`, opens an ngrok tunnel to the agents, and runs them, as `serve` does, and the web app with `next dev` ([deploy](deploy/README.md#agentx-dev)). |
+| `agentx server setup\|start\|restart\|stop\|status\|logs` | The same, on the project's Ubuntu server: sets it up, with Caddy for HTTPS, and runs the agents and the web app as systemd user services ([deploy](deploy/README.md#agentx-server)). |
 | `agentx run` | Runs the agent until it is stopped ([supervisor](../agent-runtime/supervisor/README.md)). |
 | `agentx chat [--thread-id <id>] [pi args]` | Opens the pinned Pi on a thread, `main` by default. Other arguments go to Pi ([Pi](../agent-runtime/pi/README.md#how-agentx-chat-starts-pi)). |
 | `agentx remove-thread <thread-id> [--yes]` | Deletes a Pi thread of the agent: its sessions, `storage/sessions/<thread-id>/`, and its episodes in the agent's [memory](../agent-runtime/pi/pi-package/memory/README.md) ([D94](#d94)). Says what it deletes and asks first, as `remove-agent` does; `--yes` skips the question. Refuses in the agent's processes, while a process holds the thread, and while events wait for it, before the question and again after. |
@@ -45,7 +48,7 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 
 ## Conventions
 
-- `run`, `serve`, `event` and `webhook` only read their arguments and call the agent runtime or the coordinator runtime: `webhook` keeps the file through the webhooks service's `hooks.ts`. `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `remove-thread` and `chat` are the developer's tools, and keep their logic in the CLI. The runtimes never import the CLI.
+- `run`, `serve`, `event` and `webhook` only read their arguments and call the agent runtime or the coordinator runtime: `webhook` keeps the file through the webhooks service's `hooks.ts`. `init-project`, `init-agent`, `remove-agent`, `upgrade-project`, `upgrade-agent`, `remove-thread`, `chat`, `dev` and `server` are the developer's tools, and keep their logic in the CLI; `dev` runs the coordinator as `serve` does. The runtimes never import the CLI.
 - Commands throw an `Error` with a message for the user; only `agentx.ts` prints it and exits.
 - `event` and `webhook` read their options with Node's `parseArgs` in strict mode, so an unknown option is an error. `chat` reads its own flags by hand and passes the rest to Pi.
 

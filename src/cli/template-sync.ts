@@ -37,8 +37,8 @@ export function addMissingKeys(target: object, template: object, prefix = ""): s
 	return paths;
 }
 
-// A variable an env file sets, or names in a comment as the templates do: `NAME=value` or `# NAME=value`.
-const variables = (text: string) => new Set([...text.matchAll(/^#?\s*([A-Za-z_][A-Za-z0-9_]*)=/gm)].map((match) => match[1]));
+/** The variables an env file sets, or names in a comment as the templates do: `NAME=value` or `# NAME=value`. */
+export const variables = (text: string) => new Set([...text.matchAll(/^#?\s*([A-Za-z_][A-Za-z0-9_]*)=/gm)].map((match) => match[1]));
 
 /**
  * Appends to the env file `file` each paragraph of the env template `template` that names a variable the file does not, with the comments that explain it,

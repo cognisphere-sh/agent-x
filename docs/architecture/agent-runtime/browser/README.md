@@ -4,7 +4,7 @@ An agent's browser is the [agent-browser](https://agent-browser.dev) that agentx
 
 ```
 src/agent-runtime/browser/
-  agent-browser.ts    runBrowser: agent-browser on one profile, with the agent's folders and namespace
+  agent-browser.ts    runBrowser: agent-browser on one profile, with the agent's folders and namespace; installBrowser: Chrome and its libraries, for agentx server setup
   browser-command.ts  agentx-browser, the agent's command
 ```
 
@@ -43,7 +43,7 @@ storage/workspace/browser/        the agent's, in its storage
 ## Setup
 
 - **Chrome.** `agentx-browser install` downloads the Chrome for Testing build that this agent-browser expects into `~/.agent-browser/browsers/`, once per machine and user. The skill tells the agent to run it when a command says Chrome is missing.
-- **Linux.** Chrome needs system libraries: `agentx-browser install --with-deps` installs them too, as root or with `sudo`. Chrome for Testing has no Linux ARM64 build: there, install Chromium from the system's packages and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the agent's `.env`.
+- **Linux.** Chrome needs system libraries: `agentx-browser install --with-deps` installs them too, with the system's package manager, through `sudo` for a user who is not root, while Chrome goes into that user's home. `agentx server setup` runs it ([deploy](../../cli/deploy/README.md#setup)). Chrome for Testing has no Linux ARM64 build: there, install Chromium from the system's packages and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the agent's `.env`.
 
 [Give an agent a browser](../../../user_guides/give_an_agent_a_browser.md) shows how to use it.
 

@@ -6,20 +6,22 @@
 
 import { join } from "node:path";
 import { withEnvFile } from "../agent-runtime/agent-env.js";
-import { agentFolders, agentIn, configFile, projectConfig } from "../agent-runtime/project-config.js";
+import { agentFolders, agentIn, configFile, projectConfig, publicUrl } from "../agent-runtime/project-config.js";
 import { centralStorage, ensureStorage, storageProblem } from "../agent-runtime/storage.js";
 import { AgentManager } from "./agent-manager.js";
 import { deliverTo } from "./deliver-event.js";
 import { type ApiResponse, ApiServer, type Route } from "./api-server.js";
 import { nameRule } from "../agent-runtime/events/queue.js";
 import { loadProjectService, projectServices } from "./project-services.js";
+import { agentVariable, isSecret } from "./service.js";
 import { ServiceRunner } from "./service-runner.js";
 import { coreServices, optionalServices, type ServiceClass } from "./services/services.js";
 
 /** Runs the agents and the services of the project's `agent-x/` directory, and serves on `host`:`port`. */
 export class Coordinator {
 	readonly agents: AgentManager[];
-	// The services that start, chosen at start.
+	// The services that start, chosen once, at start or when asked what they need.
+	private chosen: Promise<ServiceRunner[]> | undefined;
 	private services: ServiceRunner[] = [];
 	private readonly serviceConfig: Record<string, unknown>;
 	private readonly publicUrl: string | undefined;
@@ -45,13 +47,13 @@ export class Coordinator {
 		const { services = {} } = config;
 		this.serviceConfig = typeof services === "object" && services !== null && !Array.isArray(services) ? services : {};
 		if (this.serviceConfig !== services) console.error(`${configFile(agentX)}: "services" must be an object; no optional service is on.`);
-		this.publicUrl = typeof config.publicUrl === "string" ? config.publicUrl : undefined;
-		if (config.publicUrl !== undefined && this.publicUrl === undefined) console.error(`${configFile(agentX)}: "publicUrl" must be a URL, as text; it is left out.`);
+		this.publicUrl = publicUrl(config);
+		if (config.publicUrl !== undefined && typeof config.publicUrl !== "string") console.error(`${configFile(agentX)}: "publicUrl" must be a URL, as text; it is left out.`);
 	}
 
 	/** Starts the services, then the agents and the API server; resolves to the address it listens on. */
 	async start(host: string, port: number): Promise<string> {
-		this.services = await this.chooseServices();
+		this.services = await this.servicesToStart();
 		const available = withEnvFile(join(this.agentX, ".env"));
 		const agents = this.agents.map(({ agent, root }) => ({ name: agent, root, storage: centralStorage(root) }));
 		// One at a time, in order: the relay first, so that it stops last.
@@ -77,6 +79,25 @@ export class Coordinator {
 		const token = available.AGENTX_API_TOKEN || undefined;
 		if (token === undefined) console.error("AGENTX_API_TOKEN is not set, in the environment or agent-x/.env: private routes answer 503.");
 		return this.api.listen(host, port, this.routes, token);
+	}
+
+	/**
+	 * The secrets the services that would start need and are not optional, each with its service: a secret that is one per agent (`name*`) once for
+	 * each agent the service's config lists under `agents`, or else for every agent the coordinator runs.
+	 */
+	async secretsNeeded(): Promise<{ service: string; secret: string; variable: string }[]> {
+		return (await this.servicesToStart()).flatMap(({ name, service }) => {
+			const { agents } = (this.serviceConfig[name] ?? {}) as { agents?: unknown };
+			const perAgent = typeof agents === "object" && agents !== null && !Array.isArray(agents) ? Object.keys(agents) : this.agents.map((agent) => agent.agent);
+			return (service.secrets ?? [])
+				.filter((secret) => !secret.endsWith("?"))
+				.flatMap((secret) => (secret.endsWith("*") ? perAgent.map((agent) => agentVariable(secret.slice(0, -1), agent)) : [secret]).map((variable) => ({ service: name, secret, variable })));
+		});
+	}
+
+	private servicesToStart(): Promise<ServiceRunner[]> {
+		this.chosen ??= this.chooseServices();
+		return this.chosen;
 	}
 
 	// The core services, then the optional ones agentx.json lists, then the project's own it lists, each with its config there. A project's service
@@ -154,9 +175,6 @@ export class Coordinator {
 		return { status: 202, body: agent.status() };
 	}
 }
-
-// Whether the variable `key` is the secret `name`, or starts with it when `name` ends with `*`.
-const isSecret = (name: string, key: string) => (name.endsWith("*") ? key.startsWith(name.slice(0, -1)) : key === name);
 
 // A route as `GET /routes` lists it.
 const describe = ({ method, path, access = "private", summary }: Route) => ({ method, path: `/${path}`, access, summary });

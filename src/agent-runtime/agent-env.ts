@@ -30,7 +30,10 @@ export function agentEnv(agentRoot: string): NodeJS.ProcessEnv {
 /** The agent's own env file, its keys: the only env file its processes read. */
 export const agentEnvFile = (agentRoot: string) => join(agentRoot, ".env");
 
+/** The variables the env file `file` sets, empty ones too; none when it is missing. */
+export const readEnvFile = (file: string): NodeJS.Dict<string> => (existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {});
+
 /** This process's environment, with the variables of the env file `file` that it does not set: a variable already in the environment wins, as a deployment sets it. */
 export function withEnvFile(file: string): NodeJS.ProcessEnv {
-	return { ...(existsSync(file) ? parseEnv(readFileSync(file, "utf8")) : {}), ...process.env };
+	return { ...readEnvFile(file), ...process.env };
 }

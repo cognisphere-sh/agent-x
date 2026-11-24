@@ -657,6 +657,10 @@ export default async function (event) {
 	assert.equal(made.status, 0, made.stderr);
 	const first = path(made.stdout);
 	assert.ok(first, made.stdout);
+	// AGENTX_PUBLIC_URL, as agentx dev sets it for its tunnel, wins over publicUrl in agentx.json, for the agent's processes too; empty, there is none.
+	const listed = (url) => agentx({ ...asAgent(project), env: { ...asAgent(project).env, AGENTX_PUBLIC_URL: url } }, ["webhook", "list"]);
+	assert.match((await listed("https://dev-tunnel.ngrok.app")).stdout, /^calls: https:\/\/dev-tunnel\.ngrok\.app\/services\/webhooks\/main\/calls\/[\w-]{43}$/m);
+	assert.match((await listed("")).stdout, /^calls: \(none: agentx\.json has no "publicUrl"\)$/m);
 
 	const server = await serve(t, project);
 	const call = (to, body = JSON.stringify({ event: "call_ended", call_id: "c1" })) =>

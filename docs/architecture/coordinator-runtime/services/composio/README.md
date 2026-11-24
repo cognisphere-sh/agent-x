@@ -4,7 +4,7 @@ A core [service](../../README.md#services) of the coordinator: Composio's webhoo
 
 A Composio project sends every trigger event to one URL, its webhook subscription, signed with the project's secret. All agents of an agentx project share one Composio project, each with its own user id ([D38](../../../agent-runtime/pi/pi-package/composio/README.md#d38)). So the service has one route for the project, and finds the agent by user id ([D71](#d71)).
 
-- **On** when `COMPOSIO_WEBHOOK_SECRET`, the subscription's signing secret, is set in the coordinator's environment or `agent-x/.env`. Without it the service is off, and its route is not served.
+- **On** when `COMPOSIO_WEBHOOK_SECRET`, the subscription's signing secret, is set in the coordinator's environment or `agent-x/.env`. Without it the service is off, and its route is not served. The secret is optional (`COMPOSIO_WEBHOOK_SECRET?`, [D110](../../README.md#d110)), so `agentx dev` and `agentx server` do not ask for it.
 - **Route:** `POST /services/composio/webhook`, public: it checks the caller itself.
 
 What the route does with a request:

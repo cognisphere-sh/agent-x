@@ -4,7 +4,7 @@
 import { basename } from "node:path";
 import { parseArgs } from "node:util";
 import { nameRule } from "../../agent-runtime/events/queue.js";
-import { agentXOf, projectConfig } from "../../agent-runtime/project-config.js";
+import { agentXOf, projectConfig, publicUrl as publicUrlOf } from "../../agent-runtime/project-config.js";
 import { storageOf } from "../../agent-runtime/storage.js";
 import { loadWorkflows } from "../../agent-runtime/workflows/workflows.js";
 import { deleteHook, hookUrl, lastLogLine, loadHooks, rotateHook, setHook } from "../../coordinator-runtime/services/webhooks/hooks.js";
@@ -46,7 +46,7 @@ function create(agentRoot: string, args: string[]): void {
 function list(agentRoot: string): void {
 	const hooks = Object.entries(loadHooks(agentRoot));
 	if (hooks.length === 0) return console.log("This agent has no webhooks.");
-	const { publicUrl } = projectConfig(agentXOf(agentRoot));
+	const publicUrl = publicUrlOf(projectConfig(agentXOf(agentRoot)));
 	for (const [name, hook] of hooks) {
 		const url = publicUrl === undefined ? '(none: agentx.json has no "publicUrl")' : hookUrl(publicUrl, basename(agentRoot), name, String(hook.token));
 		console.log([`${name}: ${url}`, `  workflow: ${hook.workflow}`, `  description: ${hook.description}`, `  last request: ${lastLogLine(storageOf(agentRoot), name) ?? "none"}`].join("\n"));
@@ -66,7 +66,9 @@ function remove(agentRoot: string, name: string): void {
 
 // The project's public address, which a webhook's URL starts with. Throws when the webhooks service cannot take requests: a person must set it up.
 function servedAt(agentRoot: string): string {
-	const { publicUrl, services = {} } = projectConfig(agentXOf(agentRoot));
+	const config = projectConfig(agentXOf(agentRoot));
+	const { services = {} } = config;
+	const publicUrl = publicUrlOf(config);
 	const setUp = 'a person sets it up in agent-x/agentx.json and restarts agentx serve: "publicUrl", the address the outside reaches agentx serve at, and "webhooks": {} under "services".';
 	if (publicUrl === undefined) throw new Error(`agentx.json has no "publicUrl", so a webhook has no URL: ${setUp}`);
 	if (!Object.hasOwn(services, "webhooks")) throw new Error(`agentx.json does not turn on the webhooks service, so a webhook's URL would answer 404: ${setUp}`);

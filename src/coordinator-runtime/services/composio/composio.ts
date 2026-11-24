@@ -22,7 +22,8 @@ interface ComposioEvent {
 
 /** Composio's webhook: each trigger event, signed with COMPOSIO_WEBHOOK_SECRET, goes into the inbox of the agent whose `agentx.composio.userId` it names. */
 export class ComposioService extends Service {
-	override readonly secrets = ["COMPOSIO_WEBHOOK_SECRET"];
+	// Optional: without it, Composio's events are not taken, and nothing else is off.
+	override readonly secrets = ["COMPOSIO_WEBHOOK_SECRET?"];
 	override readonly routes: Route[] = [
 		{
 			method: "POST",

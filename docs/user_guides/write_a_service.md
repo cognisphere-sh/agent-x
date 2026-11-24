@@ -51,7 +51,7 @@ The default export is a class; each member may be left out.
 
 | Member | What it is |
 |---|---|
-| `secrets` | The environment variables it needs, from the coordinator's environment or `agent-x/.env`; `NAME_*` takes every variable that starts with `NAME_`. It gets only these, in `context.secrets`. |
+| `secrets` | The environment variables it needs, from the coordinator's environment or `agent-x/.env`; `NAME_*` takes every variable that starts with `NAME_`, one per agent, and `NAME?` is optional. It gets only these, in `context.secrets`. `agentx dev` and `agentx server` ask a person for each one that is not optional and not set. |
 | `routes` | Its API, served under `/services/<name>/`: each route's `method` (`GET` or `POST`), `path` (`:param` for a parameter), `access` and `summary`, and `handle(request)`, which returns `{ status, body }`. `private`, the default, needs `AGENTX_API_TOKEN`; a `public` one must check its caller itself, as above. |
 | `onStart(context)` | Sets it up, before the agents start. A throw leaves it off, and says why in the log. |
 | `onStop()` | Its last work, after the agents have stopped. |
@@ -61,7 +61,7 @@ The default export is a class; each member may be left out.
 - `config`: `services.<name>` in `agentx.json`;
 - `secrets`;
 - `agents`: each agent's `name`, `root` and `storage`;
-- `publicUrl`, from `agentx.json`;
+- `publicUrl`, from `agentx.json`, or the tunnel's under `agentx dev`;
 - `stopping()`;
 - `deliver(agent, event, files)`, which puts an event into an agent's inbox with `agentX-Service: <name>`. Its `key` is your id for what you deliver, such as the webhook's delivery id, so a retry adds nothing. Each file is a path, which is copied, or a name with its content, such as `{ name: "payload.json", content: body }`, which is written into the event's folder, so you need no temporary file. The type is `EventFile`, from `agent-x`. It throws when there is no such agent, or the event is refused.
 - `every(ms, work)`, which runs `work` every `ms` until the service stops. Runs never overlap, and a failure is logged. Poll with it, not with a timer of your own.

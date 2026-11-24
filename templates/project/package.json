@@ -3,7 +3,7 @@
 	"private": true,
 	"scripts": {
 		"install": "node -e \"for (const dir of ['agent-x', 'web']) require('child_process').execSync((process.env.npm_config_user_agent || 'npm').split('/')[0] + ' install', { cwd: dir, stdio: 'inherit' })\"",
-		"dev": "npm run dev --prefix web",
+		"dev": "node agent-x/node_modules/agent-x/dist/cli/agentx.js dev",
 		"build": "npm run build --prefix web",
 		"agentx": "node agent-x/node_modules/agent-x/dist/cli/agentx.js"
 	}

@@ -80,8 +80,8 @@ The context gives a service its `config`, its own `secrets`, the `agents` the co
 | [webhooks](services/webhooks/README.md) | optional | Each agent's webhooks, which the agent keeps with `agentx webhook`: a request whose URL holds a webhook's token goes to the workflow it names, with its body and headers as files. Off without `publicUrl`. |
 
 - **Core, optional and the project's own.** The core services are always on, and start in the order above. Optional services ship with agentx too, and start after them, each when `agentx.json` lists it under `services` ([D68](#d68)). The project's own start last, each when `agentx.json` lists it, so they stop first. A name that neither agentx nor `agent-x/services/` has is logged and skipped.
-- **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook.
-- **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it. It gets their values from the coordinator's environment, which wins, or `agent-x/.env`, which only the coordinator reads; each agent reads its own `.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
+- **Config.** A service's config is `services.<name>` in `agentx.json`, `{}` when there is none; the service checks it. `publicUrl` in `agentx.json`, such as `https://agents.example.com`, is where the API server is reached from outside, for a service that registers a webhook. `AGENTX_PUBLIC_URL` in the coordinator's environment wins over it for one run, an empty one meaning none, as `agentx dev` sets it for its tunnel ([D109](#d109)).
+- **Secrets.** A service names the environment variables it needs in `secrets`; a name that ends with `*`, such as `TELEGRAM_BOT_TOKEN_*`, takes every variable that starts with it, one per agent, named by `agentVariable` (`TELEGRAM_BOT_TOKEN_MY_AGENT` for `my-agent`). A name that ends with `?`, such as Telegram's `COMPOSIO_BASE_URL?`, is optional: given when it is set, never asked for ([D110](#d110)). `secretsNeeded()` lists the others of the services that would start, for `agentx dev` and `agentx server` to ask for. It gets their values from the coordinator's environment, which wins, or `agent-x/.env`, which only the coordinator reads; each agent reads its own `.env`. A secret set in the coordinator's environment reaches the agents' processes too, until they run in sandboxes.
 - **A service that fails to start** is off, says why, and stays off until `agentx serve` starts again; the agents and the other services start all the same.
 - **Polling.** `every` never starts a run while the last one goes on, and logs a failure, so no service can end the coordinator.
 
@@ -222,3 +222,18 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 - **Why.** The same contract as agentx's services gives a project's service everything they have: config, its secrets, routes, `deliver` and `every`. Listing it keeps a checked-in service off in a deployment that does not want it, as optional services are. Types only, and a check of the shape, need no runtime export from the package and work with any copy of agentx's code.
 - **Rejected.** A process per project service: it isolates crashes, but every route, `deliver` and `every` would cross a channel, and the developer's code runs as the same OS user all the same. A base class exported at runtime to extend: a package entry for defaults of a few lines. On whenever its folder exists: no way to turn one off in a deployment but deleting it.
 - **Consequence.** A project's service is trusted as the coordinator is; [known limits](#known-limits).
+
+<a id="d109"></a>
+### D109. `AGENTX_PUBLIC_URL` gives one run its own public address
+
+- **Problem.** `publicUrl` in `agentx.json` is checked in, and is the server's address; a run on a laptop is reached through a tunnel with another, which the coordinator's services and the agent's own commands, such as `agentx webhook create`, must both use.
+- **Decision.** `publicUrl()` in `project-config.ts` returns `AGENTX_PUBLIC_URL` when the environment sets it, an empty one meaning none, else `publicUrl` from `agentx.json`. The coordinator and `agentx webhook` read it there. `agentx dev` sets it in its own process, so the agents' processes inherit it.
+- **Why.** An environment variable reaches every process of the run, and changes no checked-in file. A run without a tunnel has no address rather than the server's, so it never points a bot or a webhook at the server.
+- **Rejected.** Writing the tunnel's address into `agentx.json`, which would change a checked-in file on every laptop. An address held in the coordinator alone, which an agent's `agentx webhook` would not see.
+
+<a id="d110"></a>
+### D110. A service marks an optional secret with `?`
+
+- **Problem.** `secrets` lists what a service may read, which holds overrides too, such as `COMPOSIO_BASE_URL`, and secrets without which only a part of it is off, such as Composio's `COMPOSIO_WEBHOOK_SECRET`; asking a person for those would ask in every project.
+- **Decision.** A secret whose name ends with `?` is optional: the service gets it when it is set, and `secretsNeeded()` leaves it out.
+- **Why.** The service that reads a secret is the one that knows whether it needs it, and one character beside the name, as `*` is, keeps the list one list.

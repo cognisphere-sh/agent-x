@@ -14,7 +14,7 @@ A task that is dropped is deleted, together with its row below.
 | [Make each agent's Composio triggers](backlog/composio-service.md) | feature | none | idea |
 | [Let the web app control agents and talk to them through the coordinator's API](backlog/web-app-api.md) | feature | none | idea |
 | [Give each agent memory and sub-agents, built in five steps](backlog/memory.md) | feature | none | in-progress |
-| [Run a project on a laptop with agentx dev, and on a server with agentx server](backlog/deploy.md) | feature | none | planned |
+| [Run a project on a laptop with agentx dev, and on a server with agentx server](backlog/deploy.md) | feature | none | in-progress |
 
 ## Done
 

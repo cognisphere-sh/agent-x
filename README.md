@@ -21,15 +21,16 @@ docs/                     High-level design, one folder per module as in src/, u
 src/
   index.ts                The package's types, for the routers, workflows and services a project writes.
   cli/                    The agentx command: entry point, the hand-over to the pinned copy, one file per command, and what the upgrade adds from the templates.
+    deploy/               agentx dev and agentx server: the logins and keys they ask for, the tunnel, the server's setup, units and Caddy config, the web app's builds.
   agent-runtime/          Everything that runs one agent.
     supervisor/           agentx run: three loops, their limits, stopping, and the agent's process the coordinator starts.
     events/               The queue (SQLite), the inbox and outbox, sending, and the router loop.
     workflows/            Events handled by a script.
     functions/            Calls a router or workflow in a child process; their types; a workflow's Composio tools.
-    pi/                   Starting Pi, the Pi runner, and pi-package/, which Pi loads into every agent: extensions, and skills such as how to write a workflow.
+    pi/                   Starting Pi, whether the agent's model can be reached, the Pi runner, and pi-package/, which Pi loads into every agent: extensions, and skills such as how to write a workflow.
     browser/              The agent's browser: agentx-browser, agent-browser on its profiles.
   coordinator-runtime/    agentx serve: every agent of a project, the API server, and the services, agentx's and the project's own.
     services/             One folder per service: relay/ (delivery between agents), scheduler/ (schedules), composio/ (Composio's webhook), telegram/ (Telegram bots), webhooks/ (each agent's webhooks).
-test/                     The queue, and end to end agentx run, agentx serve, Composio and the upgrade, against a fake model and a fake Composio.
+test/                     The queue, and end to end agentx run, agentx serve, agentx dev, Composio and the upgrade, against a fake model and a fake Composio; what agentx server writes and builds.
 templates/                project/ for init-project, agent/ for init-agent.
 ```

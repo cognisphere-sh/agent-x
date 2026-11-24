@@ -6,7 +6,7 @@ The code that runs one agent, in `src/agent-runtime/`. `agentx chat` uses it to 
 src/agent-runtime/
   agent-env.ts           the environment of the agent's processes
   storage.ts             where the agent's state is, and the storage link
-  project-config.ts      agent-x/agentx.json: the project's agents
+  project-config.ts      agent-x/agentx.json: the project's agents, and its public address, which AGENTX_PUBLIC_URL overrides for a run (coordinator D109)
   sqlite.ts              opens a SQLite file that several processes share: the queue, the memory index
   time-zone.ts           the agent's time zone, and times as the agent reads them
   supervisor/            agentx run

@@ -15,6 +15,7 @@ New here: [quick start](user_guides/quick_start.md).
 |---|---|
 | [cli](architecture/cli/README.md) | The `agentx` command |
 | [cli/project](architecture/cli/project/README.md) | The project `init-project` creates |
+| [cli/deploy](architecture/cli/deploy/README.md) | `agentx dev` and `agentx server`: a project on a laptop and on an Ubuntu server, and the logins and keys they ask for |
 | [agent-runtime](architecture/agent-runtime/README.md) | What runs one agent |
 | [agent-runtime/agent](architecture/agent-runtime/agent/README.md) | An agent directory: definition, knowledge, storage |
 | [agent-runtime/supervisor](architecture/agent-runtime/supervisor/README.md) | `agentx run`: three loops, settings, heartbeat, stopping |
@@ -39,7 +40,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D105**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D111**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -132,6 +133,12 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D102](architecture/coordinator-runtime/services/webhooks/README.md#d102) | The URL's token is a webhook's only check, and the workflow confirms what a request says through Composio | coordinator-runtime/services/webhooks |
 | [D103](architecture/coordinator-runtime/services/webhooks/README.md#d103) | A webhook answers 200 once the event is in the inbox, and never with an answer its caller waits for | coordinator-runtime/services/webhooks |
 | [D104](architecture/agent-runtime/pi/pi-package/README.md#d104) | How to write a router, a workflow, a schedule or a webhook is a skill of the package, and the harness's rules name it | agent-runtime/pi/pi-package |
+| [D105](architecture/cli/deploy/README.md#d105) | Running a project on a laptop or a server is agentx's, and a project adds only its own scripts | cli/deploy |
+| [D106](architecture/cli/deploy/README.md#d106) | A server is Ubuntu, with Caddy for HTTPS and systemd user services | cli/deploy |
+| [D107](architecture/cli/deploy/README.md#d107) | The web app builds beside the running one, in two folders in turn | cli/deploy |
+| [D108](architecture/cli/deploy/README.md#d108) | The commands a person types ask for logins and keys; `agentx serve` only logs a missing login | cli/deploy |
+| [D109](architecture/coordinator-runtime/README.md#d109) | `AGENTX_PUBLIC_URL` gives one run its own public address | coordinator-runtime |
+| [D110](architecture/coordinator-runtime/README.md#d110) | A service marks an optional secret with `?` | coordinator-runtime |
 
 ## User guides
 
@@ -140,7 +147,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [quick_start.md](user_guides/quick_start.md) | From nothing to a running app and agent |
 | [chat_with_an_agent.md](user_guides/chat_with_an_agent.md) | Threads, sessions, one-shot runs |
 | [send_events.md](user_guides/send_events.md) | Run an agent, give it events and files, route them, write workflows |
-| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run every agent with `agentx serve`: health, restarts, stopping, state, Composio's events, Telegram, webhooks |
+| [run_on_a_server.md](user_guides/run_on_a_server.md) | Run a project on an Ubuntu server with `agentx server`, or another host with `agentx serve`: health, restarts, stopping, state, keys, Composio's events, Telegram, webhooks |
 | [customize_an_agent.md](user_guides/customize_an_agent.md) | Prompt, skills, extensions, MCP, Composio, workflows, schedules, `canSendTo`, time zone |
 | [give_an_agent_a_browser.md](user_guides/give_an_agent_a_browser.md) | The agent's browser: setting it up, and its profiles |
 | [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |

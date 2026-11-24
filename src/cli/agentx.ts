@@ -1,16 +1,18 @@
 #!/usr/bin/env node
-// `agentx` command line: creates and upgrades projects and agents, runs an agent or all of them, opens Pi on one of its threads or removes one, gives
-// it events, and keeps its webhooks.
+// `agentx` command line: creates and upgrades projects and agents, runs an agent or all of them, runs a project on a laptop or a server, opens Pi on
+// one of its threads or removes one, gives it events, and keeps its webhooks.
 
 import { ensureStorage } from "../agent-runtime/storage.js";
 import { agentRoot } from "./agent-root.js";
 import { chatAgent } from "./commands/chat.js";
+import { dev } from "./commands/dev.js";
 import { event } from "./commands/event.js";
 import { initAgent } from "./commands/init-agent.js";
 import { initProject } from "./commands/init-project.js";
 import { removeAgent } from "./commands/remove-agent.js";
 import { removeThread } from "./commands/remove-thread.js";
 import { serve } from "./commands/serve.js";
+import { server } from "./commands/server.js";
 import { upgradeAgent } from "./commands/upgrade-agent.js";
 import { upgradeProject } from "./commands/upgrade-project.js";
 import { webhook } from "./commands/webhook.js";
@@ -28,6 +30,10 @@ in a project's root, agent-x/ or agent-x/agents/:
   agentx upgrade-agent <name>  add the settings and keys the agent lacks, and move its Pi packages to the versions the template pins
   agentx serve [--host <host>] [--port <port>]
                                run every agent of the project until stopped, and deliver events between them
+  agentx dev                   run the project on this machine: ask for the logins and keys it lacks, open an ngrok tunnel to the agents,
+                               and run the agents and the web app (next dev) until stopped
+  agentx server setup|start|restart|stop|status|logs
+                               on the project's Ubuntu server: set it up with HTTPS, and run the agents and the web app as systemd services
 
 in an agent directory:
   agentx run                   run the agent until stopped: route its events, run its Pi threads and its workflows
@@ -63,6 +69,8 @@ try {
 	else if (command === "upgrade-project" && args.length === 0) process.exit(await upgradeProject(cwd));
 	else if (command === "upgrade-agent" && name && args.length === 1) upgradeAgent(name, cwd);
 	else if (command === "serve") await serve(cwd, args);
+	else if (command === "dev" && args.length === 0) await dev(cwd);
+	else if (command === "server") await server(cwd, args);
 	// The other commands act on the agent directory they are started in.
 	else if (command === "run" && args.length === 0) await runAgent(agentAt(cwd));
 	else if (command === "chat") process.exit(chatAgent(agentAt(cwd), args));

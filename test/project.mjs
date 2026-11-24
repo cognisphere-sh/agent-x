@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -41,6 +41,12 @@ export function createAgent(port) {
 	const project = { agent: join(root, "project", "agent-x", "agents", "main"), env };
 	addAgent(project, "main");
 	return project;
+}
+
+/** Writes `file` as an executable sh script with `body`: a stand-in for a command a test must not run for real, such as ngrok or next. */
+export function stub(file, body) {
+	writeFileSync(file, `#!/bin/sh\n${body}\n`);
+	chmodSync(file, 0o755);
 }
 
 /** The root of the project. */

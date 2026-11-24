@@ -5,7 +5,7 @@ Every agent has a browser of its own: it opens sites, reads them, clicks, fills 
 ## Setting it up
 
 - **Chrome.** The agent downloads the Chrome it needs with `agentx-browser install` the first time a command says it is missing, into `~/.agent-browser/browsers/` of the user the agents run as. To do it ahead, say in an image, run it as the agent `main` would, from `agent-x/`: `AGENTX_AGENT=main PI_CODING_AGENT_DIR=.pi pnpm exec agentx-browser install`.
-- **Linux.** Chrome needs system libraries: add `--with-deps` to that command, run as root or with `sudo`. On Linux ARM64, which Chrome for Testing does not build for, install Chromium from the system's packages instead, and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the agent's `.env`.
+- **Linux.** Chrome needs system libraries: add `--with-deps` to that command, which installs them through `sudo` when you are not root. `agentx server setup` does it on a server. On Linux ARM64, which Chrome for Testing does not build for, install Chromium from the system's packages instead, and set `AGENT_BROWSER_EXECUTABLE_PATH=/usr/bin/chromium` in the agent's `.env`.
 - **`HOME`.** agent-browser's socket paths start with `HOME` and must stay under 104 bytes, so keep `HOME` short, such as `/home/agents`.
 
 agent-browser's other settings, such as a proxy, are environment variables (`AGENT_BROWSER_*`, [agent-browser's configuration](https://agent-browser.dev/configuration)); put them in the agent's `.env`, `agent-x/agents/<name>/.env`, and its browser gets them.

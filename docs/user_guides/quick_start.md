@@ -8,8 +8,10 @@ agentx init-project my-project          # or, in an empty folder: agentx init-pr
 cd my-project
 pnpm install                            # installs agent-x/ and web/
 agentx init-agent main
-pnpm dev                                # app on http://localhost:3000
+pnpm dev                                # agentx dev: the agents, and the app on http://localhost:3000
 ```
+
+`pnpm dev` runs `agentx dev`. It asks for the keys the project lacks, such as the agent's Composio key (press Enter to skip one), and for a model login when the agent names a provider. With [ngrok](https://ngrok.com/download) installed and logged in, it opens a tunnel, so Telegram and webhooks reach the agents. Ctrl-C lets the agents finish their running work. On a server, see [run on a server](run_on_a_server.md).
 
 In a second terminal:
 

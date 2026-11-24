@@ -4,10 +4,14 @@ What `agentx init-project [name]` creates from `templates/project/`.
 
 ```
 my-project/
-  .gitignore            node_modules/, web/.next/, web/next-env.d.ts, agent-x/.pi/, agent-x/.env, agent-x/storage/, and per agent its .env, its storage link, .pi/npm/, .pi/git/
-  package.json          scripts only: install, dev, build, agentx
+  .gitignore            node_modules/, web/.next/, the server's web/.next-a/, web/.next-b/ and web/.agentx-web.env, web/next-env.d.ts, agent-x/.pi/, agent-x/.env,
+                        agent-x/storage/, and per agent its .env, its storage link, .pi/npm/, .pi/git/
+  package.json          scripts only: install, dev (agentx dev), build, agentx
+  deploy/               the project's own check.sh and setup.sh, which agentx dev and agentx server run; stubs, a comment each (cli/deploy D105)
   web/                  Next.js (App Router); its own package
     app/api/health/route.ts   GET -> { ok: true }
+    next.config.ts      distDir from AGENTX_WEB_DIST_DIR, else .next, so a server builds beside the running app (cli/deploy D107)
+    tsconfig.json       lists the types folders of .next, .next-a and .next-b, so no build changes it
   agent-x/              agentx's part of the project; its own package
     package.json        depends on agent-x, at an exact version; `"type": "module"`, for the routers, workflows and services, which are `.ts` (D74)
     agentx.json         the project's agents: description and canSendTo (coordinator D63); the coordinator's services' config under `services`, and `publicUrl` (D68)
@@ -26,7 +30,7 @@ The templates ship `gitignore`, `agent-x/env` and the agent's `env`, which `init
 
 `agent-x/` depends on `agent-x` as a normal dependency, so a production install keeps it. Agents are plain folders, not packages.
 
-The root has scripts only: `install` installs both packages, `dev` and `build` run the app's, and `agentx` runs the pinned CLI ([CLI](../README.md#where-the-command-comes-from)).
+The root has scripts only: `install` installs both packages, `dev` runs [`agentx dev`](../deploy/README.md#agentx-dev), the agents and the app, `build` runs the app's, and `agentx` runs the pinned CLI ([CLI](../README.md#where-the-command-comes-from)).
 
 ## Not decided yet
 

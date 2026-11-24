@@ -18,6 +18,14 @@ export const defaultProfile = "default";
 // What a profile may be called. It is also the session's name, which goes into a socket path that must stay under 104 bytes.
 const profileRule = /^[a-z0-9][a-z0-9_-]{0,31}$/;
 
+/**
+ * Installs the Chrome this agent-browser expects in the user's ~/.agent-browser/, for every agent the user runs, and on Linux the system libraries it
+ * needs, through sudo; returns its exit status.
+ */
+export function installBrowser(): number {
+	return spawnSync(process.execPath, [agentBrowserCli, "install", "--with-deps"], { stdio: "inherit" }).status ?? 1;
+}
+
 /** Runs agent-browser with `args` on the profile `profile` of the agent in `agentRoot`, in this terminal; returns its exit status. */
 export function runBrowser(agentRoot: string, profile: string, args: string[]): number {
 	if (!profileRule.test(profile)) throw new Error(`"${profile}" is not a profile name: lowercase letters, digits, - and _, up to 32, starting with a letter or digit.`);
