@@ -1,6 +1,6 @@
 # CLI
 
-The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a developer's tool: create projects and agents, try an agent, run it, and run a project on a laptop or a server. The code is in `src/cli/` and builds to `dist/cli/agentx.js`, which `package.json` `bin` names as `agentx` and `agent-x`. What `init-project` creates: [project](project/README.md). Running a project: [deploy](deploy/README.md).
+The `agentx` command, from the npm package `@cognisphere-sh/agentx` ([D12](#d12)). It is a developer's tool: create projects and agents, try an agent, run it, and run a project on a laptop or a server. The code is in `src/cli/` and builds to `dist/cli/agentx.js`, which `package.json` `bin` names as `agentx`. What `init-project` creates: [project](project/README.md). Running a project: [deploy](deploy/README.md).
 
 | File | Role |
 |---|---|
@@ -17,10 +17,10 @@ The `agentx` command, from the npm package `agent-x` ([D12](#d12)). It is a deve
 
 | Command | Does |
 |---|---|
-| `agentx init-project [name]` | Creates `<name>/`, or fills the current directory, which must be empty. Pins `agent-x` at its own version ([D14](project/README.md#d14)) and runs `git init` ([D7](project/README.md#d7)). |
+| `agentx init-project [name]` | Creates `<name>/`, or fills the current directory, which must be empty. Pins `@cognisphere-sh/agentx` at its own version ([D14](project/README.md#d14)) and runs `git init` ([D7](project/README.md#d7)). |
 | `agentx init-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Creates `agent-x/agents/<name>` from the template, with its `.env` for its keys ([D43](../agent-runtime/agent/README.md#d43)), its [storage](../agent-runtime/agent/README.md#storage) and the link to it, writes its Composio user id `<name>@<project>` ([D38](../agent-runtime/pi/pi-package/composio/README.md#d38)), and lists it in `agentx.json` ([D63](../coordinator-runtime/README.md#d63)). Names use letters, digits and dashes. |
 | `agentx remove-agent <name> [--yes]` | In the project root, `agent-x/` or `agent-x/agents/`. Deletes the agent's folder, its state and its entry in `agentx.json`, and takes it off the other agents' `canSendTo`. Lists them and asks first; only `y` or `yes` deletes, and input that ends unanswered, as with Ctrl-C, keeps them. `--yes` skips the question. Refuses while the agent runs. |
-| `agentx upgrade-project` | In the project root, `agent-x/` or `agent-x/agents/`. Moves `agent-x` to the latest version in the registry and installs it, with pnpm ([D99](#d99)). Then adds what the templates have and the project lacks: keys of `agentx.json`, keys of `agent-x/.env`, lines of `.gitignore`; and upgrades every agent, as `upgrade-agent` does ([D100](#d100)). Prints each change. |
+| `agentx upgrade-project` | In the project root, `agent-x/` or `agent-x/agents/`. Moves `@cognisphere-sh/agentx` to the latest version in the registry and installs it, with pnpm ([D99](#d99)). Then adds what the templates have and the project lacks: keys of `agentx.json`, keys of `agent-x/.env`, lines of `.gitignore`; and upgrades every agent, as `upgrade-agent` does ([D100](#d100)). Prints each change. |
 | `agentx upgrade-agent <name>` | In the project root, `agent-x/` or `agent-x/agents/`. Adds to the agent's `.pi/settings.json` the `agentx` settings it lacks, with the template's values, and to its `.env` the keys it does not name; moves the Pi packages it lists to the versions the template pins ([D100](#d100)). Changes no other value. Prints each change. |
 | `agentx serve [--host <host>] [--port <port>]` | In the project root, `agent-x/` or `agent-x/agents/`. Runs every agent and the services of the [coordinator](../coordinator-runtime/README.md), and serves its API on `127.0.0.1:3100` unless told otherwise. Logs each agent with no login for its model provider. |
 | `agentx dev` | In the project root, `agent-x/` or `agent-x/agents/`, on a laptop: asks for the logins and keys the project lacks, runs `deploy/check.sh`, opens an ngrok tunnel to the agents, and runs them, as `serve` does, and the web app with `next dev` ([deploy](deploy/README.md#agentx-dev)). |
@@ -40,7 +40,7 @@ Both `event` commands take `--agent <name>` (another agent of the project), `--t
 
 The pinned agentx is in `agent-x/node_modules`. Start it with `pnpm exec agentx` in `agent-x/`, `agent-x/agents/` or an agent, `pnpm agentx` in the project root, or a global `agentx`.
 
-Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` looks in the current directory and each parent for the package that pins `agent-x`.
+Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` looks in the current directory and each parent for the package that pins `@cognisphere-sh/agentx`.
 
 - Not installed: the command stops and says to run `pnpm install`.
 - Another copy: agentx runs the pinned one with the same arguments and exits with its status. While it runs, the outer copy ignores `SIGINT`, so the pinned copy decides what Ctrl-C means, and passes `SIGTERM` on.
@@ -55,10 +55,11 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 ## Decisions
 
 <a id="d12"></a>
-### D12. npm package `agent-x`; the command is `agentx`
+### D12. npm package `@cognisphere-sh/agentx`; the command is `agentx`
 
-- **Decision.** The package is `agent-x`. Its command is `agentx`, with `agent-x` as a second name, so `pnpm dlx agent-x` works.
-- **Why.** `agentx` on npm is someone else's package, so `npx agentx` would run their code.
+- **Decision.** The package is `@cognisphere-sh/agentx`, in its publisher's scope. Its command is `agentx`, which `npx @cognisphere-sh/agentx` and `pnpm dlx @cognisphere-sh/agentx` run, since it is named after the package.
+- **Why.** `agentx` on npm is someone else's package, so `npx agentx` would run their code. npm refuses an unscoped name that differs from an existing one only by punctuation, such as `agent-x`; a scope has no such check.
+- **Consequence.** A project's code imports agentx's types from `@cognisphere-sh/agentx`, and `pinned-cli.ts` names the package once, as `agentxPackage`.
 
 <a id="d15"></a>
 ### D15. Any `agentx` hands over to the copy the project pins
@@ -92,9 +93,9 @@ Whichever copy starts, the pinned copy does the work ([D15](#d15)). `pinnedCli` 
 ### D99. `agentx upgrade-project` installs the latest agentx, and the new copy brings the files up to its own templates
 
 - **Problem.** A project pins one agentx, and every command runs that copy ([D15](#d15)), which has the old templates. A new version may add settings and keys that the project's files lack.
-- **Decision.** `upgrade-project` asks pnpm for `agent-x@latest`. When the project pins another version, it installs the latest with `pnpm add --save-exact`, then runs the new copy's `upgrade-project`, which finds itself the latest and brings the files up to its own templates. A pin that is not a version, such as a `link:` to a checkout, is not looked up: the files are brought up to the agentx installed.
+- **Decision.** `upgrade-project` asks pnpm for `@cognisphere-sh/agentx@latest`. When the project pins another version, it installs the latest with `pnpm add --save-exact`, then runs the new copy's `upgrade-project`, which finds itself the latest and brings the files up to its own templates. A pin that is not a version, such as a `link:` to a checkout, is not looked up: the files are brought up to the agentx installed.
 - **Why.** Only the new version knows its templates. The same command hands over with no hidden flag: the second run finds nothing to install.
-- **Consequence.** A project that pins a version without `upgrade-project` upgrades once by hand: `pnpm add --save-exact agent-x@latest` in `agent-x/`, then `agentx upgrade-project`.
+- **Consequence.** A project that pins a version without `upgrade-project` upgrades once by hand: `pnpm add --save-exact @cognisphere-sh/agentx@latest` in `agent-x/`, then `agentx upgrade-project`.
 
 <a id="d100"></a>
 ### D100. An upgrade adds what the templates have and the files lack, and changes no value

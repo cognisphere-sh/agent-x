@@ -2,7 +2,7 @@
 name: routing
 description: How to write your event router, which picks the thread of each event that names none, such as invoice emails to a workflow and support emails to a thread of their own. Use it before you write or change .pi/knowledge/router/event_router.ts, and when an event has agentX-RouterError.
 metadata:
-  version: 2
+  version: 3
 ---
 
 # Routing
@@ -12,7 +12,7 @@ An event that names no thread goes to your router, `.pi/knowledge/router/event_r
 The router returns a thread or nothing. Nothing, or no router, sends the event to `main`. The thread `pass` drops an event: it stays on your queue as passed, and nothing runs it.
 
 ```ts
-import type { Router } from "agent-x";
+import type { Router } from "@cognisphere-sh/agentx";
 
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }. ctx.workflows: [{ name, description }].

@@ -1,17 +1,72 @@
 # agentx
 
-Creates projects that hold a Next.js full-stack app and [pi coding agent](https://github.com/earendil-works/pi) agents, and runs each agent with only its own config: its events, its router, workflows and schedules.
+agentx is a harness around the [pi coding agent](https://github.com/earendil-works/pi). It creates projects that hold a Next.js app and Pi agents, and runs each agent with only its own config: its events, router, workflows, schedules and webhooks.
+
+- **An agent is a folder.** Its prompt, skills, router, workflows, schedules and webhooks live in its `.pi/`, checked in. The agent and its developer both write them.
+- **Everything reaches an agent as an event.** A router picks the thread. A workflow handles it with a script, or Pi does with the model.
+- **The agents run on their own.** `agentx serve` runs every agent of a project, restarts one that stops, delivers between agents, fires schedules, and takes Telegram messages and webhooks.
+- **Each agent comes with tools.** Gmail, Calendar, Drive and more through Composio, a browser that stays signed in, and a memory of its past work.
+- **It runs anywhere.** `agentx dev` runs a project on a laptop, and `agentx server` runs it on an Ubuntu server with HTTPS.
+
+## Quick start
+
+You need Node 24.12 or later, pnpm and git.
 
 ```sh
-pnpm add -g agent-x
-agentx init-project my-project
+pnpm add -g @cognisphere-sh/agentx      # once: the agentx command
+agentx init-project my-project          # or, without installing: npx @cognisphere-sh/agentx init-project my-project
 cd my-project
-pnpm install
+pnpm install                            # installs agent-x/ and web/
 agentx init-agent main
-cd agent-x/agents/main && agentx chat    # talk to it; agentx run runs it on its own
+pnpm dev                                # the agents, and the app on http://localhost:3000
 ```
 
-Start with the [quick start](docs/user_guides/quick_start.md). All docs: [docs/README.md](docs/README.md).
+In a second terminal, talk to the agent:
+
+```sh
+cd my-project/agent-x/agents/main
+agentx chat
+```
+
+The first time, type `/login` in the session and pick a model provider. For Gmail, Calendar and other services, put a [Composio](https://composio.dev) key in the agent's `.env`: `COMPOSIO_API_KEY=...`.
+
+Inside a project, `agentx` always runs the version the project pins. Without a global install, use `pnpm agentx <command>` in the project root.
+
+Do not run `npx agentx`: `agentx` on npm is someone else's package.
+
+## Commands
+
+| Where | Command | What it does |
+|---|---|---|
+| Anywhere | `agentx init-project [name]` | Creates a project with `web/` (Next.js) and `agent-x/` |
+| In a project | `agentx init-agent <name>` | Creates `agent-x/agents/<name>` |
+| | `agentx remove-agent <name>` | Deletes an agent and its state |
+| | `agentx serve` | Runs every agent until stopped |
+| | `agentx dev` | Runs the agents and the web app on this machine, with an ngrok tunnel |
+| | `agentx server setup\|start\|stop\|…` | Sets up an Ubuntu server and runs the project on it |
+| | `agentx upgrade-project` | Moves the project to the latest agentx |
+| In an agent | `agentx chat` | Talks to the agent, on the thread `main` unless given `--thread-id` |
+| | `agentx run` | Runs the agent alone until stopped |
+| | `agentx event deliver <content>` | Gives the agent an event |
+| | `agentx webhook create\|list\|…` | Manages the agent's webhooks |
+
+`agentx` with no command prints every option.
+
+## A project
+
+```
+my-project/
+  web/                     the Next.js app
+  agent-x/                 the agents' package, which pins agentx
+    agentx.json            the agents, and the config of each service
+    agents/main/           one agent
+      .pi/settings.json    its Pi packages, and agentx's settings for it
+      .pi/knowledge/       its prompt, skills, router, workflows, schedules and webhooks
+    storage/               every agent's runtime state (gitignored)
+  deploy/                  the project's own steps for agentx dev and agentx server
+```
+
+The guides are in [docs/user_guides](docs/user_guides/), starting with the [quick start](docs/user_guides/quick_start.md). All docs: [docs/README.md](docs/README.md).
 
 ## Repository layout
 
@@ -34,3 +89,9 @@ src/
 test/                     The queue, and end to end agentx run, agentx serve, agentx dev, Composio and the upgrade, against a fake model and a fake Composio; what agentx server writes and builds.
 templates/                project/ for init-project, agent/ for init-agent.
 ```
+
+To work on agentx, see [develop agentx](docs/user_guides/develop_agentx.md).
+
+## License
+
+[MIT](LICENSE)

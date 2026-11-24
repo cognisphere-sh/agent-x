@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { copyTemplate, harnessRoot, setPackageFields } from "../copy-template.js";
+import { agentxPackage } from "../pinned-cli.js";
 
 /** Creates `<cwd>/<name>` (`.` for `cwd` itself) from templates/project, pins this harness as a dependency of its agent-x/ and makes it a git repo. */
 export function initProject(name: string, cwd: string): void {
@@ -15,7 +16,7 @@ export function initProject(name: string, cwd: string): void {
 	const { version } = JSON.parse(readFileSync(join(harnessRoot, "package.json"), "utf8"));
 	setPackageFields(join(root, "agent-x"), {
 		name: `${projectName}-agent-x`,
-		dependencies: { "agent-x": version },
+		dependencies: { [agentxPackage]: version },
 	});
 	// Pi loads `.agents/skills` from an agent and its parent directories up to the git root.
 	// The project's own git root keeps skills of directories above the project out.

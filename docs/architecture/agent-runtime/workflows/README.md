@@ -28,10 +28,10 @@ Names use letters, digits and dashes. A broken entry is skipped and reported on 
 
 ## The contract
 
-The script, a `.ts` file ([D74](../functions/README.md#d74)), has a default export that takes the event and a context. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
+The script, a `.ts` file ([D74](../functions/README.md#d74)), has a default export that takes the event and a context. Its types come with the `@cognisphere-sh/agentx` package (`src/agent-runtime/functions/contracts.ts`):
 
 ```ts
-import type { Workflow } from "agent-x";
+import type { Workflow } from "@cognisphere-sh/agentx";
 
 const run: Workflow = async (event, ctx) => {
 	const { invoice } = JSON.parse(event.content); // the content and event.metadata are the workflow's input

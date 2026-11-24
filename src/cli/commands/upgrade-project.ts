@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { agentFolders, configFile, projectConfig, saveProjectConfig } from "../../agent-runtime/project-config.js";
 import { projectAgentX } from "../agent-root.js";
-import { agentxDependency, installedCli, runCli } from "../pinned-cli.js";
+import { agentxDependency, agentxPackage, installedCli, runCli } from "../pinned-cli.js";
 import { added, addMissingEnv, addMissingKeys, addMissingLines, type Change, printChanges, templateText } from "../template-sync.js";
 import { upgradeAgentFiles } from "./upgrade-agent.js";
 
@@ -17,14 +17,14 @@ export async function upgradeProject(cwd: string): Promise<number> {
 	const pinned = String(agentxDependency(agentX));
 	// A version from the registry, as init-project pins it, not a link to a checkout.
 	const fromRegistry = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(pinned);
-	const latest = fromRegistry ? pnpm(agentX, ["view", "agent-x@latest", "version"]).trim() : pinned;
+	const latest = fromRegistry ? pnpm(agentX, ["view", `${agentxPackage}@latest`, "version"]).trim() : pinned;
 	if (latest !== pinned) {
-		console.log(`Upgrading agent-x ${pinned} to ${latest}.`);
-		pnpm(agentX, ["add", "--save-exact", `agent-x@${latest}`], "inherit");
+		console.log(`Upgrading agentx ${pinned} to ${latest}.`);
+		pnpm(agentX, ["add", "--save-exact", `${agentxPackage}@${latest}`], "inherit");
 		// This copy has the old templates. The new one, now the latest, brings the files up to its own.
 		return runCli(installedCli(agentX), ["upgrade-project"]);
 	}
-	console.log(fromRegistry ? `agent-x ${pinned} is the latest.` : `agent-x is pinned as ${pinned}, not a version from the registry: the files are brought up to the agentx installed.`);
+	console.log(fromRegistry ? `agentx ${pinned} is the latest.` : `agentx is pinned as ${pinned}, not a version from the registry: the files are brought up to the agentx installed.`);
 
 	const config = projectConfig(agentX);
 	const keys = addMissingKeys(config, JSON.parse(templateText("project/agent-x/agentx.json")));

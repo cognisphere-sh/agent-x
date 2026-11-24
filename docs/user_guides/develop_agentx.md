@@ -26,7 +26,7 @@ pnpm add -g .                          # in the agentx checkout, after pnpm run 
 agentx init-project my-project         # anywhere
 ```
 
-`pnpm remove -g agent-x` removes them.
+`pnpm remove -g @cognisphere-sh/agentx` removes them.
 
 ## Use a local build in a project
 
@@ -45,6 +45,16 @@ After a change to agentx:
 |---|---|
 | Most code | `pnpm run build`. The project uses `dist/` through the link. |
 | `src/agent-runtime/pi/pi-package/`, and `events/queue.ts`, `sqlite.ts`, `project-config.ts` and `time-zone.ts`, which its extensions import | Nothing for Pi, which loads them as source when a session starts. For `queue.ts`, `sqlite.ts`, `project-config.ts` and `time-zone.ts`, also `pnpm run build`: the rest of agentx uses them from `dist/`. |
+
+## Publish a release
+
+Raise `version` in `package.json` first: npm never takes a version twice. Then, logged in to npm with access to the `@cognisphere-sh` scope:
+
+```sh
+rm -r dist && pnpm run build    # tsc leaves the output of deleted sources, so build from nothing
+pnpm test
+npm publish                     # public, as publishConfig says; asks for a one-time password with 2FA
+```
 
 ## Before changing code
 

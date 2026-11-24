@@ -1,5 +1,5 @@
 // The contracts of the code an agent and its developer write for agentx, all .ts files that Node runs by stripping their types: event routers
-// and workflows. The code gets them with `import type { Router, Workflow } from "agent-x"` (src/index.ts).
+// and workflows. The code gets them with `import type { Router, Workflow } from "@cognisphere-sh/agentx"` (src/index.ts).
 
 /** An event as the router and workflows get it. */
 export interface Event {

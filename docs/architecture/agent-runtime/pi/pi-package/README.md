@@ -1,6 +1,6 @@
 # Pi package
 
-What agentx adds to every agent: seven extensions (Composio, event queue, skills, system prompt, episodes, context, memory), the harness prompt, and its skills. It ships inside the `agent-x` npm package as `src/agent-runtime/pi/pi-package/`, so it is the same for every agent and apart from the agent's own files ([D11](#d11)).
+What agentx adds to every agent: seven extensions (Composio, event queue, skills, system prompt, episodes, context, memory), the harness prompt, and its skills. It ships inside the `@cognisphere-sh/agentx` npm package as `src/agent-runtime/pi/pi-package/`, so it is the same for every agent and apart from the agent's own files ([D11](#d11)).
 
 ```
 src/agent-runtime/pi/pi-package/

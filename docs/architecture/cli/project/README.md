@@ -13,7 +13,8 @@ my-project/
     next.config.ts      distDir from AGENTX_WEB_DIST_DIR, else .next, so a server builds beside the running app (cli/deploy D107)
     tsconfig.json       lists the types folders of .next, .next-a and .next-b, so no build changes it
   agent-x/              agentx's part of the project; its own package
-    package.json        depends on agent-x, at an exact version; `"type": "module"`, for the routers, workflows and services, which are `.ts` (D74)
+    package.json        depends on @cognisphere-sh/agentx, at an exact version; `"type": "module"`, for the routers, workflows and services, which are `.ts` (D74)
+    pnpm-workspace.yaml pnpm's settings for this package: the dependencies whose install scripts it does not run (allowBuilds), which pnpm 11 otherwise refuses
     agentx.json         the project's agents: description and canSendTo (coordinator D63); the coordinator's services' config under `services`, and `publicUrl` (D68)
     .pi/                Pi's agent directory, shared by all agents; gitignored
     .env                the coordinator's API token and its services' secrets, which no agent reads; gitignored; starts with each secret the services use, commented out
@@ -28,7 +29,7 @@ The templates ship `gitignore`, `agent-x/env` and the agent's `env`, which `init
 
 `web/` and `agent-x/` are separate packages ([D14](#d14)): each installs and deploys alone. The app is the Next.js server; the agents run under `agentx serve` or `agentx run`.
 
-`agent-x/` depends on `agent-x` as a normal dependency, so a production install keeps it. Agents are plain folders, not packages.
+`agent-x/` depends on `@cognisphere-sh/agentx` as a normal dependency, so a production install keeps it. Agents are plain folders, not packages.
 
 The root has scripts only: `install` installs both packages, `dev` runs [`agentx dev`](../deploy/README.md#agentx-dev), the agents and the app, `build` runs the app's, and `agentx` runs the pinned CLI ([CLI](../README.md#where-the-command-comes-from)).
 

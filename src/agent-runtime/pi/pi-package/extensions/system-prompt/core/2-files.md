@@ -2,7 +2,7 @@
 
 | Where | What | To you |
 |---|---|---|
-| `../../node_modules/agent-x/src/agent-runtime/pi/pi-package/` | The harness: this prompt and its extensions, the same for every agent | read-only |
+| `../../node_modules/@cognisphere-sh/agentx/src/agent-runtime/pi/pi-package/` | The harness: this prompt and its extensions, the same for every agent | read-only |
 | `.pi/knowledge/` | Your knowledge, which every later session uses: notes, skills, extensions, router, workflows, schedules, webhooks (see "Learning and automating"). It is checked in to the project's git | yours and your developer's alike |
 | the rest of `.pi/` | Your settings and MCP servers, from your developer | read-only |
 | `storage/workspace/` | Your working files. The harness writes here too: `workflow-logs/`, `router-logs/`, `webhook-logs/`, and `inbox/` and `outbox/` (below) | yours, except the harness's folders |

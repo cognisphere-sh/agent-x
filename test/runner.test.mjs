@@ -552,7 +552,7 @@ test("chat, run and event refuse a directory that is not an agent", async (t) =>
 test("every command but init-project runs the agentx the project installed, and stops when it has none", async () => {
 	const project = createAgent(model.port);
 	const agentX = join(project.agent, "..", "..");
-	const installed = join(agentX, "node_modules", "agent-x");
+	const installed = join(agentX, "node_modules", "@cognisphere-sh", "agentx");
 	// Unlinked first: writing through the link would change this checkout.
 	unlinkSync(installed);
 	for (const [dir, command] of [[project.agent, ["event", "send", "hello"]], [dirname(agentX), ["init-agent", "other"]]]) {

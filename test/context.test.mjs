@@ -85,7 +85,7 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(prompt, /<agentx-skill-telegram>\nname: telegram\nversion: 2\n/);
 	// How to write a router, a workflow, a schedule or a webhook is a skill, not a section of the harness's rules.
 	for (const skill of ["routing", "schedules", "webhooks", "workflows"]) {
-		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: 2\\n`));
+		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: 3\\n`));
 		assert.ok(!prompt.includes(`<agentx-core-${skill}>`), skill);
 	}
 	assert.ok(!prompt.includes("<available_skills>"), "Pi's list is gone");

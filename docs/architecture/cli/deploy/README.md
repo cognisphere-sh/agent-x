@@ -55,7 +55,7 @@ Caddy sends `/services/*` to agentx serve and everything else to the web app, wi
 | `status` | `systemctl --user status` of both, with their latest log lines. |
 | `logs [journalctl options]` | Follows both journals. |
 
-The units, in `~/.config/systemd/user/`, are named after the project's folder: `<project>-agents` runs the pinned `agent-x/node_modules/agent-x/dist/cli/agentx.js serve` with the Node that runs `agentx server`, with `KillMode=mixed` and `TimeoutStopSec=600`, so a stop reaches `agentx serve` alone and lets running work finish; `<project>-web` runs `next start` on `127.0.0.1:3000` in `web/`. Both put that Node's folder first on their PATH, so the commands the agents run use it too, restart on failure after 10 s, and start at boot.
+The units, in `~/.config/systemd/user/`, are named after the project's folder: `<project>-agents` runs the pinned `agent-x/node_modules/@cognisphere-sh/agentx/dist/cli/agentx.js serve` with the Node that runs `agentx server`, with `KillMode=mixed` and `TimeoutStopSec=600`, so a stop reaches `agentx serve` alone and lets running work finish; `<project>-web` runs `next start` on `127.0.0.1:3000` in `web/`. Both put that Node's folder first on their PATH, so the commands the agents run use it too, restart on failure after 10 s, and start at boot.
 
 A deploy is `git pull`, `pnpm install`, `agentx server restart`.
 

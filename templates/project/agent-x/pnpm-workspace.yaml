@@ -1,0 +1,6 @@
+# pnpm's settings for agent-x/. pnpm 11 stops an install whose dependencies have install scripts it was not told about; these need none.
+# agent-browser links its native binary when it first runs.
+allowBuilds:
+  '@google/genai': false
+  protobufjs: false
+  agent-browser: false

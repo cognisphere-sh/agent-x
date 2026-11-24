@@ -51,7 +51,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D6](architecture/agent-runtime/agent/README.md#d6) | `chat` passes `-nc` and `--approve`, except before Pi subcommands | agent-runtime/agent |
 | [D7](architecture/cli/project/README.md#d7) | `init-project` runs `git init`, which bounds Pi's search for skills | cli/project |
 | [D11](architecture/agent-runtime/pi/pi-package/README.md#d11) | agentx's Pi package ships in the agentx package | agent-runtime/pi/pi-package |
-| [D12](architecture/cli/README.md#d12) | npm package `agent-x`; the command is `agentx` | cli |
+| [D12](architecture/cli/README.md#d12) | npm package `@cognisphere-sh/agentx`; the command is `agentx` | cli |
 | [D14](architecture/cli/project/README.md#d14) | `web/` and `agent-x/` are independent packages | cli/project |
 | [D15](architecture/cli/README.md#d15) | Any `agentx` hands over to the copy the project pins | cli |
 | [D16](architecture/agent-runtime/pi/pi-package/README.md#d16) | Whoever starts Pi passes agentx's part of the config | agent-runtime/pi/pi-package |

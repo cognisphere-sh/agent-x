@@ -6,8 +6,11 @@ import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+/** agentx's npm package, which a project's agent-x/ lists in its dependencies. */
+export const agentxPackage = "@cognisphere-sh/agentx";
+
 /** The CLI entry file of the agentx installed in the package `pinning`, such as a project's agent-x/. */
-export const installedCli = (pinning: string) => join(pinning, "node_modules", "agent-x", "dist", "cli", "agentx.js");
+export const installedCli = (pinning: string) => join(pinning, "node_modules", agentxPackage, "dist", "cli", "agentx.js");
 
 /** The CLI entry file of the agentx that the project around `cwd` pins, searched from `cwd` upward; undefined outside a project or if it is this copy. Throws if the project has not installed it. */
 export function pinnedCli(cwd: string): string | undefined {
@@ -28,7 +31,7 @@ export function pinnedCli(cwd: string): string | undefined {
 export function agentxDependency(dir: string): string | undefined {
 	const packagePath = join(dir, "package.json");
 	const dependencies: Record<string, string> = existsSync(packagePath) ? (JSON.parse(readFileSync(packagePath, "utf8")).dependencies ?? {}) : {};
-	return dependencies["agent-x"];
+	return dependencies[agentxPackage];
 }
 
 /** Whether `dir` is a package that lists agentx in its dependencies, as a project's agent-x/ does. */

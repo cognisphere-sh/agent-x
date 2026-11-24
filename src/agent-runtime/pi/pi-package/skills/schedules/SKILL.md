@@ -2,7 +2,7 @@
 name: schedules
 description: How to make yourself act at set times with schedules, cron patterns that send you events, and how to poll a service on a schedule to learn what is new in it. Use it before you write or change .pi/knowledge/schedules/schedules.json.
 metadata:
-  version: 2
+  version: 3
 ---
 
 # Schedules
@@ -27,7 +27,7 @@ To learn what is new in a service, check it on a schedule: the schedule runs a w
 ```
 
 ```ts
-import type { Workflow } from "agent-x";
+import type { Workflow } from "@cognisphere-sh/agentx";
 
 const run: Workflow = async (event, ctx) => {
 	// The tool's name, arguments and answer are the service's: look them up with COMPOSIO_GET_TOOL_SCHEMAS, or run it once, first.

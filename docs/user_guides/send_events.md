@@ -46,7 +46,7 @@ An event without a thread goes to the agent's router, `.pi/knowledge/router/even
 
 ```ts
 // .pi/knowledge/router/event_router.ts
-import type { Router } from "agent-x";
+import type { Router } from "@cognisphere-sh/agentx";
 
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }. ctx: { workflows: [{ name, description }] }.
@@ -74,7 +74,7 @@ A workflow handles an event with a script instead of the model. List it in `.pi/
 
 ```ts
 // .pi/knowledge/workflows/file-invoice.ts
-import type { Workflow } from "agent-x";
+import type { Workflow } from "@cognisphere-sh/agentx";
 
 const run: Workflow = async (event, ctx) => {
 	const { invoice } = JSON.parse(event.content);

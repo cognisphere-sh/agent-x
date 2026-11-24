@@ -93,7 +93,7 @@ A project's developer writes a service in `agent-x/services/<name>/index.ts` ([D
 2. Imports the listed ones into its own process. Node strips their types ([D74](../agent-runtime/functions/README.md#d74)); `agent-x/package.json` gives their npm packages.
 3. Makes each one with its default export, a class, and checks its shape: `secrets` a list of names, each route with a method, path, summary and `handle`, and the hooks functions. A file that fails to import, a default export that is not a class, a constructor that throws, or a wrong shape leaves that service off, with a log line, as an `onStart` that throws does.
 
-From there it runs as agentx's own do. The types come with the `agent-x` package: `ServiceDefinition`, `ServiceContext`, `Route`, `ApiRequest` and `ApiResponse`. A change takes effect when `agentx serve` starts again.
+From there it runs as agentx's own do. The types come with the `@cognisphere-sh/agentx` package: `ServiceDefinition`, `ServiceContext`, `Route`, `ApiRequest` and `ApiResponse`. A change takes effect when `agentx serve` starts again.
 
 ## The API server
 
@@ -218,7 +218,7 @@ How to run it on a server: [Run a project on a server](../../user_guides/run_on_
 ### D75. A project's developer writes services of its own in `agent-x/services/`, on the same contract, in the coordinator's process
 
 - **Problem.** A project needs webhooks and pollers that agentx does not ship, such as Stripe's or GitHub's, without changing agentx.
-- **Decision.** Each folder of `agent-x/services/` with an `index.ts` is a service of the project, named after its folder. Its default export is a class with the shape of `ServiceDefinition`, typed with `import type` from `agent-x` and checked by its shape. It runs when `agentx.json` lists it under `services`, after agentx's own, in the coordinator's process. A name of one of agentx's services is refused.
+- **Decision.** Each folder of `agent-x/services/` with an `index.ts` is a service of the project, named after its folder. Its default export is a class with the shape of `ServiceDefinition`, typed with `import type` from `@cognisphere-sh/agentx` and checked by its shape. It runs when `agentx.json` lists it under `services`, after agentx's own, in the coordinator's process. A name of one of agentx's services is refused.
 - **Why.** The same contract as agentx's services gives a project's service everything they have: config, its secrets, routes, `deliver` and `every`. Listing it keeps a checked-in service off in a deployment that does not want it, as optional services are. Types only, and a check of the shape, need no runtime export from the package and work with any copy of agentx's code.
 - **Rejected.** A process per project service: it isolates crashes, but every route, `deliver` and `every` would cross a channel, and the developer's code runs as the same OS user all the same. A base class exported at runtime to extend: a package entry for defaults of a few lines. On whenever its folder exists: no way to turn one off in a deployment but deleting it.
 - **Consequence.** A project's service is trusted as the coordinator is; [known limits](#known-limits).

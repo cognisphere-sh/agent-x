@@ -10,7 +10,7 @@ In the project's root, `agent-x/` or `agent-x/agents/`:
 agentx upgrade-project
 ```
 
-It moves `agent-x` to the latest version and installs it, with pnpm. Then the new version adds what its templates have and your files lack, and prints each change:
+It moves `@cognisphere-sh/agentx` to the latest version and installs it, with pnpm. Then the new version adds what its templates have and your files lack, and prints each change:
 
 | File | What it adds |
 |---|---|
@@ -23,7 +23,7 @@ Check the changes with `git diff` and commit them. A second run changes nothing.
 
 With agentx linked from a checkout, nothing is installed: the files are brought up to the checkout's templates.
 
-A project that pins a version without `upgrade-project` upgrades once by hand, in `agent-x/`: `pnpm add --save-exact agent-x@latest`, then `agentx upgrade-project`.
+A project that pins a version without `upgrade-project` upgrades once by hand, in `agent-x/`: `pnpm add --save-exact @cognisphere-sh/agentx@latest`, then `agentx upgrade-project`.
 
 ## One agent
 

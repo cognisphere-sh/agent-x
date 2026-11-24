@@ -2,7 +2,7 @@
 name: workflows
 description: How to write a workflow, a script that handles events of one kind without you, the same way every time, and can run Composio tools. Use it before you write or change one, and when a workflow failed.
 metadata:
-  version: 2
+  version: 3
 ---
 
 # Workflows
@@ -19,7 +19,7 @@ Workflows are listed by name in `.pi/knowledge/workflows/workflows.json`. You an
 
 ```ts
 import { appendFileSync } from "node:fs";
-import type { Workflow } from "agent-x";
+import type { Workflow } from "@cognisphere-sh/agentx";
 
 const run: Workflow = async (event, ctx) => {
 	const total = event.content.match(/Total: (\S+)/)?.[1];

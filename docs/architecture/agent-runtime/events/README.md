@@ -125,10 +125,10 @@ The first stop signal stops routing after the call in progress. The second ends 
 
 ## The router's contract
 
-The router is a `.ts` file ([D74](../functions/README.md#d74)) that exports one function. Its types come with the `agent-x` package (`src/agent-runtime/functions/contracts.ts`):
+The router is a `.ts` file ([D74](../functions/README.md#d74)) that exports one function. Its types come with the `@cognisphere-sh/agentx` package (`src/agent-runtime/functions/contracts.ts`):
 
 ```ts
-import type { Router } from "agent-x";
+import type { Router } from "@cognisphere-sh/agentx";
 
 const route: Router = async (event, ctx) => {
 	// event: { id, content, metadata, createdAt }

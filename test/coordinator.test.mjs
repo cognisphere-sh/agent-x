@@ -505,7 +505,7 @@ test("the project's own services, in agent-x/services/<name>/index.ts, run when 
 	// TypeScript as a developer writes it: Node strips the types.
 	service(
 		"echo",
-		`import type { ApiRequest, ApiResponse, ServiceContext, ServiceDefinition } from "agent-x";
+		`import type { ApiRequest, ApiResponse, ServiceContext, ServiceDefinition } from "@cognisphere-sh/agentx";
 import { started } from "./started.ts";
 
 export default class Echo implements ServiceDefinition {

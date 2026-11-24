@@ -7,7 +7,7 @@ src/agent-runtime/functions/
   function-call.ts   callFunction: calls a function in a child process, with a time limit
   function-host.ts   the child process: imports the module, calls its default export
   composio-tool.ts   a workflow's ctx.composio: runs one Composio tool as the agent
-  contracts.ts       the types of routers and workflows, which the agent-x package exports
+  contracts.ts       the types of routers and workflows, which the @cognisphere-sh/agentx package exports
 ```
 
 ## Calling a function
@@ -18,7 +18,7 @@ src/agent-runtime/functions/
 
 ## The contracts
 
-`contracts.ts` holds the types: `Router`, `Workflow`, their contexts, and `Event`. The package's `types`, `src/index.ts`, exports them with the services' ([coordinator](../../coordinator-runtime/README.md#the-projects-own-services)), so the code gets them with `import type { Router } from "agent-x"`. The package exports no values: a workflow sends with `ctx.send` and runs Composio tools with `ctx.composio`.
+`contracts.ts` holds the types: `Router`, `Workflow`, their contexts, and `Event`. The package's `types`, `src/index.ts`, exports them with the services' ([coordinator](../../coordinator-runtime/README.md#the-projects-own-services)), so the code gets them with `import type { Router } from "@cognisphere-sh/agentx"`. The package exports no values: a workflow sends with `ctx.send` and runs Composio tools with `ctx.composio`.
 
 Routers and workflows are `.ts` files ([D74](#d74)), which Node imports by stripping their types. The project's `agent-x/package.json` has `"type": "module"`, so Node reads them as ES modules without first trying CommonJS, and warning that it did. It makes every `.js` file under `agent-x/` an ES module too: a script with `require` there must be a `.cjs` file. Node does not check the types, and refuses TypeScript that needs compiling: `enum`, `namespace`, and constructor parameter properties. A relative import names the `.ts` file.
 

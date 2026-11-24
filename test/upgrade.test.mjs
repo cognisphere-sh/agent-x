@@ -23,7 +23,7 @@ test("upgrade-project adds what the templates have and the project and its agent
 	const root = projectRoot(project);
 	const agentX = join(root, "agent-x");
 	// A checkout linked in, as when developing agentx, is not looked up in the registry.
-	setPackageFields(agentX, { dependencies: { "agent-x": `link:${checkout}` } });
+	setPackageFields(agentX, { dependencies: { "@cognisphere-sh/agentx": `link:${checkout}` } });
 	// An agent made by an older agentx, and changed by its developer.
 	const { agentx: defaults, packages } = JSON.parse(template("agent/.pi/settings.json"));
 	editSettings(project.agent, ({ agentx: { memory, ...agentx }, ...settings }) => ({
@@ -38,7 +38,7 @@ test("upgrade-project adds what the templates have and the project and its agent
 
 	const first = run(root, project.env, "upgrade-project");
 	assert.equal(first.status, 0, first.stderr);
-	assert.match(first.stdout, /^agent-x is pinned as link:/);
+	assert.match(first.stdout, /^agentx is pinned as link:/);
 	assert.match(first.stdout, /^\.gitignore: added agent-x\/agents\/\*\/\.env$/m);
 	assert.match(first.stdout, /^agent-x\/agents\/main\/\.pi\/settings\.json: npm:pi-web-access@0\.1\.0 -> npm:pi-web-access@/m);
 
@@ -69,7 +69,7 @@ test("upgrade-project looks a version up in the registry, and installs the lates
 	const root = projectRoot(project);
 	const offline = run(root, { ...project.env, PATH: "" }, "upgrade-project");
 	assert.equal(offline.status, 1);
-	assert.match(offline.stderr, /^pnpm view agent-x@latest version failed in .*agent-x: .*ENOENT/);
+	assert.match(offline.stderr, /^pnpm view @cognisphere-sh\/agentx@latest version failed in .*agent-x: .*ENOENT/);
 
 	// A stand-in pnpm: the registry's latest is 9.9.9, and adding it pins it, as pnpm add does. The project's agentx stays this checkout, linked in.
 	const bin = mkdtempSync(join(tmpdir(), "agentx-pnpm-"));
@@ -83,7 +83,7 @@ fs.appendFileSync(${JSON.stringify(log)}, args.join(" ") + "\\n");
 if (args[0] === "view") console.log("9.9.9");
 if (args[0] === "add") {
 	const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
-	pkg.dependencies["agent-x"] = "9.9.9";
+	pkg.dependencies["@cognisphere-sh/agentx"] = "9.9.9";
 	fs.writeFileSync("package.json", JSON.stringify(pkg));
 }
 `,
@@ -95,10 +95,10 @@ if (args[0] === "add") {
 	assert.equal(result.status, 0, result.stderr);
 	const { version } = JSON.parse(readFileSync(join(checkout, "package.json"), "utf8"));
 	// Each copy prints its own lines.
-	assert.deepEqual(result.stdout.trimEnd().split("\n").sort(), [`Upgrading agent-x ${version} to 9.9.9.`, "agent-x 9.9.9 is the latest.", "agent-x/agents/main/.env: added COMPOSIO_API_KEY"].sort());
+	assert.deepEqual(result.stdout.trimEnd().split("\n").sort(), [`Upgrading agentx ${version} to 9.9.9.`, "agentx 9.9.9 is the latest.", "agent-x/agents/main/.env: added COMPOSIO_API_KEY"].sort());
 	// The second copy looked the latest up again, and installed nothing.
-	assert.equal(readFileSync(log, "utf8"), "view agent-x@latest version\nadd --save-exact agent-x@9.9.9\nview agent-x@latest version\n");
-	assert.equal(JSON.parse(readFileSync(join(root, "agent-x", "package.json"), "utf8")).dependencies["agent-x"], "9.9.9");
+	assert.equal(readFileSync(log, "utf8"), "view @cognisphere-sh/agentx@latest version\nadd --save-exact @cognisphere-sh/agentx@9.9.9\nview @cognisphere-sh/agentx@latest version\n");
+	assert.equal(JSON.parse(readFileSync(join(root, "agent-x", "package.json"), "utf8")).dependencies["@cognisphere-sh/agentx"], "9.9.9");
 });
 
 test("upgrade-agent upgrades one agent, named from the project's root, agent-x/ or agent-x/agents/", () => {

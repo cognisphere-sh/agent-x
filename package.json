@@ -1,11 +1,27 @@
 {
-	"name": "agent-x",
+	"name": "@cognisphere-sh/agentx",
 	"version": "0.1.0",
 	"description": "Creates projects with a Next.js app and pi coding agents, and runs the agents",
+	"keywords": [
+		"agents",
+		"ai-agents",
+		"pi",
+		"coding-agent",
+		"harness",
+		"nextjs",
+		"cli"
+	],
+	"license": "MIT",
+	"author": "t0r0id",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/cognisphere-sh/agent-x.git"
+	},
+	"homepage": "https://github.com/cognisphere-sh/agent-x#readme",
+	"bugs": "https://github.com/cognisphere-sh/agent-x/issues",
 	"type": "module",
 	"bin": {
 		"agentx": "dist/cli/agentx.js",
-		"agent-x": "dist/cli/agentx.js",
 		"agentx-browser": "dist/agent-runtime/browser/browser-command.js"
 	},
 	"types": "dist/index.d.ts",
@@ -18,6 +34,9 @@
 		"dist",
 		"templates"
 	],
+	"publishConfig": {
+		"access": "public"
+	},
 	"scripts": {
 		"build": "tsc && node -e \"for (const bin of ['dist/cli/agentx.js', 'dist/agent-runtime/browser/browser-command.js']) require('node:fs').chmodSync(bin, 0o755)\"",
 		"check": "tsc --noEmit",

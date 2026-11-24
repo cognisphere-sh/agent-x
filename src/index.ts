@@ -1,4 +1,4 @@
-// The types of the agent-x package, for the code a project writes for agentx: event routers, workflows and services. The package exports no values.
+// The types of the @cognisphere-sh/agentx package, for the code a project writes for agentx: event routers, workflows and services. The package exports no values.
 
 export type * from "./agent-runtime/functions/contracts.js";
 export type { EventFile } from "./agent-runtime/events/mailbox.js";

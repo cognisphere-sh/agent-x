@@ -2,7 +2,7 @@
 name: webhooks
 description: How to get events from an outside service through a webhook, a URL of yours that the service calls when something happens, such as a call that ended in Retell or an SMS that came in on ClickSend; each request runs one of your workflows. Use it to make, change, list, rotate or delete a webhook, and when an event with agentX-Service webhooks reaches you.
 metadata:
-  version: 2
+  version: 3
 ---
 
 # Webhooks
@@ -23,7 +23,7 @@ Each request is an event on the workflow's thread with `source: webhook`, `webho
 
 ```ts
 import { readFileSync } from "node:fs";
-import type { Workflow } from "agent-x";
+import type { Workflow } from "@cognisphere-sh/agentx";
 
 const run: Workflow = async (event, ctx) => {
 	// JSON here; a form, as Twilio and ClickSend send by default: new URLSearchParams(readFileSync(..., "utf8")).

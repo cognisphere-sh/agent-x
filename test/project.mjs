@@ -21,8 +21,8 @@ export function createAgent(port) {
 	const env = { PATH: process.env.PATH, HOME: home, PI_OFFLINE: "1", PI_TELEMETRY: "0", PI_SKIP_VERSION_CHECK: "1" };
 	setUp(["init-project", "project"], root, env);
 	// The project's agentx is this checkout, linked as `pnpm link` does: without an installed agentx, commands in a project stop.
-	mkdirSync(join(root, "project", "agent-x", "node_modules"));
-	symlinkSync(fileURLToPath(new URL("..", import.meta.url)), join(root, "project", "agent-x", "node_modules", "agent-x"));
+	mkdirSync(join(root, "project", "agent-x", "node_modules", "@cognisphere-sh"), { recursive: true });
+	symlinkSync(fileURLToPath(new URL("..", import.meta.url)), join(root, "project", "agent-x", "node_modules", "@cognisphere-sh", "agentx"));
 	// Pi's agent directory of the project: a provider that needs no login.
 	mkdirSync(join(root, "project", "agent-x", ".pi"));
 	writeFileSync(

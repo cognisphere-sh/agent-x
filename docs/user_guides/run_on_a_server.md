@@ -5,7 +5,7 @@ A project runs as two processes, side by side:
 | Process | Command, from the project root | Port |
 |---|---|---|
 | The web app | `next start` in `web/` | 3000 |
-| The agents | `node agent-x/node_modules/agent-x/dist/cli/agentx.js serve` | 3100 |
+| The agents | `node agent-x/node_modules/@cognisphere-sh/agentx/dist/cli/agentx.js serve` | 3100 |
 
 `agentx serve` runs every agent that `agent-x/agentx.json` lists, restarts an agent that stops, delivers what the agents send, and fires their schedules. To add or remove an agent, start it again.
 

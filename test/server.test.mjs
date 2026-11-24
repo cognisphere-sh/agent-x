@@ -28,7 +28,7 @@ test("Caddy sends /services/* to agentx serve and the rest to the web app; the u
 
 	const agents = agentsUnit(root, "/usr/bin/node");
 	assert.match(agents, /^WorkingDirectory=\/home\/deploy\/my project$/m);
-	assert.match(agents, /^ExecStart="\/usr\/bin\/node" "\/home\/deploy\/my project\/agent-x\/node_modules\/agent-x\/dist\/cli\/agentx\.js" serve$/m);
+	assert.match(agents, /^ExecStart="\/usr\/bin\/node" "\/home\/deploy\/my project\/agent-x\/node_modules\/@cognisphere-sh\/agentx\/dist\/cli\/agentx\.js" serve$/m);
 	assert.match(agents, /^KillMode=mixed$/m);
 	assert.match(agents, /^TimeoutStopSec=600$/m);
 	assert.match(agents, /^Restart=on-failure$/m);
@@ -70,7 +70,7 @@ test("the web app builds into .next-a and .next-b in turn, beside the build it s
 test("a new project has the deploy scripts' stubs, runs agentx dev with pnpm dev, and its web app builds where agentx server says", () => {
 	const root = projectRoot(createAgent(9));
 	for (const script of ["check.sh", "setup.sh"]) assert.match(readFileSync(join(root, "deploy", script), "utf8"), /^#!\/usr\/bin\/env bash\n(#.*\n)+$/);
-	assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.dev, "node agent-x/node_modules/agent-x/dist/cli/agentx.js dev");
+	assert.equal(JSON.parse(readFileSync(join(root, "package.json"), "utf8")).scripts.dev, "node agent-x/node_modules/@cognisphere-sh/agentx/dist/cli/agentx.js dev");
 	assert.match(readFileSync(join(root, "web", "next.config.ts"), "utf8"), /distDir: process\.env\.AGENTX_WEB_DIST_DIR \?\? "\.next"/);
 	assert.match(readFileSync(join(root, ".gitignore"), "utf8"), /^web\/\.next-a\/\nweb\/\.next-b\/\nweb\/\.agentx-web\.env$/m);
 });
