@@ -14,7 +14,7 @@ my-project/
     tsconfig.json       lists the types folders of .next, .next-a and .next-b, so no build changes it
   agent-x/              agentx's part of the project; its own package
     package.json        depends on @cognisphere-sh/agentx, at an exact version; `"type": "module"`, for the routers, workflows and services, which are `.ts` (D74)
-    pnpm-workspace.yaml pnpm's settings for this package: the dependencies whose install scripts it does not run (allowBuilds), which pnpm 11 otherwise refuses
+    pnpm-workspace.yaml pnpm's settings for this package: the dependencies whose install scripts it does not run (allowBuilds), which pnpm 11 otherwise refuses (D111)
     agentx.json         the project's agents: description and canSendTo (coordinator D63); the coordinator's services' config under `services`, and `publicUrl` (D68)
     .pi/                Pi's agent directory, shared by all agents; gitignored
     .env                the coordinator's API token and its services' secrets, which no agent reads; gitignored; starts with each secret the services use, commented out
@@ -51,3 +51,11 @@ How the app talks to agents. The coordinator's [API](../../coordinator-runtime/R
 
 - **Decision.** No workspaces: `web/` and `agent-x/` each have their own `package.json`, lockfile and `node_modules`; the root has only scripts.
 - **Why.** The app and the agents deploy apart, and the app must not pull in Pi.
+
+<a id="d111"></a>
+### D111. `agent-x/` tells pnpm which install scripts to skip
+
+- **Problem.** pnpm 11 stops an install whose dependencies have install scripts it was not told about. agentx's dependencies have three: Pi's `@google/genai` and `protobufjs`, and `agent-browser`.
+- **Decision.** The template's `agent-x/pnpm-workspace.yaml` lists them under `allowBuilds` as `false`, as agentx's own `pnpm-workspace.yaml` does.
+- **Why.** None of them needs its script: agent-browser links its native binary when it first runs. Skipping them installs nothing a project did not ask for.
+- **Consequence.** When agentx gains a dependency with an install script, both files list it. npm reads neither file and runs the scripts.
