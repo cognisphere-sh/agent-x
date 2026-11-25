@@ -29,7 +29,7 @@ The loops share only the queue file, and each has its own limits, so a slow rout
 - **Starts the loops** and waits for all three to end.
 - **Restarts a loop** that crashes, after 1 s, doubling up to a minute, and back to 1 s after a run of 10 minutes.
 - **Writes the heartbeat**, the time in `storage/heartbeat`, every 10 seconds, but only while every loop is healthy: it looked for work in the last 30 seconds, or the router is waiting on a call. A stuck loop shows as a heartbeat that stops, and the coordinator then restarts the process ([coordinator](../../coordinator-runtime/README.md#an-agents-process)).
-- **Stops** (`stop-signals.ts`, which `agentx serve` uses too). The first `SIGINT` or `SIGTERM` stops new work and lets running work finish. The second stops it now. A `SIGTERM` within a second of a `SIGINT` counts as the same stop, because `pnpm exec` sends one after a terminal's Ctrl-C.
+- **Stops** (`stop-signals.ts`, which `agentx serve` uses too). The first `SIGINT` or `SIGTERM` stops new work and lets running work finish. The second stops it now. A `SIGINT` and a `SIGTERM` within a second of each other count as one stop, in either order: `pnpm exec` sends a `SIGTERM` after a terminal's Ctrl-C, and a busy process can take the two in the other order.
 - **Ends with the coordinator.** Started by the coordinator, the process has an IPC channel to it, and exits at once when the channel closes.
 
 Every child process starts in a process group of its own, so a terminal's Ctrl-C reaches only `agentx run`.
