@@ -2,6 +2,7 @@
 // Real `agentx run` processes in a scratch project, with the fake model for the Pi threads that events reach.
 
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, test } from "node:test";
@@ -296,6 +297,23 @@ test("a terminal's Ctrl-C lets a running thread finish, also with a SIGTERM righ
 	process.kill(-server.child.pid, "SIGTERM");
 	assert.equal(await server.exited, 0);
 	assert.equal(event(id).status, "done");
+});
+
+test("a SIGINT and a SIGTERM within a second of each other are one stop, also in the other order, and a later one stops the work", () => {
+	// In a process of its own, with the signals emitted in a set order: a busy process can take the real ones in either.
+	const stopSignals = new URL("../dist/agent-runtime/supervisor/stop-signals.js", import.meta.url).href;
+	const script = `
+		const { onStopSignals } = await import(${JSON.stringify(stopSignals)});
+		const forces = [];
+		onStopSignals((force) => forces.push(force));
+		process.emit("SIGTERM");
+		process.emit("SIGINT");
+		await new Promise((resolve) => setTimeout(resolve, 1100));
+		process.emit("SIGINT");
+		console.log(JSON.stringify(forces));
+	`;
+	const { stdout, stderr } = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8" });
+	assert.equal(stdout.trim(), "[false,true]", stderr);
 });
 
 test("a loop that crashes is started again, and its work goes on", async (t) => {
