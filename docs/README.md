@@ -154,7 +154,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [give_an_agent_a_browser.md](user_guides/give_an_agent_a_browser.md) | The agent's browser: setting it up, and its profiles |
 | [write_a_service.md](user_guides/write_a_service.md) | A service of the project's own in `agent-x/services/`: a webhook, its config, secrets and routes |
 | [upgrade_agentx.md](user_guides/upgrade_agentx.md) | Move a project to the latest agentx, with the settings and keys it adds |
-| [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself |
+| [develop_agentx.md](user_guides/develop_agentx.md) | Work on agentx itself: build, test, branches, pull requests and releases |
 
 ## Maintaining these docs
 

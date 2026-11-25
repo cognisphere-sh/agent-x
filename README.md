@@ -71,6 +71,7 @@ The guides are in [docs/user_guides](docs/user_guides/), starting with the [quic
 ## Repository layout
 
 ```
+.github/                  CI, which tests every pull request and releases a merge to main that raises the version; the pull request template.
 CLAUDE.md                 Goals, mental model, and how docs are kept current.
 docs/                     High-level design, one folder per module as in src/, user guides, tasks.
 src/
