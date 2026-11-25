@@ -84,8 +84,13 @@ test("each skill is a section of its own with its version, read again on every r
 	assert.match(prompt, /<agentx-skill-browser>/);
 	assert.match(prompt, /<agentx-skill-telegram>\nname: telegram\nversion: 2\n/);
 	// How to write a router, a workflow, a schedule or a webhook is a skill, not a section of the harness's rules.
-	for (const skill of ["routing", "schedules", "webhooks", "workflows"]) {
-		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: 3\\n`));
+	for (const [skill, version] of [
+		["routing", 3],
+		["schedules", 3],
+		["webhooks", 3],
+		["workflows", 4],
+	]) {
+		assert.match(prompt, new RegExp(`<agentx-skill-${skill}>\\nname: ${skill}\\nversion: ${version}\\n`));
 		assert.ok(!prompt.includes(`<agentx-core-${skill}>`), skill);
 	}
 	assert.ok(!prompt.includes("<available_skills>"), "Pi's list is gone");
@@ -160,7 +165,8 @@ test("once the episodes since the last fold nudge added more than foldNudgeEvery
 	await foldNudged(project, 1);
 	const [nudge] = foldNudges(project);
 	assert.match(nudge.content, /^Your context holds about \S+ of 128K tokens\. Fold the earlier episodes /);
-	assert.match(nudge.content, /\n- Do not mention episodes, by id, number or tokens, not even ones the work read or was about: the tag lists the episodes the summary covers\.\n/);
+	assert.match(nudge.content, /\n- When a range's episodes worked on different, independent tasks or subjects, write its summary in parts, one per task: [^\n]+ start each part with their ids, as their end messages give them: `<id>, <id>: <the part>`\. A range of one task needs no parts\.\n/);
+	assert.doesNotMatch(nudge.content, /Do not mention episodes/);
 	assert.match(nudge.content, /\n- Fold long explorations, multi-step processes and executions once they are over, [^\n]+: the summary keeps only what was learned and the information that matters, not the steps\.\n/);
 	const entries = onlySession(project).entries;
 	const answer = entries.slice(entries.findIndex((entry) => entry.id === nudge.id)).find((entry) => entry.type === "message" && entry.message.role === "assistant");

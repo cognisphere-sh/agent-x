@@ -40,7 +40,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D111**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D113**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -140,6 +140,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D109](architecture/coordinator-runtime/README.md#d109) | `AGENTX_PUBLIC_URL` gives one run its own public address | coordinator-runtime |
 | [D110](architecture/coordinator-runtime/README.md#d110) | A service marks an optional secret with `?` | coordinator-runtime |
 | [D111](architecture/cli/project/README.md#d111) | `agent-x/` tells pnpm which install scripts to skip | cli/project |
+| [D112](architecture/agent-runtime/pi/pi-package/context/README.md#d112) | A summary of independent tasks has a part per task, which starts with its episodes' ids | agent-runtime/pi/pi-package/context |
 
 ## User guides
 

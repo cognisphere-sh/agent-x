@@ -37,7 +37,7 @@ process.once("message", async (job: Job) => {
 function send(job: Job & { kind: "workflow" }, content: string, options: SendOptions = {}): string {
 	return sendEvent(
 		agentRoot,
-		{ threadId: options.threadId, key: options.key, content, metadata: { ...options.metadata, source: `workflow.${job.workflow}` } },
+		{ threadId: options.threadId, key: options.key, content, metadata: { ...options.metadata, source: `workflow.${job.workflow}` }, isSilent: options.isSilent },
 		{
 			to: options.agent,
 			// A refusal or an answer comes back to the sending thread. From the workflow's own thread, it would run the workflow again.

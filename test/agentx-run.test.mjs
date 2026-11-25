@@ -155,7 +155,7 @@ function workflows(file, babysitterThread) {
 	);
 	file(
 		".pi/knowledge/workflows/ok.ts",
-		`export default async function (event, ctx) { console.log("params", event.content, event.metadata.month); process.chdir("/"); await ctx.send("note from ok", { threadId: "main" }); const loop = {}; loop.self = loop; return loop; }`,
+		`export default async function (event, ctx) { console.log("params", event.content, event.metadata.month); process.chdir("/"); await ctx.send("quiet note from ok", { threadId: "quiet", isSilent: true }); await ctx.send("note from ok", { threadId: "main" }); const loop = {}; loop.self = loop; return loop; }`,
 	);
 	file(".pi/knowledge/workflows/broken.ts", `export default async function () { console.log("about to fail"); throw new Error("broken on purpose"); }`);
 	file(".pi/knowledge/workflows/slow.ts", `import { setTimeout } from "node:timers/promises"; export default async function () { await setTimeout(30_000); }`);
@@ -166,7 +166,7 @@ function workflows(file, babysitterThread) {
 	);
 }
 
-test("a workflow gets its event, with its content and metadata as parameters, logs its output, and is done without a report", async (t) => {
+test("a workflow gets its event, with its content and metadata as parameters, logs its output, sends a silent event that starts no run, and is done without a report", async (t) => {
 	const { project, event, send, start, reach, file } = setup(t);
 	workflows(file);
 	const id = await send("--thread-id", "workflow.ok", "--meta", "month=january", '{"invoice": "4411"}');
@@ -180,7 +180,10 @@ test("a workflow gets its event, with its content and metadata as parameters, lo
 	// Delivered from the agent's outbox, as sent by the workflow from its babysitter thread, main, which the receiving thread would answer.
 	assert.deepEqual(note.metadata, { source: "workflow.ok", "agentX-FromAgent": "main", "agentX-FromThread": "main", "agentX-FromWorkflow": "ok" });
 	await reach("done", note.id);
-	assert.equal(events(project.agent).length, 4, "no report");
+	// Sent before the note, so it is on the queue by now, still waiting: a silent event starts no run.
+	const quiet = events(project.agent).find((found) => found.content === "quiet note from ok");
+	assert.deepEqual([quiet.threadId, quiet.isSilent, quiet.status], ["quiet", true, "queued"]);
+	assert.equal(events(project.agent).length, 6, "no report");
 });
 
 test("a failed run is failed once and reported to main with its log, and a run past its time is killed", async (t) => {

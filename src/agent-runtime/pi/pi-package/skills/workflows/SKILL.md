@@ -2,7 +2,7 @@
 name: workflows
 description: How to write a workflow, a script that handles events of one kind without you, the same way every time, and can run Composio tools. Use it before you write or change one, and when a workflow failed.
 metadata:
-  version: 3
+  version: 4
 ---
 
 # Workflows
@@ -25,13 +25,13 @@ const run: Workflow = async (event, ctx) => {
 	const total = event.content.match(/Total: (\S+)/)?.[1];
 	if (total === undefined) throw new Error("The invoice has no total.");
 	appendFileSync("storage/workspace/invoices.csv", `${event.id},${total}\n`);
-	await ctx.send(`Filed invoice ${event.id}: ${total}.`, { threadId: "main" }); // optional; options: threadId, agent, key, metadata, files
+	await ctx.send(`Filed invoice ${event.id}: ${total}.`, { threadId: "main" }); // optional; options: threadId, agent, key, metadata, isSilent, files
 };
 
 export default run;
 ```
 
-Returning means it worked; throwing means it failed. A workflow that throws is reported to its babysitter thread by itself; one that returns reports nothing unless it sends. What it prints goes to `storage/workspace/workflow-logs/<workflow>/<event id>.log`. Its events go out from its babysitter thread, so answers and refusals come there. When part of the work needs judgement, the workflow does the fixed steps and sends what needs judging, its result or the error it hit, to one of your threads with `ctx.send`; you judge it there.
+Returning means it worked; throwing means it failed. A workflow that throws is reported to its babysitter thread by itself; one that returns reports nothing unless it sends. What it prints goes to `storage/workspace/workflow-logs/<workflow>/<event id>.log`. Its events go out from its babysitter thread, so answers and refusals come there. When part of the work needs judgement, the workflow does the fixed steps and sends what needs judging, its result or the error it hit, to one of your threads with `ctx.send`; you judge it there. With `isSilent: true`, an event starts no run of its thread and goes along with the next event that does: for what the thread should know, but need not act on alone.
 
 `ctx.composio(tool, arguments)` runs one Composio tool as you, with your connected accounts and the services you may use, and resolves to the tool's data: `await ctx.composio("TELEGRAM_SEND_MESSAGE", { chat_id, text })`. Find the tool's name and arguments first with `COMPOSIO_SEARCH_TOOLS` and `COMPOSIO_GET_TOOL_SCHEMAS`. It throws when the tool fails, and when it needs a person, such as an account to connect: connect accounts from a thread before a workflow needs them.
 

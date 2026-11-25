@@ -33,6 +33,8 @@ export interface SendOptions {
 	/** Sending again with the same key adds nothing. */
 	key?: string;
 	metadata?: Record<string, unknown>;
+	/** Background information: the event never starts a run of its thread, and goes along with the next event that does. */
+	isSilent?: boolean;
 	/** Files that go with the event, by their paths from the agent directory. The content gets a line that names them, and the receiver finds them in the event's folder of its inbox. */
 	files?: string[];
 }

@@ -1,6 +1,6 @@
 {
 	"name": "@cognisphere-sh/agentx",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Creates projects with a Next.js app and pi coding agents, and runs the agents",
 	"keywords": [
 		"agents",
