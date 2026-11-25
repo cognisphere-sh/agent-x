@@ -61,12 +61,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          fetch-depth: 0 # the earlier tags, where the notes start
+          fetch-depth: 0 # the earlier tags
+      # The last release's tag, where the notes start: found before anything is published, so a missing one stops the release here.
+      - id: previous
+        run: |
+          tag="$(git describe --tags --abbrev=0 --match 'v*')"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
       - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false # no cache in a release build, as npm advises
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       # A run that failed after publishing can run again: npm never takes a version twice.
@@ -77,4 +83,5 @@ jobs:
       - name: Tag and release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes --notes-start-tag "$(git describe --tags --abbrev=0 --match 'v*')"
+          PREVIOUS: ${{ steps.previous.outputs.tag }}
+        run: gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes --notes-start-tag "$PREVIOUS"
