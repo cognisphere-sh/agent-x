@@ -15,10 +15,10 @@
 	"author": "t0r0id",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/cognisphere-sh/agent-x.git"
+		"url": "git+https://github.com/cognisphere-sh/agentx.git"
 	},
-	"homepage": "https://github.com/cognisphere-sh/agent-x#readme",
-	"bugs": "https://github.com/cognisphere-sh/agent-x/issues",
+	"homepage": "https://github.com/cognisphere-sh/agentx#readme",
+	"bugs": "https://github.com/cognisphere-sh/agentx/issues",
 	"type": "module",
 	"bin": {
 		"agentx": "dist/cli/agentx.js",
@@ -53,5 +53,6 @@
 	},
 	"engines": {
 		"node": ">=24.12.0"
-	}
+	},
+	"packageManager": "pnpm@11.21.0"
 }

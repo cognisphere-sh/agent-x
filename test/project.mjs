@@ -262,7 +262,8 @@ export function alive(pid) {
  * as after the time a lease lasts without a heartbeat. With a function, calls it with the open file and returns what it returns.
  */
 export function onQueueFile(agentRoot, work = "UPDATE threads SET heartbeat_at = 0") {
-	const db = new DatabaseSync(join(agentRoot, "storage", "event_queue.db"));
+	// Waits for agentx's writes, as its own connections do (src/agent-runtime/sqlite.ts), instead of failing at once.
+	const db = new DatabaseSync(join(agentRoot, "storage", "event_queue.db"), { timeout: 5000 });
 	try {
 		return typeof work === "string" ? db.exec(work) : work(db);
 	} finally {

@@ -30,7 +30,7 @@ Once a second the runner:
 1. **Ends stuck workers.** A worker whose lease ran out is blocked, and gets `SIGKILL`. A worker that wrote nothing for `stallSeconds` is stuck, for example on a tool that never returns, and gets `SIGTERM`.
 2. **Starts threads.** While fewer than `maxThreads` run, it starts the Pi thread of the oldest waiting event that no process holds ([settings](../supervisor/README.md#settings)).
 
-**Stopping.** The first stop starts no more threads and waits for the running ones. The second sends `SIGTERM` to every worker: its run is aborted, and its events wait for the next start. If `agentx run` dies, its Pi processes end with it, because their input closes.
+**Stopping.** The first stop starts no more threads and waits for the running ones. The second sends `SIGTERM` to every worker: its run is aborted, and its events wait for the next start. If `agentx run` dies, its Pi processes end with it, because their input closes or their output fails.
 
 ### Starting a thread's Pi process
 
@@ -53,6 +53,7 @@ The runner holds no lease; the Pi process holds the thread ([Threads and leases]
 | The session ends itself, its thread empty | The extension settled them. |
 | The session lost its lease to another process | The new holder gives them another attempt. |
 | Pi is told to stop: `SIGTERM`, `SIGHUP`, or its input closes | Pi aborts the run, and the extension ends the attempt. |
+| Pi's output fails, as when `agentx run` dies, and Pi exits without closing the session | The extension, as the process exits ([D113](pi-package/event-queue/README.md#d113)). |
 | Pi crashes, cannot start, or is killed | The runner, at once: events in flight lose their attempt, or, with none in flight, the waiting events lose one, with Pi's error as the reason. |
 | Everything dies, as with the machine | The next process to take the thread, once the lease runs out. |
 

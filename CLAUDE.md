@@ -88,6 +88,7 @@ Decisions: one short entry per choice of the current design, in the "Decisions" 
 - Code: TypeScript, ESM, Node >= 24.12, tabs. One concept per file, a first-line comment saying what the file is for, a one-line doc comment on every export. Comments explain why, not what. No `any`, no inline imports. Exact dependency versions.
 - After code changes: `pnpm run check`, and `pnpm test` when the queue, `agentx run`, `agentx serve`, `chat` or the Pi package changed. `pnpm run build` writes `dist/`, which the CLI runs from.
 - Instructions, the CLI's hints and the docs use pnpm, and name the command itself (`agentx chat`), not a package script.
+- Every change reaches `main` through a pull request from a branch of its own; merging one that raises `version` releases it ([develop agentx](docs/user_guides/develop_agentx.md#branches-pull-requests-and-releases)).
 - Never commit unless asked.
 
 ---

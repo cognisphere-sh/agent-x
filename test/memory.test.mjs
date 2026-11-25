@@ -21,9 +21,9 @@ const lastResult = (project, thread) => text(entriesOf(project, thread).findLast
 const custom = (project, thread, customType) => entriesOf(project, thread).filter((entry) => entry.type === "custom_message" && entry.customType === customType);
 // Waits until no Pi process holds the thread: what it wrote is in its session file only.
 const ended = (project, thread) => until(() => !alive(holder(project.agent, thread)));
-// The agent's memory index, read as it is on disk; closed when the test ends.
+// The agent's memory index, read as it is on disk; closed when the test ends. It waits for agentx's writes, as agentx's own connections do.
 function indexOf(t, project) {
-	const db = new DatabaseSync(join(project.agent, "storage", "memory", "index.db"), { readOnly: true });
+	const db = new DatabaseSync(join(project.agent, "storage", "memory", "index.db"), { readOnly: true, timeout: 5000 });
 	t.after(() => db.close());
 	return db;
 }

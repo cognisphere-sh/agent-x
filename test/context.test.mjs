@@ -244,9 +244,10 @@ test("a steered event joins its episode; one fold folds two ranges; a range that
 	await until(() => event(first).entryId);
 	const steered = queue.enqueue({ threadId: "main", content: "and this too" });
 	await reach("done", first, steered);
+	// The episode's end message comes after its events are done.
+	await until(() => ends(project).length === 1);
 	const e1 = episodeOf(project, event(first).entryId);
 	assert.equal(episodeOf(project, event(steered).entryId), e1);
-	await until(() => ends(project).length === 1);
 	const e3 = episodeOf(project, event(await run("the third job")).entryId);
 	const fourth = await run("the fourth job");
 	const e4 = episodeOf(project, event(fourth).entryId);

@@ -236,8 +236,9 @@ test("an agentx run that is killed takes its sessions with it, and their events 
 	const pi = holder(project.agent, "main");
 	await first.stop();
 
-	// The runner's end closes the input of its Pi processes. Each closes its session, which aborts the run, and the queue extension ends the attempt.
-	// This has failed rarely, with the event still in flight; on a timeout, say what Pi and the lease were doing.
+	// The runner's end closes the input of its Pi processes. Each closes its session, which aborts the run, and the queue extension ends the attempt;
+	// or Pi exits at once when a write to its output fails, which is often on Linux, and the extension ends the attempt as the process exits.
+	// On a timeout, say what Pi and the lease were doing.
 	await until(() => event(id).status !== "in_flight").catch((error) => {
 		const leases = onQueueFile(project.agent, (db) => db.prepare("SELECT * FROM threads").all());
 		throw new Error(`${error.message}\n${JSON.stringify({ pi, piAlive: alive(pi), leases, event: event(id) })}\n${first.output()}`);
