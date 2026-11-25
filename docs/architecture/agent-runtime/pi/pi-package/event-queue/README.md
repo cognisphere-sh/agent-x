@@ -16,6 +16,7 @@ It claims the thread's events, sends them to Pi, records the session entry each 
 | `agent_before_settle`, `agent_settled` | Settles the run's events at its first `agent_before_settle`, done or failed as Pi judged the run, before any turn that another extension adds after it, such as the [context extension's](../context/README.md#fold-nudges) turn to fold; `turn_end` steers nothing into that turn. An aborted run, which has no `agent_before_settle`, is settled at `agent_settled`. |
 | `input` | Refuses input in a session without the lease. |
 | `session_shutdown` | Stops the timer, gives up the lease, closes the queue. |
+| the process's `exit`, without `session_shutdown` | Gives the run's events in flight another attempt, gives up the lease, closes the queue ([D113](#d113)). |
 
 A session whose lease went to another process aborts its run and takes no more input or events.
 
@@ -97,3 +98,11 @@ A delivered event starts with `<`, so Pi never reads it as a slash command. The 
 - **Decision.** The extension takes the thread's lease in `session_start`, but starts the timer that delivers events in `resources_discover`, which Pi sends after every extension's `session_start` handler has finished.
 - **Why.** An extension that awaits work in `session_start`, such as registering an MCP server after a network call, must be done before the first run: Pi waits for MCP servers only at the first run's start, and only for those registered by then.
 - **Consequence.** `resources_discover` is meant for adding skill and prompt folders; the extension uses it only as the one event that follows start-up.
+
+<a id="d113"></a>
+### D113. A session that ends without closing gives its events back as its process exits
+
+- **Problem.** In RPC mode, Pi exits at once, without closing its session, when a write to its output fails ([Pi](../../pi-reference/README.md#rpc-mode)). When `agentx run` dies, the Pi processes it started write to a pipe nobody reads, so their run's events stayed in flight, and their threads held, until the lease ran out two minutes later. On Linux this happened most of the time.
+- **Decision.** Once the session holds its thread, the extension listens for its process's `exit`, until `session_shutdown`. If the process exits first, the run's events in flight get another attempt, as when the session closes during a run, and the lease is given up.
+- **Why.** Node runs `exit` listeners on `process.exit()` and on an uncaught exception, which are how Pi ends then. The queue is synchronous, as an `exit` listener needs, and the extension is the one code in that process that knows the thread and its events.
+- **Rejected.** Ignoring the failed write: Pi exits on it anyway. The next runner checking whether the lease's process is alive: a process id can be reused, and in a sandbox another process's id means nothing.

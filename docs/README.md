@@ -40,7 +40,7 @@ New here: [quick start](user_guides/quick_start.md).
 
 ## Decisions
 
-Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D113**.
+Each decision is in the "Decisions" section of the module it affects. Numbers are not used again; the next free number is **D114**.
 
 | # | Decision | Module |
 |---|---|---|
@@ -141,6 +141,7 @@ Each decision is in the "Decisions" section of the module it affects. Numbers ar
 | [D110](architecture/coordinator-runtime/README.md#d110) | A service marks an optional secret with `?` | coordinator-runtime |
 | [D111](architecture/cli/project/README.md#d111) | `agent-x/` tells pnpm which install scripts to skip | cli/project |
 | [D112](architecture/agent-runtime/pi/pi-package/context/README.md#d112) | A summary of independent tasks has a part per task, which starts with its episodes' ids | agent-runtime/pi/pi-package/context |
+| [D113](architecture/agent-runtime/pi/pi-package/event-queue/README.md#d113) | A session that ends without closing gives its events back as its process exits | agent-runtime/pi/pi-package/event-queue |
 
 ## User guides
 

@@ -42,6 +42,15 @@ export default function (pi: ExtensionAPI) {
 		queue = undefined;
 	};
 
+	// Pi can end without closing its session: in RPC mode it exits as soon as a write to its output fails, as when agentx run, which reads it, was
+	// killed. Node still runs `exit` listeners, and the queue is synchronous, so what the run held gets another attempt now and the thread is free,
+	// not when its lease runs out.
+	const onExit = () => {
+		if (queue?.inFlight(threadId)) queue.fail(threadId, "The session was closed during the run.");
+		queue?.release(threadId);
+		letGo();
+	};
+
 	// Tells whoever runs the session: in its UI when it has one, on the error output otherwise.
 	const say = (ctx: ExtensionContext, message: string) => (ctx.hasUI ? ctx.ui.notify(message, "error") : console.error(message));
 	// The last trouble said, so one that lasts is said once, not at every tick. Cleared when events go out.
@@ -169,6 +178,7 @@ export default function (pi: ExtensionAPI) {
 			if (!oneShot(ctx)) refuse(ctx);
 			return;
 		}
+		process.once("exit", onExit);
 	});
 
 	// The session takes events only once every extension has started: Pi sends this right after all `session_start` handlers have finished,
@@ -228,6 +238,7 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_shutdown", () => {
 		clearInterval(timer);
+		process.off("exit", onExit);
 		queue?.release(threadId);
 		letGo();
 	});
